@@ -3442,6 +3442,9 @@ function _agShowMessage(msg, type) {
 (function () {
     "use strict";
 
+    /* ── Owner panel: this guard must not run — all sections are allowed ── */
+    if (window.__IS_OWNER_PANEL) return;
+
     /* ── Allowed sections in client mode ── */
     var ALLOWED_SECTIONS = ["manageQuestions", "students"];
 
@@ -3552,5 +3555,5 @@ function _agShowMessage(msg, type) {
         installClientGuards();
         if (++guardTicks > 30) clearInterval(guardTimer);
     }, 200);
-             
+
 })();
