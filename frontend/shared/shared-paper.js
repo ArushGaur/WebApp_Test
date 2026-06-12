@@ -1,4 +1,4 @@
-        /* ═══════════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════════════
            IMPORT TYPE SWITCHER (Test Paper vs STAR Quiz)
         ═══════════════════════════════════════════════════════════════════ */
         let _impType = "test_paper"; // "test_paper" | "star_quiz" | "pyq"
@@ -425,9 +425,50 @@
 
         /* ── Generate Paper Modal helpers ─────────────────────────── */
 
+        function _ensurePaperHeaderFields() {
+            // If the HTML already contains these inputs, nothing to do.
+            if (document.getElementById('paper-subject-input')) return;
+            // Find the container that holds paper-title-input and insert new fields above it.
+            const titleInput = document.getElementById('paper-title-input');
+            if (!titleInput) return;
+            const wrapper = titleInput.parentElement;
+            if (!wrapper) return;
+
+            const fieldStyle = `display:flex;flex-direction:column;gap:5px;margin-bottom:12px`;
+            const labelStyle = `font-size:0.78rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em`;
+            const inputStyle = `padding:9px 13px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-family:inherit;font-size:0.9rem;outline:none;transition:border-color 0.2s`;
+
+            const html = `
+            <div id="paper-header-fields" style="margin-bottom:4px">
+                <div style="${fieldStyle}">
+                    <label for="paper-subject-input" style="${labelStyle}">Subject <span style="color:var(--accent);font-size:0.85em">(e.g. Physics)</span></label>
+                    <input id="paper-subject-input" type="text" placeholder="e.g. Physics" style="${inputStyle}"
+                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                </div>
+                <div style="${fieldStyle}">
+                    <label for="paper-chapter-input" style="${labelStyle}">Chapter / Topic <span style="color:var(--accent);font-size:0.85em">(e.g. Ray Optics)</span></label>
+                    <input id="paper-chapter-input" type="text" placeholder="e.g. Ray Optics" style="${inputStyle}"
+                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                </div>
+                <div style="${fieldStyle}">
+                    <label for="paper-test-type-input" style="${labelStyle}">Test Type <span style="color:var(--accent);font-size:0.85em">(shown as heading)</span></label>
+                    <input id="paper-test-type-input" type="text" placeholder="e.g. Chapter Test" value="Chapter Test" style="${inputStyle}"
+                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                </div>
+                <div style="margin:2px 0 14px;border-top:1px solid var(--border)"></div>
+            </div>`;
+
+            const div = document.createElement('div');
+            div.innerHTML = html;
+            wrapper.insertBefore(div.firstElementChild, titleInput.parentElement === wrapper ? titleInput : wrapper.firstChild);
+        }
+
         function openGeneratePaperModal() {
             const modal = document.getElementById('generate-paper-modal');
             if (!modal) return;
+
+            // Ensure subject/chapter/test-type fields are injected (if not in HTML already)
+            _ensurePaperHeaderFields();
 
             // ── Full state reset (fixes generate-button glitch after previous generation) ──
             document.getElementById('paper-generate-progress').style.display = 'none';
@@ -446,10 +487,17 @@
 
             const titleInput = document.getElementById('paper-title-input');
             if (titleInput) titleInput.value = 'Question Paper';
+            const subjectInput = document.getElementById('paper-subject-input');
+            if (subjectInput) subjectInput.value = '';
+            const chapterInput = document.getElementById('paper-chapter-input');
+            if (chapterInput) chapterInput.value = '';
+            const testTypeInput = document.getElementById('paper-test-type-input');
+            if (testTypeInput) testTypeInput.value = 'Chapter Test';
             modal.style.display = 'flex';
             modal.classList.add('open');
             refreshTemplates();
-            if (titleInput) setTimeout(() => { titleInput.focus(); titleInput.select(); }, 80);
+            if (subjectInput) setTimeout(() => { subjectInput.focus(); }, 80);
+            else if (titleInput) setTimeout(() => { titleInput.focus(); titleInput.select(); }, 80);
         }
 
         function closeGeneratePaperModal() {
@@ -734,6 +782,9 @@
         async function generatePaper() {
             if (!paperBasket.size) { alert('No questions selected'); return; }
             const paperTitle = (document.getElementById('paper-title-input')?.value || 'Question Paper').trim();
+            const paperSubject = (document.getElementById('paper-subject-input')?.value || '').trim();
+            const paperChapter = (document.getElementById('paper-chapter-input')?.value || '').trim();
+            const paperTestType = (document.getElementById('paper-test-type-input')?.value || 'Chapter Test').trim();
 
             // Assign sequential question numbers at generation time
             let qNum = 1;
@@ -773,7 +824,7 @@
                     method: 'POST',
                     credentials: 'include',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ questions, paperTitle, templateId: _selectedTemplateId || null })
+                    body: JSON.stringify({ questions, paperTitle, paperSubject, paperChapter, paperTestType, templateId: _selectedTemplateId || null })
                 });
                 clearTimeout(_pgenTimer);
                 const data = await resp.json();
@@ -798,6 +849,9 @@
                     files: data.files,
                     safeTitle: safeTitle,
                     paperTitle: paperTitle,
+                    paperSubject: paperSubject,
+                    paperChapter: paperChapter,
+                    paperTestType: paperTestType,
                     questions: questions,
                     pdfFiles: null // will load lazily on click
                 };
@@ -886,6 +940,9 @@
                             body: JSON.stringify({
                                 questions: window._lastPaperGenData.questions,
                                 paperTitle: window._lastPaperGenData.paperTitle,
+                                paperSubject: window._lastPaperGenData.paperSubject || '',
+                                paperChapter: window._lastPaperGenData.paperChapter || '',
+                                paperTestType: window._lastPaperGenData.paperTestType || 'Chapter Test',
                                 templateId: _selectedTemplateId || null
                             })
                         });
