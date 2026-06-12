@@ -111,7 +111,7 @@
                             <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                         </svg>
                     </div>
-                    <input id="passcode" type="password" class="login-field-input" placeholder="Enter your passcode"
+                    <input id="passcode" type="text" style="-webkit-text-security: disc; text-security: disc;" class="login-field-input" placeholder="Enter your passcode"
                         autocomplete="current-password" onkeydown="if(event.key==='Enter') login()"
                         oninput="document.getElementById('loginError').style.display='none';document.getElementById('loginFieldWrap').classList.remove('login-field-error')">
                     <button class="login-eye-btn" type="button" onclick="togglePasscodeVisibility(this)" tabindex="-1"
@@ -1610,6 +1610,7 @@
     <script src="/shared/shared-crop.js" defer></script>
     <script src="/shared/shared-importer.js" defer></script>
     <script src="/shared/shared-manager.js" defer></script>
+    <script src="/shared/shared-online-test.js" defer></script>
     <script src="/shared/shared-student.js" defer></script>
     <script src="/shared/shared-paper.js" defer></script>
     <script src="/owner.js" defer></script>
@@ -2116,7 +2117,7 @@
                                     time</span>
                                 <span style="font-size:0.7rem;color:var(--success)">▾</span>
                             </div>
-                            <input id="ot-live-at" type="hidden">
+                            <input id="ot-live-at" type="datetime-local" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;overflow:hidden;top:0;left:0" aria-hidden="true" tabindex="-1">
                             <div id="ot-live-preview"
                                 style="font-size:0.72rem;color:var(--text-muted);margin-top:5px;text-align:center;min-height:14px">
                             </div>
@@ -2139,7 +2140,7 @@
                                     time</span>
                                 <span style="font-size:0.7rem;color:var(--error)">▾</span>
                             </div>
-                            <input id="ot-ends-at" type="hidden">
+                            <input id="ot-ends-at" type="datetime-local" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;overflow:hidden;top:0;left:0" aria-hidden="true" tabindex="-1">
                             <div id="ot-ends-preview"
                                 style="font-size:0.72rem;color:var(--text-muted);margin-top:5px;text-align:center;min-height:14px">
                             </div>
@@ -2762,6 +2763,7 @@
         integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ=="
         data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}'
         crossorigin="anonymous"></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 
