@@ -3239,6 +3239,10 @@ async function _agGeneratePaper() {
 
     errEl.style.display = 'none';
     const paperTitle = (titleInput?.value || 'Question Paper').trim();
+    const paperClass   = (document.getElementById('ag-class-input')?.value || '').trim();
+    const paperSubject = (document.getElementById('ag-subject-input')?.value || '').trim();
+    const paperChapter = (document.getElementById('ag-chapter-input')?.value || '').trim();
+    const paperTestType = (document.getElementById('ag-test-type-input')?.value || '').trim();
 
     // Show loading while we fetch questions
     nextBtn.disabled = true;
@@ -3356,13 +3360,13 @@ async function _agGeneratePaper() {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ questions, paperTitle, templateId: (typeof _selectedTemplateId !== 'undefined' ? _selectedTemplateId : null) })
+            body: JSON.stringify({ questions, paperTitle, paperSubject, paperChapter, paperTestType, paperClass, templateId: (typeof _selectedTemplateId !== 'undefined' ? _selectedTemplateId : null) })
         });
         const data = await resp.json();
         if (!resp.ok || !data.success) throw new Error(data.error || 'Generation failed');
 
         const safeTitle = paperTitle.replace(/[^a-z0-9_\-]/gi, '_');
-        window._lastPaperGenData = { files: data.files, safeTitle, paperTitle, questions, pdfFiles: null };
+        window._lastPaperGenData = { files: data.files, safeTitle, paperTitle, paperSubject, paperChapter, paperTestType, paperClass, questions, pdfFiles: null };
 
         _agClearLoaderTimers();
         closeAutoGenerateModal();
