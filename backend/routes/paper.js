@@ -799,10 +799,19 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 		: src;
 	// Sanitize OMML output: fix bare & characters inside <m:t> tags that break Word's XML parser
 	function sanitizeOmml(omml) {
-		// 1. Remove namespace declarations from <m:oMath> since they are already declared at the document level
-		let clean = String(omml || "")
-			.replace(/<m:oMath\b[^>]*>/g, '<m:oMath>')
-			.replace(/<\/m:oMath>/g, '</m:oMath>');
+		// 1. Normalise <m:oMath> — strip every attribute EXCEPT xmlns:m, which must be
+		//    preserved so that the m: prefix is always declared on the element itself.
+		//    Word's XML parser is strict: if xmlns:m is absent both here and on <w:document>
+		//    the file is rejected as invalid XML and cannot be opened at all.
+		let clean = String(omml || "").replace(/<m:oMath\b([^>]*)>/g, (match, attrs) => {
+			const nsMatch = attrs.match(/xmlns:m="([^"]+)"/);
+			if (nsMatch) {
+				// Keep only the namespace declaration, drop everything else (e.g. xml:space)
+				return `<m:oMath xmlns:m="${nsMatch[1]}">`;
+			}
+			// No xmlns:m in the tag — inject the standard one so it is always self-contained
+			return '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">';
+		});
 
 		// 2. Strip any attributes (like xml:space) from <m:t> elements which violate Word's strict math schema
 		clean = clean.replace(/<m:t\b[^>]*>/g, '<m:t>');
@@ -1035,13 +1044,20 @@ async function mergeWithTemplate(genEntries, tplEntries) {
 		if (/word\/_rels\/(header|footer)\d*\.xml\.rels$/.test(name)) merged[name] = data;
 	}
 
+	// Single-pass document.xml merge: apply template sectPr + optional template body
+	// content in one operation so the document is only rewritten once and sectPr
+	// cannot be injected twice (which produced corrupt XML that Word refused to open).
 	if (tplEntries["word/document.xml"] && merged["word/document.xml"]) {
-		let tplDoc = tplEntries["word/document.xml"].toString('utf8');
+		const tplDoc = tplEntries["word/document.xml"].toString('utf8');
+		// Read the current (already OMML-processed) generated document
 		let genDoc = merged["word/document.xml"].toString('utf8');
 
+		// ── Step A: transplant the template's <w:sectPr> (page size, margins,
+		//   headers/footers references) into the generated document. ────────────
 		const tplSecprMatch = tplDoc.match(/<w:sectPr\b.*?<\/w:sectPr>/s);
 		if (tplSecprMatch) {
 			let tplSecpr = tplSecprMatch[0];
+			// Remap any relationship IDs that were renumbered to avoid collisions
 			if (Object.keys(idRemap || {}).length) {
 				for (const [oldId, newId] of Object.entries(idRemap)) {
 					tplSecpr = tplSecpr.replaceAll(`r:id="${oldId}"`, `r:id="${newId}"`);
@@ -1052,13 +1068,10 @@ async function mergeWithTemplate(genEntries, tplEntries) {
 			} else {
 				genDoc = genDoc.replace('</w:body>', () => `${tplSecpr}\n</w:body>`);
 			}
-			merged["word/document.xml"] = Buffer.from(genDoc, 'utf8');
 		}
-	}
 
-	if (tplEntries["word/document.xml"] && merged["word/document.xml"]) {
-		let tplDoc = tplEntries["word/document.xml"].toString('utf8');
-		let genDoc = merged["word/document.xml"].toString('utf8');
+		// ── Step B: if the template has real body content (e.g. a letterhead
+		//   paragraph), prepend it before the generated questions. ──────────────
 		const bodyMatch = tplDoc.match(/<w:body>(.*?)<\/w:body>/s);
 		if (bodyMatch) {
 			let tplBodyNoSecpr = bodyMatch[1].replace(/<w:sectPr\b.*?<\/w:sectPr>/s, '').trim();
@@ -1085,10 +1098,12 @@ async function mergeWithTemplate(genEntries, tplEntries) {
 					}
 					const newBody = `${tplBodyNoSecpr}\n${genBodyRest}`;
 					genDoc = genDoc.replace(genBodyMatch[0], () => `<w:body>${newBody}</w:body>`);
-					merged["word/document.xml"] = Buffer.from(genDoc, 'utf8');
 				}
 			}
 		}
+
+		// Commit the single final rewrite
+		merged["word/document.xml"] = Buffer.from(genDoc, 'utf8');
 	}
 
 	const ctKey = "[Content_Types].xml";
@@ -1131,8 +1146,12 @@ async function postProcessDocx(generatedBuf, templateBase64) {
 		if (entries["word/document.xml"]) {
 			let docXml = entries["word/document.xml"].toString("utf8");
 			docXml = await processDocxXml(docXml);
-			if (docXml.includes("m:oMath") && !docXml.includes('xmlns:m=')) {
-				docXml = docXml.replace('<w:document ', () => '<w:document xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" ', 1);
+			// Always ensure xmlns:m is declared on <w:document> so that any m: prefixed
+			// OMML elements (injected by sanitizeOmml above) are always valid.
+			// Use a regex replace (no 'g' flag = first occurrence only, which is correct)
+			// and only add it when it isn't already present, to avoid duplicates.
+			if (!docXml.includes('xmlns:m=')) {
+				docXml = docXml.replace(/<w:document\b/, '<w:document xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"');
 			}
 			entries["word/document.xml"] = Buffer.from(docXml, "utf8");
 		}
