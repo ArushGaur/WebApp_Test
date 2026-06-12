@@ -816,6 +816,35 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 		// 2. Strip any attributes (like xml:space) from <m:t> elements which violate Word's strict math schema
 		clean = clean.replace(/<m:t\b[^>]*>/g, '<m:t>');
 
+		// 2b. Fix `<m:sty m:val="undefined"/>` produced by mathml2omml when the
+		//     MathML mathvariant doesn't map to a known OMML style. Per the OMML
+		//     schema (CT_Style), m:val MUST be one of: "p" | "b" | "i" | "bi".
+		//     Any other value (e.g. "undefined") makes Word reject the file with
+		//     "Word experienced an error trying to open the file". LibreOffice
+		//     silently tolerates the invalid value, so the bug only shows in Word.
+		//     We map the bad value to "p" (plain/upright) which is the safest
+		//     default and matches the surrounding <m:nor/> intent.
+		clean = clean.replace(
+			/<m:sty\b([^>]*?)m:val="(?!(?:p|b|i|bi)")[^"]*"([^>]*?)\/>/g,
+			'<m:sty$1m:val="p"$2/>'
+		);
+		// Also drop any <m:sty/> that has NO m:val at all (also schema-invalid).
+		clean = clean.replace(/<m:sty\s*\/>/g, '');
+
+		// 2c. Fix element order inside <m:r>. Per OMML schema CT_R the order is:
+		//     <m:rPr>?, <w:rPr>?, ...content...
+		//     mathml2omml emits them in the WRONG order (w:rPr first, then m:rPr),
+		//     which Word rejects as schema-invalid. We swap them so m:rPr comes
+		//     first. Also drop empty <w:rPr/> which adds nothing and only hurts.
+		clean = clean.replace(
+			/(<m:r\b[^>]*>)\s*<w:rPr\s*\/>\s*(<m:rPr\b[^>]*>[\s\S]*?<\/m:rPr>)/g,
+			'$1$2'
+		);
+		clean = clean.replace(
+			/(<m:r\b[^>]*>)\s*(<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>)\s*(<m:rPr\b[^>]*>[\s\S]*?<\/m:rPr>)/g,
+			'$1$3$2'
+		);
+
 		// 3. Fix unescaped & inside text content tags (m:t and w:t)
 		return clean.replace(/(<(?:m|w):t[^>]*>)([\s\S]*?)(<\/(?:m|w):t>)/g, (match, open, content, close) => {
 			// Re-escape & that isn't already part of an entity
