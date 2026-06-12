@@ -799,8 +799,16 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 		: src;
 	// Sanitize OMML output: fix bare & characters inside <m:t> tags that break Word's XML parser
 	function sanitizeOmml(omml) {
-		// Fix unescaped & inside text content tags (m:t and w:t)
-		return String(omml || "").replace(/(<(?:m|w):t[^>]*>)([\s\S]*?)(<\/(?:m|w):t>)/g, (match, open, content, close) => {
+		// 1. Remove namespace declarations from <m:oMath> since they are already declared at the document level
+		let clean = String(omml || "")
+			.replace(/<m:oMath\b[^>]*>/g, '<m:oMath>')
+			.replace(/<\/m:oMath>/g, '</m:oMath>');
+
+		// 2. Strip any attributes (like xml:space) from <m:t> elements which violate Word's strict math schema
+		clean = clean.replace(/<m:t\b[^>]*>/g, '<m:t>');
+
+		// 3. Fix unescaped & inside text content tags (m:t and w:t)
+		return clean.replace(/(<(?:m|w):t[^>]*>)([\s\S]*?)(<\/(?:m|w):t>)/g, (match, open, content, close) => {
 			// Re-escape & that isn't already part of an entity
 			const fixed = content.replace(/&(?!amp;|lt;|gt;|quot;|apos;|#)/g, '&amp;');
 			return open + fixed + close;
@@ -1006,7 +1014,7 @@ async function mergeWithTemplate(genEntries, tplEntries) {
 		}
 
 		if (newRelTags.length) {
-			genRelsXml = genRelsXml.replace('</Relationships>', `\n${newRelTags.join('\n')}\n</Relationships>`);
+			genRelsXml = genRelsXml.replace('</Relationships>', () => `\n${newRelTags.join('\n')}\n</Relationships>`);
 			merged[relsKey] = Buffer.from(genRelsXml, 'utf8');
 		}
 
@@ -1040,9 +1048,9 @@ async function mergeWithTemplate(genEntries, tplEntries) {
 				}
 			}
 			if (/<w:sectPr\b/.test(genDoc)) {
-				genDoc = genDoc.replace(/<w:sectPr\b.*?<\/w:sectPr>/s, tplSecpr);
+				genDoc = genDoc.replace(/<w:sectPr\b.*?<\/w:sectPr>/s, () => tplSecpr);
 			} else {
-				genDoc = genDoc.replace('</w:body>', `${tplSecpr}\n</w:body>`);
+				genDoc = genDoc.replace('</w:body>', () => `${tplSecpr}\n</w:body>`);
 			}
 			merged["word/document.xml"] = Buffer.from(genDoc, 'utf8');
 		}
@@ -1076,7 +1084,7 @@ async function mergeWithTemplate(genEntries, tplEntries) {
 						}
 					}
 					const newBody = `${tplBodyNoSecpr}\n${genBodyRest}`;
-					genDoc = genDoc.replace(genBodyMatch[0], `<w:body>${newBody}</w:body>`);
+					genDoc = genDoc.replace(genBodyMatch[0], () => `<w:body>${newBody}</w:body>`);
 					merged["word/document.xml"] = Buffer.from(genDoc, 'utf8');
 				}
 			}
@@ -1105,7 +1113,7 @@ async function mergeWithTemplate(genEntries, tplEntries) {
 			}
 		}
 		if (newItems.length) {
-			genCt = genCt.replace('</Types>', `\n${newItems.join('\n')}\n</Types>`);
+			genCt = genCt.replace('</Types>', () => `\n${newItems.join('\n')}\n</Types>`);
 			merged[ctKey] = Buffer.from(genCt, 'utf8');
 		}
 	}
@@ -1124,7 +1132,7 @@ async function postProcessDocx(generatedBuf, templateBase64) {
 			let docXml = entries["word/document.xml"].toString("utf8");
 			docXml = await processDocxXml(docXml);
 			if (docXml.includes("m:oMath") && !docXml.includes('xmlns:m=')) {
-				docXml = docXml.replace('<w:document ', '<w:document xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" ', 1);
+				docXml = docXml.replace('<w:document ', () => '<w:document xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" ', 1);
 			}
 			entries["word/document.xml"] = Buffer.from(docXml, "utf8");
 		}
