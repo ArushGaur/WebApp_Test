@@ -426,46 +426,7 @@
         /* ── Generate Paper Modal helpers ─────────────────────────── */
 
         function _ensurePaperHeaderFields() {
-            // If the HTML already contains these inputs, nothing to do.
-            if (document.getElementById('paper-subject-input')) return;
-            // Find the container that holds paper-title-input and insert new fields above it.
-            const titleInput = document.getElementById('paper-title-input');
-            if (!titleInput) return;
-            const wrapper = titleInput.parentElement;
-            if (!wrapper) return;
-
-            const fieldStyle = `display:flex;flex-direction:column;gap:5px;margin-bottom:12px`;
-            const labelStyle = `font-size:0.78rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em`;
-            const inputStyle = `padding:9px 13px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-family:inherit;font-size:0.9rem;outline:none;transition:border-color 0.2s`;
-
-            const html = `
-            <div id="paper-header-fields" style="margin-bottom:4px">
-                <div style="${fieldStyle}">
-                    <label for="paper-class-input" style="${labelStyle}">Class <span style="color:var(--accent);font-size:0.85em">(e.g. XI, 12)</span></label>
-                    <input id="paper-class-input" type="text" placeholder="e.g. XI" style="${inputStyle}"
-                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-                </div>
-                <div style="${fieldStyle}">
-                    <label for="paper-subject-input" style="${labelStyle}">Subject <span style="color:var(--accent);font-size:0.85em">(e.g. Physics)</span></label>
-                    <input id="paper-subject-input" type="text" placeholder="e.g. Physics" style="${inputStyle}"
-                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-                </div>
-                <div style="${fieldStyle}">
-                    <label for="paper-chapter-input" style="${labelStyle}">Chapter / Topic <span style="color:var(--accent);font-size:0.85em">(e.g. Ray Optics)</span></label>
-                    <input id="paper-chapter-input" type="text" placeholder="e.g. Ray Optics" style="${inputStyle}"
-                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-                </div>
-                <div style="${fieldStyle}">
-                    <label for="paper-test-type-input" style="${labelStyle}">Test Type <span style="color:var(--accent);font-size:0.85em">(shown as heading)</span></label>
-                    <input id="paper-test-type-input" type="text" placeholder="e.g. Chapter Test" value="Chapter Test" style="${inputStyle}"
-                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-                </div>
-                <div style="margin:2px 0 14px;border-top:1px solid var(--border)"></div>
-            </div>`;
-
-            const div = document.createElement('div');
-            div.innerHTML = html;
-            wrapper.insertBefore(div.firstElementChild, titleInput.parentElement === wrapper ? titleInput : wrapper.firstChild);
+            // Fields are now baked directly into the HTML modal — nothing to inject.
         }
 
         function openGeneratePaperModal() {
