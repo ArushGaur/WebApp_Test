@@ -444,3 +444,204 @@ function showOtError(msg) {
         errEl.style.display = 'none';
     }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   AG (AUTO-GENERATE) ONLINE TEST — SEPARATE STATE & HELPERS
+   These mirror the main OT functions but operate on the
+   ag-sub-online panel which has its own set of element IDs.
+   ═══════════════════════════════════════════════════════════ */
+
+var _agOtSelectedRolls = [];
+var _agOtStrictEnabled = false;
+var _agDtField = null;   // 'live' | 'ends'  (for ag date picker)
+
+/* --- Duration preview for ag panel --- */
+function agOtUpdateDurPreview() {
+    var input = document.getElementById('ag-ot-duration');
+    var preview = document.getElementById('ag-ot-dur-preview');
+    if (!input || !preview) return;
+    var minutes = Math.max(5, parseInt(input.value || '0', 10) || 0);
+    preview.textContent = minutes >= 60
+        ? Math.floor(minutes / 60) + 'h ' + (minutes % 60 ? (minutes % 60) + 'm' : '') + ' duration'
+        : minutes + ' minute' + (minutes === 1 ? '' : 's') + ' duration';
+}
+
+/* --- Student picker for ag panel --- */
+function agOpenStudentPicker() {
+    _spOnConfirm = function (rolls) {
+        _agOtSelectedRolls = rolls;
+        _agOtUpdateAssignedSummary();
+    };
+    openStudentPicker(_agOtSelectedRolls);
+}
+
+function _agOtUpdateAssignedSummary() {
+    var el = document.getElementById('ag-ot-assigned-summary');
+    if (!el) return;
+    if (!_agOtSelectedRolls.length) {
+        el.innerHTML = 'No students selected yet.';
+        return;
+    }
+    el.innerHTML = '<span style="color:var(--success);font-weight:700">' + _agOtSelectedRolls.length + ' student' + (_agOtSelectedRolls.length !== 1 ? 's' : '') + ' selected</span>'
+        + '<span style="color:var(--text-muted);margin-left:6px;font-size:0.78rem">'
+        + _agOtSelectedRolls.slice(0, 8).join(', ')
+        + (_agOtSelectedRolls.length > 8 ? ' …+' + (_agOtSelectedRolls.length - 8) + ' more' : '')
+        + '</span>';
+}
+
+/* --- Date-time picker for ag panel ---
+   Re-uses the same dt-picker-overlay / dt-picker-box DOM but
+   writes back to the ag-ot-* hidden inputs instead of ot-*.       */
+function agOpenDatePicker(field) {
+    _agDtField = field;
+    // Temporarily redirect _dtField so the shared _dtConfirm writes
+    // to the right hidden input. We swap it back in agDtConfirm.
+    _dtField = 'ag-ot-' + field;   // e.g. 'ag-ot-live'
+    var existing = document.getElementById('ag-ot-' + field + '-at') && document.getElementById('ag-ot-' + field + '-at').value;
+    var base = existing ? new Date(existing) : new Date();
+    _dtYear  = base.getFullYear();
+    _dtMonth = base.getMonth();
+    if (existing && !isNaN(base)) {
+        _dtSelY   = base.getFullYear();
+        _dtSelM   = base.getMonth();
+        _dtSelD   = base.getDate();
+        _dtSelH   = base.getHours();
+        _dtSelMin = base.getMinutes();
+    } else {
+        _dtSelY = _dtSelM = _dtSelD = _dtSelH = _dtSelMin = null;
+    }
+    // Patch _dtConfirm to write to ag inputs then restore
+    _dtConfirm = function() {
+        if (_dtSelY === null || _dtSelD === null || _dtSelH === null || _dtSelMin === null) return;
+        var iso = _dtSelY + '-' + String(_dtSelM + 1).padStart(2, '0') + '-' + String(_dtSelD).padStart(2, '0')
+                + 'T' + String(_dtSelH).padStart(2, '0') + ':' + String(_dtSelMin).padStart(2, '0');
+        var hidden = document.getElementById('ag-ot-' + _agDtField + '-at');
+        if (hidden) {
+            hidden.value = iso;
+            hidden.dispatchEvent(new Event('change', {bubbles: true}));
+        }
+        // Update display text
+        var displayText = document.getElementById('ag-ot-' + _agDtField + '-display-text');
+        if (displayText) displayText.textContent = _otFmtDt(iso);
+        _dtClose();
+        _dtConfirm = _dtConfirmOriginal;  // restore original
+        _agOtUpdateScheduleGap();
+    };
+    _dtRender();
+    var overlay = document.getElementById('dt-picker-overlay');
+    if (!overlay) return;
+    overlay.style.display = 'flex';
+    requestAnimationFrame(function() { overlay.style.opacity = '1'; });
+}
+
+// Keep a reference to the original _dtConfirm so we can restore it
+var _dtConfirmOriginal = _dtConfirm;
+
+function _agOtUpdateScheduleGap() {
+    var lv = document.getElementById('ag-ot-live-at') && document.getElementById('ag-ot-live-at').value;
+    var ev = document.getElementById('ag-ot-ends-at') && document.getElementById('ag-ot-ends-at').value;
+    var gap = document.getElementById('ag-ot-schedule-gap');
+    var lText = document.getElementById('ag-ot-live-display-text');
+    var eText = document.getElementById('ag-ot-ends-display-text');
+    if (lText) lText.textContent = lv ? _otFmtDt(lv) : 'Select date & time';
+    if (eText) eText.textContent = ev ? _otFmtDt(ev) : 'Select date & time';
+    if (!gap) return;
+    if (!lv || !ev) { gap.style.display = 'none'; return; }
+    var diff = new Date(ev) - new Date(lv);
+    if (diff <= 0) {
+        gap.style.display = 'block';
+        gap.textContent = '⚠ End time must be after start time';
+        gap.style.color = 'var(--error)';
+        return;
+    }
+    var days = Math.floor(diff / 86400000);
+    var hrs  = Math.floor((diff % 86400000) / 3600000);
+    var mins = Math.floor((diff % 3600000) / 60000);
+    var s = '🗓 Window: ';
+    if (days) s += days + 'd ';
+    if (hrs)  s += hrs  + 'h ';
+    if (mins) s += mins + 'm';
+    gap.textContent = s.trim() || '< 1 minute';
+    gap.style.color = 'var(--accent)';
+    gap.style.display = 'block';
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FIX: openStudentPicker — ensure modal displays as flex
+   The student-picker-modal uses display:none and needs flex.
+   ═══════════════════════════════════════════════════════════ */
+(function patchOpenStudentPicker() {
+    var _originalOpen = openStudentPicker;
+    openStudentPicker = function(initialRolls) {
+        _spAllStudents = Array.isArray(window.allStudents) ? window.allStudents : [];
+        _spSelectedRolls = new Set(initialRolls || []);
+        _spDrillClass = null;
+        _spDrillSection = null;
+        var modal = document.getElementById('student-picker-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+        }
+        if (typeof _spRender === 'function') {
+            _spRender();
+        }
+    };
+})();
+
+/* ═══════════════════════════════════════════════════════════
+   FIX: closeOnlineTestDetails — also reset ag state
+   ═══════════════════════════════════════════════════════════ */
+(function patchCloseOnlineTestDetails() {
+    var _original = closeOnlineTestDetails;
+    closeOnlineTestDetails = function() {
+        var modal = document.getElementById('online-test-details-modal');
+        if (modal) modal.style.display = 'none';
+    };
+})();
+
+/* ═══════════════════════════════════════════════════════════
+   FIX: Ensure X button & Cancel button always work.
+   Both call closeOnlineTestDetails() which is defined above.
+   Also ensure closePaperTypeChooser works.
+   ═══════════════════════════════════════════════════════════ */
+if (typeof closePaperTypeChooser === 'undefined') {
+    window.closePaperTypeChooser = function() {
+        var el = document.getElementById('paper-type-chooser');
+        if (el) el.style.display = 'none';
+    };
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FIX: choosePaperType — open online-test-details-modal or
+   paper type chooser if not handled by owner.js / client.js.
+   Only registers if the function is missing at load time.
+   ═══════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof choosePaperType === 'undefined') {
+        window.choosePaperType = function(type) {
+            var chooser = document.getElementById('paper-type-chooser');
+            if (chooser) chooser.style.display = 'none';
+            if (type === 'online') {
+                var modal = document.getElementById('online-test-details-modal');
+                if (modal) modal.style.display = 'flex';
+                // Reset state
+                _otSelectedRolls = [];
+                _otStrictEnabled = false;
+                _updateStrictLabel();
+                _otUpdateAssignedSummary();
+                otUpdateScheduleGap();
+                otUpdateDurPreview();
+            }
+        };
+    }
+
+    // Wire up ag-ot hidden input change events for schedule gap
+    var agLive = document.getElementById('ag-ot-live-at');
+    var agEnds = document.getElementById('ag-ot-ends-at');
+    if (agLive) agLive.addEventListener('change', _agOtUpdateScheduleGap);
+    if (agEnds) agEnds.addEventListener('change', _agOtUpdateScheduleGap);
+
+    // Init ag duration preview
+    agOtUpdateDurPreview();
+    // Init main duration preview
+    otUpdateDurPreview();
+});
