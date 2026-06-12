@@ -179,19 +179,25 @@ function _dtConfirm() {
     _dtClose();
 }
 
-// Close picker when clicking outside the box
+// Close picker when clicking on the overlay backdrop (not the box).
+// We use capture:false so inline onclick handlers inside the box fire first.
 document.addEventListener('click', function(e) {
-    const overlay = document.getElementById('dt-picker-overlay');
-    const box     = document.getElementById('dt-picker-box');
-    if (overlay && overlay.style.display === 'flex' && box && !box.contains(e.target)) {
-        // Only close if the click was on the overlay backdrop, not on the display trigger
-        const liveDisplay = document.getElementById('ot-live-display');
-        const endsDisplay = document.getElementById('ot-ends-display');
-        if (e.target === overlay || (liveDisplay && !liveDisplay.contains(e.target) && endsDisplay && !endsDisplay.contains(e.target) && !box.contains(e.target) && e.target.closest('#dt-picker-overlay'))) {
-            _dtClose();
-        }
+    var overlay = document.getElementById('dt-picker-overlay');
+    if (!overlay || overlay.style.display !== 'flex') return;
+    // Only close if the click landed directly on the backdrop overlay element itself
+    if (e.target === overlay) {
+        _dtClose();
     }
 });
+
+// Prevent clicks inside the picker box from bubbling up to the backdrop handler
+// or being swallowed by a parent modal's stacking context.
+document.addEventListener('click', function(e) {
+    var box = document.getElementById('dt-picker-box');
+    if (box && box.contains(e.target)) {
+        e.stopPropagation();
+    }
+}, true); // capture phase — fires before any modal overlay handler
 
 function _otFmtDt(val) {
     if (!val) return '';
@@ -567,36 +573,22 @@ function _agOtUpdateScheduleGap() {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   FIX: openStudentPicker — ensure modal displays as flex
-   The student-picker-modal uses display:none and needs flex.
+   FIX 2: openStudentPicker patch moved to DOMContentLoaded.
+   The IIFE at file-parse time ran before shared-student.js
+   (also defer) had defined _spRender, causing a race condition.
+   DOMContentLoaded fires after ALL defer scripts have run.
    ═══════════════════════════════════════════════════════════ */
-(function patchOpenStudentPicker() {
-    var _originalOpen = openStudentPicker;
-    openStudentPicker = function(initialRolls) {
-        _spAllStudents = Array.isArray(window.allStudents) ? window.allStudents : [];
-        _spSelectedRolls = new Set(initialRolls || []);
-        _spDrillClass = null;
-        _spDrillSection = null;
-        var modal = document.getElementById('student-picker-modal');
-        if (modal) {
-            modal.style.display = 'flex';
-        }
-        if (typeof _spRender === 'function') {
-            _spRender();
-        }
-    };
-})();
 
 /* ═══════════════════════════════════════════════════════════
-   FIX: closeOnlineTestDetails — also reset ag state
+   FIX 1 & 4: closeOnlineTestDetails — direct reassignment.
+   The IIFE was capturing _original before shared-paper.js ran,
+   causing a reference error in some load orders. A plain
+   assignment always wins and is safe to call multiple times.
    ═══════════════════════════════════════════════════════════ */
-(function patchCloseOnlineTestDetails() {
-    var _original = closeOnlineTestDetails;
-    closeOnlineTestDetails = function() {
-        var modal = document.getElementById('online-test-details-modal');
-        if (modal) modal.style.display = 'none';
-    };
-})();
+closeOnlineTestDetails = function() {
+    var modal = document.getElementById('online-test-details-modal');
+    if (modal) modal.style.display = 'none';
+};
 
 /* ═══════════════════════════════════════════════════════════
    FIX: Ensure X button & Cancel button always work.
@@ -616,23 +608,46 @@ if (typeof closePaperTypeChooser === 'undefined') {
    Only registers if the function is missing at load time.
    ═══════════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', function() {
-    if (typeof choosePaperType === 'undefined') {
-        window.choosePaperType = function(type) {
-            var chooser = document.getElementById('paper-type-chooser');
-            if (chooser) chooser.style.display = 'none';
-            if (type === 'online') {
-                var modal = document.getElementById('online-test-details-modal');
-                if (modal) modal.style.display = 'flex';
-                // Reset state
-                _otSelectedRolls = [];
-                _otStrictEnabled = false;
-                _updateStrictLabel();
-                _otUpdateAssignedSummary();
-                otUpdateScheduleGap();
-                otUpdateDurPreview();
-            }
-        };
-    }
+
+    /* ── FIX 2: patch openStudentPicker here, after all defer scripts
+       (including shared-student.js) have fully executed.
+       The previous top-level IIFE ran at parse time and missed _spRender. ── */
+    openStudentPicker = function(initialRolls) {
+        _spAllStudents = Array.isArray(window.allStudents) ? window.allStudents : [];
+        _spSelectedRolls = new Set(initialRolls || []);
+        _spDrillClass = null;
+        _spDrillSection = null;
+        var modal = document.getElementById('student-picker-modal');
+        if (modal) modal.style.display = 'flex';
+        if (typeof _spRender === 'function') _spRender();
+    };
+
+    /* ── FIX 1: choosePaperType — open online-test-details-modal with
+       display:flex (not display:block).  Only installs a fallback if
+       shared-paper.js didn't define it; if it did, we wrap it to ensure
+       the modal always gets display:flex regardless. ── */
+    var _originalChoosePaperType = (typeof choosePaperType === 'function') ? choosePaperType : null;
+    window.choosePaperType = function(type) {
+        // Close the chooser first
+        var chooser = document.getElementById('paper-type-chooser');
+        if (chooser) chooser.style.display = 'none';
+
+        if (type === 'online') {
+            // Always open with display:flex — the key fix
+            var modal = document.getElementById('online-test-details-modal');
+            if (modal) modal.style.display = 'flex';
+            // Reset modal state
+            _otSelectedRolls = [];
+            _otStrictEnabled = false;
+            _updateStrictLabel();
+            _otUpdateAssignedSummary();
+            otUpdateScheduleGap();
+            otUpdateDurPreview();
+        } else if (_originalChoosePaperType) {
+            // Let shared-paper.js handle offline/other types
+            _originalChoosePaperType(type);
+        }
+    };
 
     // Wire up ag-ot hidden input change events for schedule gap
     var agLive = document.getElementById('ag-ot-live-at');
