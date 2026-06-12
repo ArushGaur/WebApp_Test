@@ -1000,7 +1000,30 @@ async function entriesToZipBuffer(entries) {
 	});
 }
 
-async function mergeWithTemplate(genEntries, tplEntries) {
+/**
+ * Replace placeholder tokens in template XML with live headerMeta values.
+ * Edit your Word template to contain these exact placeholder strings in the
+ * relevant text boxes / paragraphs:
+ *   {{SUBJECT}}   -> replaced with paperSubject  (e.g. "PHYSICS")
+ *   {{CHAPTER}}   -> replaced with paperChapter  (e.g. "RAY OPTICS")
+ *   {{TEST_TYPE}} -> replaced with paperTestType (e.g. "CHAPTER TEST")
+ *   {{CLASS}}     -> replaced with paperClass    (e.g. "12")
+ *   {{TITLE}}     -> replaced with paperTitle    (e.g. "Question Paper")
+ * Works on body XML, headers, and footers.
+ */
+function applyHeaderMetaToXml(xml, headerMeta) {
+	if (!headerMeta || typeof xml !== "string") return xml;
+	const encode = (s) => String(s || "")
+		.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+	return xml
+		.replaceAll("{{SUBJECT}}", encode(headerMeta.subject))
+		.replaceAll("{{CHAPTER}}", encode(headerMeta.chapter))
+		.replaceAll("{{TEST_TYPE}}", encode(headerMeta.testType))
+		.replaceAll("{{CLASS}}", encode(headerMeta.class))
+		.replaceAll("{{TITLE}}", encode(headerMeta.title || ""));
+}
+
+async function mergeWithTemplate(genEntries, tplEntries, headerMeta) {
 	const merged = { ...genEntries };
 
 	for (const name of [
@@ -1067,6 +1090,16 @@ async function mergeWithTemplate(genEntries, tplEntries) {
 		}
 	}
 
+	// Apply {{SUBJECT}}, {{CHAPTER}}, {{TEST_TYPE}}, {{CLASS}}, {{TITLE}} placeholders
+	// to ALL header and footer files (even those not remapped above).
+	if (headerMeta) {
+		for (const name of Object.keys(merged)) {
+			if (!name.startsWith("word/header") && !name.startsWith("word/footer")) continue;
+			const xml = merged[name].toString('utf8');
+			merged[name] = Buffer.from(applyHeaderMetaToXml(xml, headerMeta), 'utf8');
+		}
+	}
+
 	for (const [name, data] of Object.entries(tplEntries)) {
 		if (/word\/_rels\/(header|footer)\d*\.xml\.rels$/.test(name)) merged[name] = data;
 	}
@@ -1129,6 +1162,9 @@ async function mergeWithTemplate(genEntries, tplEntries) {
 									tplBodyNoSecpr = tplBodyNoSecpr.replaceAll(`r:id="${oldId}"`, `r:id="${newId}"`);
 								}
 							}
+							// Replace {{SUBJECT}}, {{CHAPTER}}, {{TEST_TYPE}}, {{CLASS}}, {{TITLE}}
+							// placeholders in the template body with the user-supplied values.
+							tplBodyNoSecpr = applyHeaderMetaToXml(tplBodyNoSecpr, headerMeta);
 							const newBody = `${genBeforeMarker}\n${tplBodyNoSecpr}\n${genAfterMarker}`;
 							// Validate that genBodyMatch[0] exists in genDoc before replacing
 							if (genDoc.includes(genBodyMatch[0])) {
@@ -1187,7 +1223,7 @@ async function mergeWithTemplate(genEntries, tplEntries) {
 	return merged;
 }
 
-async function postProcessDocx(generatedBuf, templateBase64) {
+async function postProcessDocx(generatedBuf, templateBase64, headerMeta) {
 	console.log("[postProcessDocx] START — node converter");
 	try {
 		// Always run LaTeX→OMML conversion regardless of whether a template is used,
@@ -1211,7 +1247,7 @@ async function postProcessDocx(generatedBuf, templateBase64) {
 
 		if (templateBase64) {
 			const tplEntries = await zipToEntries(Buffer.from(templateBase64, "base64"));
-			entries = await mergeWithTemplate(entries, tplEntries);
+			entries = await mergeWithTemplate(entries, tplEntries, headerMeta);
 		}
 
 		const output = await entriesToZipBuffer(entries);
@@ -1224,7 +1260,7 @@ async function postProcessDocx(generatedBuf, templateBase64) {
 }
 
 // Keep the old name as an alias for backward compatibility
-const mergeDocxWithTemplate = (buf, tplB64) => postProcessDocx(buf, tplB64);
+const mergeDocxWithTemplate = (buf, tplB64, headerMeta) => postProcessDocx(buf, tplB64, headerMeta);
 
 
 
@@ -1264,10 +1300,12 @@ router.post("/api/admin/generate-paper", requireAdmin, async (req, res) => {
 
 		// Post-process: convert $LaTeX$ → OMML Word equations + apply template
 		// Always runs so equations are always rendered properly
+		// Include title in headerMeta so {{TITLE}} placeholder is also replaced.
+		headerMeta.title = title;
 		[qBuf, akBuf, solBuf] = await Promise.all([
-			postProcessDocx(qBuf, tplBase64),
-			postProcessDocx(akBuf, tplBase64),
-			postProcessDocx(solBuf, tplBase64),
+			postProcessDocx(qBuf, tplBase64, headerMeta),
+			postProcessDocx(akBuf, tplBase64, headerMeta),
+			postProcessDocx(solBuf, tplBase64, headerMeta),
 		]);
 
 		res.json({
@@ -1418,10 +1456,12 @@ router.post("/api/admin/generate-paper-pdf", requireAdmin, async (req, res) => {
 			const tplRow = await db.execute({ sql: "SELECT docx_base64 FROM paper_templates WHERE id = ?", args: [Number(templateId)] });
 			if (tplRow.rows.length) tplBase64 = tplRow.rows[0].docx_base64;
 		}
+		// Include title in headerMeta so {{TITLE}} placeholder is also replaced.
+		headerMeta.title = title;
 		[qBuf, akBuf, solBuf] = await Promise.all([
-			postProcessDocx(qBuf, tplBase64),
-			postProcessDocx(akBuf, tplBase64),
-			postProcessDocx(solBuf, tplBase64),
+			postProcessDocx(qBuf, tplBase64, headerMeta),
+			postProcessDocx(akBuf, tplBase64, headerMeta),
+			postProcessDocx(solBuf, tplBase64, headerMeta),
 		]);
 
 		// Step 3: Convert each DOCX → PDF using LibreOffice headless.
