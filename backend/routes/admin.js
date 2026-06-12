@@ -5,7 +5,8 @@ const { db } = require("../config/db");
 const helpers = require("../utils/helpers");
 const { requireAdmin, sessionInstituteId, getDefaultInstituteId } = require("../middleware/auth");
 const { loadQuestions, refreshCache, rebuildYearIndex, findQuestion } = require("../utils/questions");
-const { normalizeQuestionRow, normalizeStudentRow, parseCorrectIndexesFromQuestion, validateImageRegion } = helpers;
+const { normalizeQuestionRow, normalizeQuestion, normalizeStudentRow, parseCorrectIndexesFromQuestion, validateImageRegion } = helpers;
+const { uploadQuestionImages } = require("../config/cloudinary");
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
@@ -13,11 +14,11 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 } });
 
 function extractYearFromQuestions(questions) {
-    for (const q of (questions || [])) {
-        const y = q?.year ? String(q.year).trim() : null;
-        if (y) return y;
-    }
-    return null;
+	for (const q of (questions || [])) {
+		const y = q?.year ? String(q.year).trim() : null;
+		if (y) return y;
+	}
+	return null;
 }
 
 router.get("/api/chapters", async (req, res) => {
