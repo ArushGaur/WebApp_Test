@@ -4,7 +4,7 @@ const multer = require("multer");
 const { db } = require("../config/db");
 const helpers = require("../utils/helpers");
 const { requireAdmin, sessionInstituteId, getDefaultInstituteId } = require("../middleware/auth");
-const { loadQuestions, refreshCache, rebuildYearIndex, findQuestion } = require("../utils/questions");
+const { loadQuestions, refreshCache, rebuildYearIndex, findQuestion, getQuestionCache } = require("../utils/questions");
 const { normalizeQuestionRow, normalizeQuestion, normalizeStudentRow, parseCorrectIndexesFromQuestion, validateImageRegion } = helpers;
 const { uploadQuestionImages } = require("../services/cloudinary");
 
@@ -251,7 +251,7 @@ router.delete("/api/admin/question/:chapter/:lecture", requireAdmin, async (req,
 				args: [lecture],
 			});
 		}
-		delete questionCache[`${chapter === "_none_" ? "" : chapter}::${lecture}`];
+		delete getQuestionCache()[`${chapter === "_none_" ? "" : chapter}::${lecture}`];
 		res.json({ success: true });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
@@ -329,7 +329,7 @@ router.post("/api/admin/mass-delete", requireAdmin, async (req, res) => {
 					args: [lecture],
 				});
 			}
-			delete questionCache[`${chapter || ""}::${lecture}`];
+			delete getQuestionCache()[`${chapter || ""}::${lecture}`];
 			deleted++;
 		}
 		res.json({ success: true, deleted });
@@ -518,7 +518,7 @@ router.post("/api/admin/rebuild-year-index", requireAdmin, async (req, res) => {
 router.post("/api/admin/reload-cache", requireAdmin, async (req, res) => {
 	try {
 		await loadQuestions();
-		res.json({ success: true, cached: Object.keys(questionCache).length });
+		res.json({ success: true, cached: Object.keys(getQuestionCache()).length });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
