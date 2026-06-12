@@ -675,6 +675,14 @@ async function buildPaperDoc(selectedQuestions, mode, title, headerMeta = {}) {
 		}));
 	}
 
+	// Insert invisible marker before questions so mergeWithTemplate can find
+	// the split point reliably (instead of fragile paragraph counting).
+	const qsMarker = "§§QS_MARKER§§";
+	allParas.push(new Paragraph({
+		spacing: { before: 0, after: 0 },
+		children: [new TextRun({ text: qsMarker, font: "Arial", size: 1, color: "FFFFFF" })]
+	}));
+
 	if (mode === "answerkey") {
 		// Two-column layout for answer key
 		allParas.push(new Paragraph({
@@ -799,18 +807,13 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 		: src;
 	// Sanitize OMML output: fix bare & characters inside <m:t> tags that break Word's XML parser
 	function sanitizeOmml(omml) {
-		// 1. Normalise <m:oMath> — strip every attribute EXCEPT xmlns:m, which must be
-		//    preserved so that the m: prefix is always declared on the element itself.
+		// 1. Normalise <m:oMath> — ensure xmlns:m is present, injecting it when missing.
+		//    Keep all other attributes (e.g. xml:space, m:defJc) intact.
 		//    Word's XML parser is strict: if xmlns:m is absent both here and on <w:document>
 		//    the file is rejected as invalid XML and cannot be opened at all.
 		let clean = String(omml || "").replace(/<m:oMath\b([^>]*)>/g, (match, attrs) => {
-			const nsMatch = attrs.match(/xmlns:m="([^"]+)"/);
-			if (nsMatch) {
-				// Keep only the namespace declaration, drop everything else (e.g. xml:space)
-				return `<m:oMath xmlns:m="${nsMatch[1]}">`;
-			}
-			// No xmlns:m in the tag — inject the standard one so it is always self-contained
-			return '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">';
+			if (/\bxmlns:m\s*=\s*"/.test(attrs)) return `<m:oMath${attrs}>`;
+			return `<m:oMath${attrs} xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">`;
 		});
 
 		// 2. Strip any attributes (like xml:space) from <m:t> elements which violate Word's strict math schema
@@ -958,7 +961,7 @@ async function processParagraph(paraXml) {
 
 async function processDocxXml(docXml) {
 	const matches = [...String(docXml || "").matchAll(/<w:p\b[^>]*>.*?<\/w:p>/gs)];
-	if (!matches.length) return sanitizeDocumentXml(docXml);
+	if (!matches.length) return docXml;
 
 	let result = "";
 	let lastIndex = 0;
@@ -968,20 +971,7 @@ async function processDocxXml(docXml) {
 		lastIndex = match.index + match[0].length;
 	}
 	result += docXml.slice(lastIndex);
-	return sanitizeDocumentXml(result);
-}
-
-// Final XML cleanup so Word accepts the file (invalid chars / bare ampersands break Word).
-function sanitizeDocumentXml(docXml) {
-	let xml = String(docXml || "");
-	// XML 1.0 forbids most C0 controls — Word rejects the file outright if present.
-	xml = xml.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
-	// Escape bare ampersands inside text nodes (common in imported question text).
-	xml = xml.replace(/(<(?:w|m):t(?:\s[^>]*)?>)([\s\S]*?)(<\/(?:w|m):t>)/g, (match, open, content, close) => {
-		const fixed = content.replace(/&(?!amp;|lt;|gt;|quot;|apos;|#x?[0-9a-fA-F]+;)/g, "&amp;");
-		return open + fixed + close;
-	});
-	return xml;
+	return result;
 }
 
 function decodeXml(text) {
@@ -1006,13 +996,12 @@ async function zipToEntries(buffer) {
 async function entriesToZipBuffer(entries) {
 	const zip = new JSZip();
 	for (const [name, data] of Object.entries(entries)) {
-		zip.file(name.replace(/\\/g, "/"), data);
+		zip.file(name, data);
 	}
 	return zip.generateAsync({
 		type: "nodebuffer",
 		compression: "DEFLATE",
 		compressionOptions: { level: 6 },
-		platform: "UNIX",
 	});
 }
 
@@ -1123,16 +1112,24 @@ async function mergeWithTemplate(genEntries, tplEntries) {
 				const genBodyMatch = genDoc.match(/<w:body>(.*?)<\/w:body>/s);
 				if (genBodyMatch) {
 					const genBodyContent = genBodyMatch[1];
-					const paras = [...genBodyContent.matchAll(/<w:p\b/g)];
-					let skipEnd = 0;
-					if (paras.length >= 2) {
-						skipEnd = paras[2] ? paras[2].index : genBodyContent.length;
-						const first3Text = genBodyContent.slice(0, Math.min(skipEnd + 300, genBodyContent.length));
-						if (first3Text.includes('Answer Key') && paras.length >= 3) {
-							skipEnd = paras[3] ? paras[3].index : genBodyContent.length;
+					// Find the §§QS_MARKER§§ marker (invisible marker paragraph inserted
+					// by buildPaperDoc) and split there. Everything before the marker
+					// (header fields etc.) is replaced by the template body content.
+					const qsMarkerPattern = /<w:t[^>]*>§§QS_MARKER§§<\/w:t>/;
+					const markerMatch = genBodyContent.match(qsMarkerPattern);
+					let genBodyRest = genBodyContent;
+					if (markerMatch) {
+						// Find the containing <w:p> element and split after it
+						const beforeMarker = genBodyContent.slice(0, markerMatch.index);
+						const lastOpenP = beforeMarker.lastIndexOf('<w:p');
+						const pClose = markerMatch.index + markerMatch[0].length;
+						const restAfterMarker = genBodyContent.slice(pClose);
+						const pEnd = restAfterMarker.indexOf('</w:p>');
+						if (lastOpenP !== -1 && pEnd !== -1) {
+							const markerPEnd = pClose + pEnd + 6; // +6 for '</w:p>'
+							genBodyRest = genBodyContent.slice(markerPEnd);
 						}
 					}
-					let genBodyRest = skipEnd ? genBodyContent.slice(skipEnd) : genBodyContent;
 					if (Object.keys(idRemap || {}).length) {
 						for (const [oldId, newId] of Object.entries(idRemap)) {
 							tplBodyNoSecpr = tplBodyNoSecpr.replaceAll(`r:embed="${oldId}"`, `r:embed="${newId}"`);
@@ -1146,10 +1143,7 @@ async function mergeWithTemplate(genEntries, tplEntries) {
 		}
 
 		// Commit the single final rewrite
-		merged["word/document.xml"] = Buffer.from(
-			sanitizeDocumentXml(genDoc),
-			"utf8"
-		);
+		merged["word/document.xml"] = Buffer.from(genDoc, 'utf8');
 	}
 
 	const ctKey = "[Content_Types].xml";
@@ -1194,12 +1188,14 @@ async function postProcessDocx(generatedBuf, templateBase64) {
 			docXml = await processDocxXml(docXml);
 			// Always ensure xmlns:m is declared on <w:document> so that any m: prefixed
 			// OMML elements (injected by sanitizeOmml above) are always valid.
-			// Use a regex replace (no 'g' flag = first occurrence only, which is correct)
-			// and only add it when it isn't already present, to avoid duplicates.
-			if (!docXml.includes('xmlns:m=')) {
-				docXml = docXml.replace(/<w:document\b/, '<w:document xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"');
+			// We must check specifically on the <w:document> tag — not elsewhere in the
+			// document (e.g. on <m:oMath> elements) — because Word requires the namespace
+			// declaration on the root element.
+			const docTag = docXml.match(/<w:document\b[^>]*>/);
+			if (docTag && !docTag[0].includes('xmlns:m=')) {
+				docXml = docXml.replace('<w:document', '<w:document xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"');
 			}
-			entries["word/document.xml"] = Buffer.from(sanitizeDocumentXml(docXml), "utf8");
+			entries["word/document.xml"] = Buffer.from(docXml, "utf8");
 		}
 
 		if (templateBase64) {
