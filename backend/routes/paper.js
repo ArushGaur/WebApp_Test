@@ -198,9 +198,10 @@ async function buildTableElement(tbl, opts = {}) {
 	const cellBorder = { style: BorderStyle.SINGLE, size: 4, color: "888888" };
 	const cellBorders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder };
 
-	const makeCell = async (content, isHeader) => new TableCell({
+	const makeCell = async (content, isHeader, colIdx) => new TableCell({
 		borders: cellBorders,
 		verticalAlign: VerticalAlign.CENTER,
+		width: { size: colWidthsArr[colIdx] ?? colWidthDxa, type: WidthType.DXA },
 		shading: isHeader ? { fill: "E8E8F0", type: ShadingType.CLEAR, color: "auto" } : undefined,
 		margins: { top: 40, bottom: 40, left: 80, right: 80 },
 		children: await buildTableCellChildren(content, isHeader, fontSize),
@@ -209,12 +210,12 @@ async function buildTableElement(tbl, opts = {}) {
 	const docxRows = [];
 	if (headers.length) {
 		const cells = [];
-		for (let c = 0; c < colCount; c++) cells.push(await makeCell(headers[c] ?? "", true));
+		for (let c = 0; c < colCount; c++) cells.push(await makeCell(headers[c] ?? "", true, c));
 		docxRows.push(new TableRow({ tableHeader: true, children: cells }));
 	}
 	for (const r of rows) {
 		const cells = [];
-		for (let c = 0; c < colCount; c++) cells.push(await makeCell(r[c] ?? "", false));
+		for (let c = 0; c < colCount; c++) cells.push(await makeCell(r[c] ?? "", false, c));
 		docxRows.push(new TableRow({ children: cells }));
 	}
 
@@ -225,8 +226,16 @@ async function buildTableElement(tbl, opts = {}) {
 		}));
 	}
 
+	// A4 content width: 11906 - 720 - 720 = 10466 DXA. Compact tables use 96% = 10047.
+	const tableWidthDxa = compact ? 10047 : 10466;
+	const colWidthDxa = Math.floor(tableWidthDxa / colCount);
+	// Last column absorbs any rounding remainder so widths always sum to tableWidthDxa.
+	const colWidthsArr = Array.from({ length: colCount }, (_, i) =>
+		i === colCount - 1 ? tableWidthDxa - colWidthDxa * (colCount - 1) : colWidthDxa
+	);
 	elements.push(new Table({
-		width: { size: compact ? 96 : 100, type: WidthType.PERCENTAGE },
+		width: { size: tableWidthDxa, type: WidthType.DXA },
+		columnWidths: colWidthsArr,
 		borders: {
 			top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder,
 			insideH: cellBorder, insideV: cellBorder,
@@ -492,8 +501,10 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 			insideH: noBorder, insideV: noBorder,
 		};
 
+		// A4 content width = 10466 DXA. Left (options) = 68% ≈ 7116, Right (image) = 32% ≈ 3350.
 		paragraphs.push(new Table({
-			width: { size: 100, type: WidthType.PERCENTAGE },
+			width: { size: 10466, type: WidthType.DXA },
+			columnWidths: [7116, 3350],
 			borders: {
 				top: noBorder,
 				bottom: noBorder,
@@ -507,7 +518,7 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 					children: [
 						// Left cell — options only (68%)
 						new TableCell({
-							width: { size: 68, type: WidthType.PERCENTAGE },
+							width: { size: 7116, type: WidthType.DXA },
 							borders: noBorders,
 							verticalAlign: VerticalAlign.TOP,
 							margins: { top: 0, bottom: 0, left: 0, right: 100 },
@@ -515,7 +526,7 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 						}),
 						// Right cell — question image, centred vertically (32%)
 						new TableCell({
-							width: { size: 32, type: WidthType.PERCENTAGE },
+							width: { size: 3350, type: WidthType.DXA },
 							borders: noBorders,
 							verticalAlign: VerticalAlign.CENTER,
 							margins: { top: 40, bottom: 0, left: 60, right: 0 },
@@ -611,9 +622,11 @@ async function buildPaperDoc(selectedQuestions, mode, title, headerMeta = {}) {
 			]
 			: [new Paragraph({ children: [] })];
 
-		// Render as a borderless 2-column table so CLASS sits top-left while title is centred
+		// Render as a borderless 3-column table so CLASS sits top-left while title is centred.
+		// A4 content width = 10466 DXA; 20% = 2093, 60% = 6280, 20% = 2093.
 		allParas.push(new Table({
-			width: { size: 100, type: WidthType.PERCENTAGE },
+			width: { size: 10466, type: WidthType.DXA },
+			columnWidths: [2093, 6280, 2093],
 			borders: {
 				top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
 				bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
@@ -625,9 +638,9 @@ async function buildPaperDoc(selectedQuestions, mode, title, headerMeta = {}) {
 			rows: [
 				new TableRow({
 					children: [
-						// Left cell — CLASS label (20% width)
+						// Left cell — CLASS label (20%)
 						new TableCell({
-							width: { size: 20, type: WidthType.PERCENTAGE },
+							width: { size: 2093, type: WidthType.DXA },
 							borders: noBorders,
 							verticalAlign: VerticalAlign.CENTER,
 							margins: { top: 80, bottom: 80, left: 0, right: 0 },
@@ -635,7 +648,7 @@ async function buildPaperDoc(selectedQuestions, mode, title, headerMeta = {}) {
 						}),
 						// Centre cell — subject / chapter / test-type (60%)
 						new TableCell({
-							width: { size: 60, type: WidthType.PERCENTAGE },
+							width: { size: 6280, type: WidthType.DXA },
 							borders: noBorders,
 							verticalAlign: VerticalAlign.CENTER,
 							margins: { top: 80, bottom: 80, left: 0, right: 0 },
@@ -643,7 +656,7 @@ async function buildPaperDoc(selectedQuestions, mode, title, headerMeta = {}) {
 						}),
 						// Right cell — empty placeholder (20%)
 						new TableCell({
-							width: { size: 20, type: WidthType.PERCENTAGE },
+							width: { size: 2093, type: WidthType.DXA },
 							borders: noBorders,
 							children: [new Paragraph({ children: [] })],
 						}),
@@ -714,20 +727,6 @@ async function buildPaperDoc(selectedQuestions, mode, title, headerMeta = {}) {
 	});
 
 	return Packer.toBuffer(doc);
-}
-
-function resolveLibreOfficeBin() {
-    if (process.platform === "win32") {
-        const paths = [
-            "C:\\Program Files\\LibreOffice\\program\\soffice.exe",
-            "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe"
-        ];
-        for (const p of paths) {
-            if (fs.existsSync(p)) return p;
-        }
-        return null;
-    }
-    return "soffice";
 }
 
 /**
@@ -819,18 +818,13 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 		// 2. Strip any attributes (like xml:space) from <m:t> elements which violate Word's strict math schema
 		clean = clean.replace(/<m:t\b[^>]*>/g, '<m:t>');
 
-		// 2b. Fix `<m:sty m:val="undefined"/>` produced by mathml2omml when the
-		//     MathML mathvariant doesn't map to a known OMML style. Per the OMML
-		//     schema (CT_Style), m:val MUST be one of: "p" | "b" | "i" | "bi".
-		//     Any other value (e.g. "undefined") makes Word reject the file with
-		//     "Word experienced an error trying to open the file". LibreOffice
-		//     silently tolerates the invalid value, so the bug only shows in Word.
-		//     We map the bad value to "p" (plain/upright) which is the safest
-		//     default and matches the surrounding <m:nor/> intent.
-		clean = clean.replace(
-			/<m:sty\b([^>]*?)m:val="(?!(?:p|b|i|bi)")[^"]*"([^>]*?)\/>/g,
-			'<m:sty$1m:val="p"$2/>'
-		);
+		// 2b. Fix `<m:sty m:val="..."/>` values that aren't in the OMML whitelist
+		//     (p | b | i | bi). Any other value (e.g. "undefined", "normal", "bold-italic")
+		//     makes Word reject the file. Map all invalid values to "p" (plain/upright).
+		clean = clean.replace(/<m:sty\b[^>]*m:val="([^"]*)"[^>]*\/>/g, (match, val) => {
+			if (val === 'p' || val === 'b' || val === 'i' || val === 'bi') return match;
+			return match.replace(`m:val="${val}"`, 'm:val="p"');
+		});
 		// Also drop any <m:sty/> that has NO m:val at all (also schema-invalid).
 		clean = clean.replace(/<m:sty\s*\/>/g, '');
 
