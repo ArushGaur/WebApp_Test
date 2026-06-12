@@ -553,23 +553,59 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 /**
  * Build a full DOCX document for the given mode.
  * questions: array of { chapter, topic, lecture, qNum, q }
+ * headerMeta: { subject, chapter, testType } — user-provided header fields
  */
-async function buildPaperDoc(selectedQuestions, mode, title) {
+async function buildPaperDoc(selectedQuestions, mode, title, headerMeta = {}) {
 	const allParas = [];
+	const subject = String(headerMeta.subject || '').trim();
+	const chapter = String(headerMeta.chapter || '').trim();
+	const testType = String(headerMeta.testType || '').trim();
 
-	// Title
-	allParas.push(new Paragraph({
-		spacing: { before: 0, after: 360 },
-		alignment: AlignmentType.CENTER,
-		children: [new TextRun({ text: title, bold: true, font: "Arial", size: 36, color: "1a1a2e" })]
-	}));
+	if (subject || chapter || testType) {
+		// Rich header: Subject on line 1, [Chapter] on line 2, Test Type on line 3
+		// Mirrors the "PHYSICS / [RAY OPTICS] / CHAPTER TEST" layout from the template.
+		if (subject) {
+			allParas.push(new Paragraph({
+				spacing: { before: 0, after: 60 },
+				alignment: AlignmentType.CENTER,
+				children: [new TextRun({ text: subject.toUpperCase(), bold: true, font: "Arial", size: 30, color: "1a1a2e" })]
+			}));
+		}
+		if (chapter) {
+			allParas.push(new Paragraph({
+				spacing: { before: 0, after: 60 },
+				alignment: AlignmentType.CENTER,
+				children: [new TextRun({ text: `[ ${chapter.toUpperCase()} ]`, bold: true, font: "Arial", size: 28, color: "1a1a2e", underline: {} })]
+			}));
+		}
+		if (testType) {
+			allParas.push(new Paragraph({
+				spacing: { before: 0, after: 100 },
+				alignment: AlignmentType.CENTER,
+				children: [new TextRun({ text: testType.toUpperCase(), bold: true, font: "Arial", size: 32, color: "1a1a2e" })]
+			}));
+		}
+	} else {
+		// Fallback: plain title (original behaviour)
+		allParas.push(new Paragraph({
+			spacing: { before: 0, after: 360 },
+			alignment: AlignmentType.CENTER,
+			children: [new TextRun({ text: title, bold: true, font: "Arial", size: 36, color: "1a1a2e" })]
+		}));
+	}
 
-	// Date line
+	// Date line + student name line
 	allParas.push(new Paragraph({
-		spacing: { before: 0, after: 480 },
+		spacing: { before: 0, after: subject || chapter || testType ? 120 : 480 },
 		alignment: AlignmentType.CENTER,
 		children: [new TextRun({ text: `Date: _______________   Total Questions: ${selectedQuestions.length}`, font: "Arial", size: 22, color: "555555" })]
 	}));
+	if (subject || chapter || testType) {
+		allParas.push(new Paragraph({
+			spacing: { before: 0, after: 360 },
+			children: [new TextRun({ text: "NAME OF STUDENT ________________________________", font: "Arial", size: 22, bold: true, color: "1a1a2e" })]
+		}));
+	}
 
 	if (mode === "answerkey") {
 		// Two-column layout for answer key
@@ -1050,19 +1086,24 @@ const mergeDocxWithTemplate = (buf, tplB64) => postProcessDocx(buf, tplB64);
 // Returns: JSON with base64-encoded buffers for question, answerkey, solution docx
 router.post("/api/admin/generate-paper", requireAdmin, async (req, res) => {
 	try {
-		const { questions, paperTitle, templateId } = req.body || {};
+		const { questions, paperTitle, paperSubject, paperChapter, paperTestType, templateId } = req.body || {};
 		if (!Array.isArray(questions) || !questions.length) {
 			return res.status(400).json({ error: "No questions provided" });
 		}
 
 		const title = String(paperTitle || "Question Paper").trim();
+		const headerMeta = {
+			subject: String(paperSubject || '').trim(),
+			chapter: String(paperChapter || '').trim(),
+			testType: String(paperTestType || '').trim(),
+		};
 		const normalizedQuestions = normalizePaperQuestions(questions);
 
 		// Build raw DOCX buffers
 		let [qBuf, akBuf, solBuf] = await Promise.all([
-			buildPaperDoc(normalizedQuestions, "question", title),
-			buildPaperDoc(normalizedQuestions, "answerkey", `${title} – Answer Key`),
-			buildPaperDoc(normalizedQuestions, "solution", `${title} – Solutions`),
+			buildPaperDoc(normalizedQuestions, "question", title, headerMeta),
+			buildPaperDoc(normalizedQuestions, "answerkey", `${title} – Answer Key`, headerMeta),
+			buildPaperDoc(normalizedQuestions, "solution", `${title} – Solutions`, headerMeta),
 		]);
 
 		// Fetch template if requested
@@ -1201,19 +1242,24 @@ async function docxToPdf(docxBuffer) {
 // via LibreOffice headless — so the PDF looks identical to the Word document.
 router.post("/api/admin/generate-paper-pdf", requireAdmin, async (req, res) => {
 	try {
-		const { questions, paperTitle, templateId } = req.body || {};
+		const { questions, paperTitle, paperSubject, paperChapter, paperTestType, templateId } = req.body || {};
 		if (!Array.isArray(questions) || !questions.length) {
 			return res.status(400).json({ error: "No questions provided" });
 		}
 
 		const title = String(paperTitle || "Question Paper").trim();
+		const headerMeta = {
+			subject: String(paperSubject || '').trim(),
+			chapter: String(paperChapter || '').trim(),
+			testType: String(paperTestType || '').trim(),
+		};
 		const normalizedQuestions = normalizePaperQuestions(questions);
 
 		// Step 1: Build DOCX buffers (same as the Word download path)
 		let [qBuf, akBuf, solBuf] = await Promise.all([
-			buildPaperDoc(normalizedQuestions, "question", title),
-			buildPaperDoc(normalizedQuestions, "answerkey", `${title} \u2013 Answer Key`),
-			buildPaperDoc(normalizedQuestions, "solution", `${title} \u2013 Solutions`),
+			buildPaperDoc(normalizedQuestions, "question", title, headerMeta),
+			buildPaperDoc(normalizedQuestions, "answerkey", `${title} \u2013 Answer Key`, headerMeta),
+			buildPaperDoc(normalizedQuestions, "solution", `${title} \u2013 Solutions`, headerMeta),
 		]);
 
 		// Step 2: Apply LaTeX→OMML conversion and template (same post-processing as Word)
