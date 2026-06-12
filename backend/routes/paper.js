@@ -1015,6 +1015,58 @@ function applyHeaderMetaToXml(xml, headerMeta) {
 	if (!headerMeta || typeof xml !== "string") return xml;
 	const encode = (s) => String(s || "")
 		.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+	// Word sometimes splits placeholder text like {{SUBJECT}} across multiple <w:r> runs,
+	// e.g. <w:r>...<w:t>{{SUB</w:t></w:r><w:r>...<w:t>JECT}}</w:t></w:r>.
+	// A simple replaceAll() won't find them. Fix: collapse adjacent <w:t> text nodes
+	// within the same paragraph so placeholders survive the split.
+	// Strategy: merge contiguous runs that share identical <w:rPr> (or both lack one)
+	// and whose concatenated text contains a placeholder pattern.
+	// Simpler reliable approach: extract all <w:t> text, merge within each <w:p>,
+	// do replacement, then re-emit as a single run per paragraph segment.
+	// Because this is template XML (not the generated questions), it's safe to do
+	// a lightweight XML-text-level merge just for placeholder detection.
+
+	// Step 1: within each paragraph, concatenate all <w:t> inner text and check for
+	// placeholder patterns split across runs. If found, replace by rewriting the para
+	// as a single merged run containing the full text with placeholders substituted.
+	// We only touch paragraphs that actually contain a partial or complete placeholder.
+	const placeholderRe = /\{\{(?:SUBJECT|CHAPTER|TEST_TYPE|CLASS|TITLE)\}\}/;
+	const partialRe = /\{\{[A-Z_]*$|^[A-Z_]*\}\}/; // partial at run boundaries
+
+	// Merge <w:t> text across runs within the same <w:p> to handle split placeholders.
+	// Replace each <w:p>...</w:p> that contains a (possibly split) placeholder.
+	xml = xml.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (paraXml) => {
+		// Collect all run texts joined together
+		const runTexts = [...paraXml.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)].map(m => m[1]);
+		const joined = runTexts.join('');
+		// Only process paragraphs that contain placeholder text (possibly split)
+		if (!joined.includes('{{')) return paraXml;
+
+		// Extract the first run's rPr to re-use for the merged run
+		const rPrMatch = paraXml.match(/<w:rPr>([\s\S]*?)<\/w:rPr>/);
+		const rPr = rPrMatch ? `<w:rPr>${rPrMatch[1]}</w:rPr>` : '';
+
+		// Replace placeholder tokens in the joined text
+		let replaced = joined
+			.replaceAll('{{SUBJECT}}', encode(headerMeta.subject))
+			.replaceAll('{{CHAPTER}}', encode(headerMeta.chapter))
+			.replaceAll('{{TEST_TYPE}}', encode(headerMeta.testType))
+			.replaceAll('{{CLASS}}', encode(headerMeta.class))
+			.replaceAll('{{TITLE}}', encode(headerMeta.title || ''));
+
+		// Rebuild: keep <w:pPr> intact, replace all runs with a single merged run.
+		const pPrMatch = paraXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
+		const pPr = pPrMatch ? pPrMatch[0] : '';
+		const pOpenMatch = paraXml.match(/^<w:p\b[^>]*>/);
+		const pOpen = pOpenMatch ? pOpenMatch[0] : '<w:p>';
+		const spaceAttr = replaced.startsWith(' ') || replaced.endsWith(' ') ? ' xml:space="preserve"' : '';
+		const mergedRun = `<w:r>${rPr}<w:t${spaceAttr}>${replaced}</w:t></w:r>`;
+		return `${pOpen}${pPr}${mergedRun}</w:p>`;
+	});
+
+	// Step 2: also handle any remaining non-split placeholders (e.g. in non-paragraph nodes
+	// like text boxes, or paragraphs that weren't merged above for some reason).
 	return xml
 		.replaceAll("{{SUBJECT}}", encode(headerMeta.subject))
 		.replaceAll("{{CHAPTER}}", encode(headerMeta.chapter))
@@ -1159,7 +1211,11 @@ async function mergeWithTemplate(genEntries, tplEntries, headerMeta) {
 						const pEnd = restAfterMarker.indexOf('</w:p>');
 						if (lastOpenP !== -1 && pEnd !== -1) {
 							const markerPEnd = pClose + pEnd + 6; // +6 for '</w:p>'
-							const genBeforeMarker = genBodyContent.slice(0, lastOpenP); // generated header only
+							// genBeforeMarker (the generated title/class/date/name rows) is intentionally
+							// DISCARDED when the template supplies its own body content. Keeping it caused
+							// a duplicate header: the generated rows (with unresolved placeholder text)
+							// appeared above the template rows (with the real subject/chapter/logo).
+							// The template body with {{placeholders}} replaced is now the sole header.
 							const genAfterMarker = genBodyContent.slice(markerPEnd);    // questions / answer key
 							if (Object.keys(idRemap || {}).length) {
 								for (const [oldId, newId] of Object.entries(idRemap)) {
@@ -1170,7 +1226,8 @@ async function mergeWithTemplate(genEntries, tplEntries, headerMeta) {
 							// Replace {{SUBJECT}}, {{CHAPTER}}, {{TEST_TYPE}}, {{CLASS}}, {{TITLE}}
 							// placeholders in the template body with the user-supplied values.
 							tplBodyNoSecpr = applyHeaderMetaToXml(tplBodyNoSecpr, headerMeta);
-							const newBody = `${genBeforeMarker}\n${tplBodyNoSecpr}\n${genAfterMarker}`;
+							// Template body is the sole header — generated header is not prepended.
+							const newBody = `${tplBodyNoSecpr}\n${genAfterMarker}`;
 							// Validate that genBodyMatch[0] exists in genDoc before replacing
 							if (genDoc.includes(genBodyMatch[0])) {
 								genDoc = genDoc.replace(genBodyMatch[0], () => `<w:body>${newBody}</w:body>`);
