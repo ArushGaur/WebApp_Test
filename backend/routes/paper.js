@@ -1148,7 +1148,12 @@ async function mergeWithTemplate(genEntries, tplEntries, headerMeta) {
 					const markerMatch = genBodyContent.match(qsMarkerPattern);
 					if (markerMatch) {
 						const beforeMarker = genBodyContent.slice(0, markerMatch.index);
-						const lastOpenP = beforeMarker.lastIndexOf('<w:p');
+						// Use a regex to find the last <w:p> or <w:p ...> tag, but NOT <w:pPr> or other <w:p*> tags.
+						// lastIndexOf('<w:p') is too broad — it also matches <w:pPr>, causing the marker
+						// paragraph's opening <w:p> tag to be included in genBeforeMarker, which produces
+						// invalid/uncorrupted XML (unclosed <w:p>) in the final merged document.
+						const lastOpenPMatch = [...beforeMarker.matchAll(/<w:p[\s>]/g)].pop();
+						const lastOpenP = lastOpenPMatch ? lastOpenPMatch.index : -1;
 						const pClose = markerMatch.index + markerMatch[0].length;
 						const restAfterMarker = genBodyContent.slice(pClose);
 						const pEnd = restAfterMarker.indexOf('</w:p>');
