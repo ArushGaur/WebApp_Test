@@ -441,6 +441,11 @@
             const html = `
             <div id="paper-header-fields" style="margin-bottom:4px">
                 <div style="${fieldStyle}">
+                    <label for="paper-class-input" style="${labelStyle}">Class <span style="color:var(--accent);font-size:0.85em">(e.g. XI, 12)</span></label>
+                    <input id="paper-class-input" type="text" placeholder="e.g. XI" style="${inputStyle}"
+                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                </div>
+                <div style="${fieldStyle}">
                     <label for="paper-subject-input" style="${labelStyle}">Subject <span style="color:var(--accent);font-size:0.85em">(e.g. Physics)</span></label>
                     <input id="paper-subject-input" type="text" placeholder="e.g. Physics" style="${inputStyle}"
                         onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
@@ -493,10 +498,13 @@
             if (chapterInput) chapterInput.value = '';
             const testTypeInput = document.getElementById('paper-test-type-input');
             if (testTypeInput) testTypeInput.value = 'Chapter Test';
+            const classInput = document.getElementById('paper-class-input');
+            if (classInput) classInput.value = '';
             modal.style.display = 'flex';
             modal.classList.add('open');
             refreshTemplates();
-            if (subjectInput) setTimeout(() => { subjectInput.focus(); }, 80);
+            if (classInput) setTimeout(() => { classInput.focus(); }, 80);
+            else if (subjectInput) setTimeout(() => { subjectInput.focus(); }, 80);
             else if (titleInput) setTimeout(() => { titleInput.focus(); titleInput.select(); }, 80);
         }
 
@@ -785,6 +793,11 @@
             const paperSubject = (document.getElementById('paper-subject-input')?.value || '').trim();
             const paperChapter = (document.getElementById('paper-chapter-input')?.value || '').trim();
             const paperTestType = (document.getElementById('paper-test-type-input')?.value || 'Chapter Test').trim();
+            const paperClass = (document.getElementById('paper-class-input')?.value || '').trim();
+
+            if (!paperSubject && !paperChapter && !paperTestType) {
+                if (!confirm('No subject, chapter or test type entered. The paper will use a plain title only. Continue?')) return;
+            }
 
             // Assign sequential question numbers at generation time
             let qNum = 1;
@@ -824,7 +837,7 @@
                     method: 'POST',
                     credentials: 'include',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ questions, paperTitle, paperSubject, paperChapter, paperTestType, templateId: _selectedTemplateId || null })
+                    body: JSON.stringify({ questions, paperTitle, paperSubject, paperChapter, paperTestType, paperClass, templateId: _selectedTemplateId || null })
                 });
                 clearTimeout(_pgenTimer);
                 const data = await resp.json();
@@ -852,6 +865,7 @@
                     paperSubject: paperSubject,
                     paperChapter: paperChapter,
                     paperTestType: paperTestType,
+                    paperClass: paperClass,
                     questions: questions,
                     pdfFiles: null // will load lazily on click
                 };
@@ -943,6 +957,7 @@
                                 paperSubject: window._lastPaperGenData.paperSubject || '',
                                 paperChapter: window._lastPaperGenData.paperChapter || '',
                                 paperTestType: window._lastPaperGenData.paperTestType || 'Chapter Test',
+                                paperClass: window._lastPaperGenData.paperClass || '',
                                 templateId: _selectedTemplateId || null
                             })
                         });
