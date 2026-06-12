@@ -2468,6 +2468,39 @@
                                 chosen chapters/topics</div>
                         </div>
 
+                        <!-- Paper Header Fields -->
+                        <div style="background:var(--bg-input);border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:16px">
+                            <div style="font-size:0.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:12px">📄 Paper Header Info</div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+                                <div>
+                                    <label style="font-size:0.78rem;color:var(--text-dim);font-weight:600;display:block;margin-bottom:5px">🎓 Class</label>
+                                    <input id="ag-class-input" type="text" placeholder="e.g. XI"
+                                        style="width:100%;padding:8px 12px;background:var(--bg);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-size:0.88rem;outline:none;font-family:inherit;transition:border .15s"
+                                        onfocus="this.style.borderColor='var(--border-focus)'" onblur="this.style.borderColor='var(--border)'">
+                                </div>
+                                <div>
+                                    <label style="font-size:0.78rem;color:var(--text-dim);font-weight:600;display:block;margin-bottom:5px">📚 Subject</label>
+                                    <input id="ag-subject-input" type="text" placeholder="e.g. Physics"
+                                        style="width:100%;padding:8px 12px;background:var(--bg);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-size:0.88rem;outline:none;font-family:inherit;transition:border .15s"
+                                        onfocus="this.style.borderColor='var(--border-focus)'" onblur="this.style.borderColor='var(--border)'">
+                                </div>
+                            </div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                                <div>
+                                    <label style="font-size:0.78rem;color:var(--text-dim);font-weight:600;display:block;margin-bottom:5px">📖 Chapter / Topic</label>
+                                    <input id="ag-chapter-input" type="text" placeholder="e.g. Ray Optics"
+                                        style="width:100%;padding:8px 12px;background:var(--bg);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-size:0.88rem;outline:none;font-family:inherit;transition:border .15s"
+                                        onfocus="this.style.borderColor='var(--border-focus)'" onblur="this.style.borderColor='var(--border)'">
+                                </div>
+                                <div>
+                                    <label style="font-size:0.78rem;color:var(--text-dim);font-weight:600;display:block;margin-bottom:5px">📋 Test Type</label>
+                                    <input id="ag-test-type-input" type="text" placeholder="e.g. Chapter Test" value="Chapter Test"
+                                        style="width:100%;padding:8px 12px;background:var(--bg);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-size:0.88rem;outline:none;font-family:inherit;transition:border .15s"
+                                        onfocus="this.style.borderColor='var(--border-focus)'" onblur="this.style.borderColor='var(--border)'">
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Template chooser -->
                         <div style="margin-bottom:16px">
                             <label
