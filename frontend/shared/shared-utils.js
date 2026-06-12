@@ -623,20 +623,26 @@
             setTimeout(() => ensureRenderMath(el, attempts - 1, delay), delay);
         }
 
-        // Safe base64 → Blob decoder that handles large files correctly
-        // atob() can silently truncate or corrupt large base64 strings in some browsers
+        // Safe base64 → Blob decoder that handles large files correctly.
+        // Decoding the entire string with atob() at once can fail or truncate in
+        // some browsers once DOCX payloads (with embedded images) exceed ~1–2 MB.
         function base64ToBlob(b64, mime) {
-            const CHUNK = 8192;
-            const raw = atob(b64);
-            const len = raw.length;
-            const chunks = [];
-            for (let i = 0; i < len; i += CHUNK) {
-                const slice = raw.slice(i, i + CHUNK);
-                const bytes = new Uint8Array(slice.length);
-                for (let j = 0; j < slice.length; j++) bytes[j] = slice.charCodeAt(j);
-                chunks.push(bytes);
+            b64 = String(b64 || "").replace(/\s/g, "");
+            if (!b64) return new Blob([], { type: mime });
+
+            const CHUNK_B64 = 4 * 256 * 1024; // multiple of 4 for valid base64 blocks
+            const parts = [];
+            for (let i = 0; i < b64.length; ) {
+                let end = Math.min(i + CHUNK_B64, b64.length);
+                if (end < b64.length) end -= (end - i) % 4;
+                const slice = b64.slice(i, end);
+                const bin = atob(slice);
+                const bytes = new Uint8Array(bin.length);
+                for (let j = 0; j < bin.length; j++) bytes[j] = bin.charCodeAt(j);
+                parts.push(bytes);
+                i = end;
             }
-            return new Blob(chunks, { type: mime });
+            return new Blob(parts, { type: mime });
         }
 
         function renderFormatLinks(format, files) {
@@ -663,7 +669,9 @@
 
             for (const dl of downloads) {
                 const b64 = files[dl.key];
+                if (!b64 || typeof b64 !== "string") continue;
                 const blob = base64ToBlob(b64, mime);
+                if (!blob.size) continue;
                 const url = URL.createObjectURL(blob);
 
                 html += `
@@ -697,7 +705,9 @@
             downloads.forEach((dl, index) => {
                 setTimeout(() => {
                     const b64 = formatData[dl.key];
+                    if (!b64 || typeof b64 !== "string") return;
                     const blob = base64ToBlob(b64, mime);
+                    if (!blob.size) return;
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
