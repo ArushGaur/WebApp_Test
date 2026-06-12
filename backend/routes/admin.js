@@ -6,7 +6,7 @@ const helpers = require("../utils/helpers");
 const { requireAdmin, sessionInstituteId, getDefaultInstituteId } = require("../middleware/auth");
 const { loadQuestions, refreshCache, rebuildYearIndex, findQuestion } = require("../utils/questions");
 const { normalizeQuestionRow, normalizeQuestion, normalizeStudentRow, parseCorrectIndexesFromQuestion, validateImageRegion } = helpers;
-const { uploadQuestionImages } = require("../config/cloudinary");
+const { uploadQuestionImages } = require("../services/cloudinary");
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
