@@ -557,10 +557,10 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
  */
 async function buildPaperDoc(selectedQuestions, mode, title, headerMeta = {}) {
 	const allParas = [];
-	const subject = String(headerMeta.subject || '').trim();
-	const chapter = String(headerMeta.chapter || '').trim();
-	const testType = String(headerMeta.testType || '').trim();
-	const className = String(headerMeta.class || '').trim();
+	const subject = decodeHtmlEntities(String(headerMeta.subject || '').trim());
+	const chapter = decodeHtmlEntities(String(headerMeta.chapter || '').trim());
+	const testType = decodeHtmlEntities(String(headerMeta.testType || '').trim());
+	const className = decodeHtmlEntities(String(headerMeta.class || '').trim());
 
 	const noBorders = {
 		top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
@@ -1103,7 +1103,9 @@ async function mergeWithTemplate(genEntries, tplEntries) {
 		}
 
 		// ── Step B: if the template has real body content (e.g. a letterhead
-		//   paragraph), prepend it before the generated questions. ──────────────
+		//   paragraph), insert it after the generated header but before the
+		//   questions, so the user's subject / chapter / class fields remain
+		//   visible instead of being replaced by the template. ─────────────
 		const bodyMatch = tplDoc.match(/<w:body>(.*?)<\/w:body>/s);
 		if (bodyMatch) {
 			let tplBodyNoSecpr = bodyMatch[1].replace(/<w:sectPr\b.*?<\/w:sectPr>/s, '').trim();
@@ -1112,14 +1114,11 @@ async function mergeWithTemplate(genEntries, tplEntries) {
 				const genBodyMatch = genDoc.match(/<w:body>(.*?)<\/w:body>/s);
 				if (genBodyMatch) {
 					const genBodyContent = genBodyMatch[1];
-					// Find the §§QS_MARKER§§ marker (invisible marker paragraph inserted
-					// by buildPaperDoc) and split there. Everything before the marker
-					// (header fields etc.) is replaced by the template body content.
+					// Find the §§QS_MARKER§§ marker inserted by buildPaperDoc.
+					// Split: header (everything before the marker para) | template body | questions (after the marker para)
 					const qsMarkerPattern = /<w:t[^>]*>§§QS_MARKER§§<\/w:t>/;
 					const markerMatch = genBodyContent.match(qsMarkerPattern);
-					let genBodyRest = genBodyContent;
 					if (markerMatch) {
-						// Find the containing <w:p> element and split after it
 						const beforeMarker = genBodyContent.slice(0, markerMatch.index);
 						const lastOpenP = beforeMarker.lastIndexOf('<w:p');
 						const pClose = markerMatch.index + markerMatch[0].length;
@@ -1127,17 +1126,18 @@ async function mergeWithTemplate(genEntries, tplEntries) {
 						const pEnd = restAfterMarker.indexOf('</w:p>');
 						if (lastOpenP !== -1 && pEnd !== -1) {
 							const markerPEnd = pClose + pEnd + 6; // +6 for '</w:p>'
-							genBodyRest = genBodyContent.slice(markerPEnd);
+							const genBeforeMarker = genBodyContent.slice(0, lastOpenP); // generated header only
+							const genAfterMarker = genBodyContent.slice(markerPEnd);    // questions / answer key
+							if (Object.keys(idRemap || {}).length) {
+								for (const [oldId, newId] of Object.entries(idRemap)) {
+									tplBodyNoSecpr = tplBodyNoSecpr.replaceAll(`r:embed="${oldId}"`, `r:embed="${newId}"`);
+									tplBodyNoSecpr = tplBodyNoSecpr.replaceAll(`r:id="${oldId}"`, `r:id="${newId}"`);
+								}
+							}
+							const newBody = `${genBeforeMarker}\n${tplBodyNoSecpr}\n${genAfterMarker}`;
+							genDoc = genDoc.replace(genBodyMatch[0], () => `<w:body>${newBody}</w:body>`);
 						}
 					}
-					if (Object.keys(idRemap || {}).length) {
-						for (const [oldId, newId] of Object.entries(idRemap)) {
-							tplBodyNoSecpr = tplBodyNoSecpr.replaceAll(`r:embed="${oldId}"`, `r:embed="${newId}"`);
-							tplBodyNoSecpr = tplBodyNoSecpr.replaceAll(`r:id="${oldId}"`, `r:id="${newId}"`);
-						}
-					}
-					const newBody = `${tplBodyNoSecpr}\n${genBodyRest}`;
-					genDoc = genDoc.replace(genBodyMatch[0], () => `<w:body>${newBody}</w:body>`);
 				}
 			}
 		}
