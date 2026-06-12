@@ -25,110 +25,172 @@ var _otEscapeForOnclickString = window.escapeForOnclickString || function(str) {
 };
 
 /* ═══════════════════════════════════════════════════════════
-   DATETIME PICKER ROUTINES  (custom overlay — works on all browsers)
+   DATETIME PICKER ROUTINES
    ═══════════════════════════════════════════════════════════ */
 
-var _dtPickerField = null; // 'live' | 'ends'
+var _dtField = null;      // 'live' | 'ends'
+var _dtYear  = null;
+var _dtMonth = null;      // 0-based
+var _dtSelY  = null;
+var _dtSelM  = null;
+var _dtSelD  = null;
+var _dtSelH  = null;
+var _dtSelMin = null;
 
 function openDtPicker(field) {
-    _dtPickerField = field;
-    const hiddenInput = document.getElementById(`ot-${field}-at`);
-    const existingVal = hiddenInput ? hiddenInput.value : '';
-
-    // Build the custom picker box content
-    const overlay = document.getElementById('dt-picker-overlay');
-    const box     = document.getElementById('dt-picker-box');
-    if (!overlay || !box) {
-        // Fallback: show native input if custom overlay not present
-        if (hiddenInput) {
-            hiddenInput.style.cssText = 'position:static;opacity:1;pointer-events:auto;width:100%;padding:10px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-size:0.9rem;outline:none;';
-            if (typeof hiddenInput.showPicker === 'function') {
-                try { hiddenInput.showPicker(); } catch(e) {}
-            }
-        }
-        return;
-    }
-
-    const label = field === 'live' ? '📅 Goes Live At' : '⏰ Last Attempt By';
-    const accentColor = field === 'live' ? 'var(--success)' : 'var(--error)';
-
-    // Split existing value into date and time parts
-    let defaultDate = '', defaultTime = '08:00';
-    if (existingVal) {
-        const parts = existingVal.split('T');
-        defaultDate = parts[0] || '';
-        defaultTime = parts[1] ? parts[1].slice(0, 5) : '08:00';
+    _dtField = field;
+    // Pre-fill from existing hidden value if any
+    const existing = document.getElementById(`ot-${field}-at`)?.value;
+    const base = existing ? new Date(existing) : new Date();
+    _dtYear  = base.getFullYear();
+    _dtMonth = base.getMonth();
+    if (existing && !isNaN(base)) {
+        _dtSelY   = base.getFullYear();
+        _dtSelM   = base.getMonth();
+        _dtSelD   = base.getDate();
+        _dtSelH   = base.getHours();
+        _dtSelMin = base.getMinutes();
     } else {
-        // default to tomorrow
-        const tomorrow = new Date(Date.now() + 86400000);
-        defaultDate = tomorrow.toISOString().slice(0, 10);
+        _dtSelY = _dtSelM = _dtSelD = _dtSelH = _dtSelMin = null;
     }
-
-    box.innerHTML = `
-        <div style="padding:20px 22px 16px;border-bottom:1px solid var(--border)">
-            <div style="font-size:1rem;font-weight:800;color:var(--text);margin-bottom:2px">${label}</div>
-            <div style="font-size:0.75rem;color:var(--text-muted)">Pick a date and time</div>
-        </div>
-        <div style="padding:18px 22px;display:flex;flex-direction:column;gap:14px">
-            <div>
-                <label style="font-size:0.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:7px">📅 Date</label>
-                <input id="_dt_date_input" type="date" value="${defaultDate}"
-                    style="width:100%;padding:10px 14px;background:var(--bg-input);border:1.5px solid ${accentColor};border-radius:9px;color:var(--text);font-size:0.95rem;outline:none;font-family:inherit;box-sizing:border-box">
-            </div>
-            <div>
-                <label style="font-size:0.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:7px">⏰ Time</label>
-                <input id="_dt_time_input" type="time" value="${defaultTime}"
-                    style="width:100%;padding:10px 14px;background:var(--bg-input);border:1.5px solid ${accentColor};border-radius:9px;color:var(--text);font-size:0.95rem;outline:none;font-family:inherit;box-sizing:border-box">
-            </div>
-            <div style="display:flex;gap:10px;margin-top:4px">
-                <button onclick="_dtPickerCancel()"
-                    style="flex:1;padding:11px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);cursor:pointer;font-size:0.88rem;font-weight:700;font-family:inherit">
-                    Cancel
-                </button>
-                <button onclick="_dtPickerConfirm()"
-                    style="flex:2;padding:11px;background:linear-gradient(135deg,var(--accent),var(--accent-2));border:none;border-radius:9px;color:#fff;cursor:pointer;font-size:0.88rem;font-weight:800;font-family:inherit">
-                    ✓ Confirm
-                </button>
-            </div>
-        </div>`;
-
+    _dtRender();
+    const overlay = document.getElementById('dt-picker-overlay');
+    if (!overlay) return;
     overlay.style.display = 'flex';
-    // Animate in
-    setTimeout(() => { overlay.style.opacity = '1'; }, 10);
+    requestAnimationFrame(() => { overlay.style.opacity = '1'; });
 }
 
-function _dtPickerConfirm() {
-    const dateVal = document.getElementById('_dt_date_input')?.value;
-    const timeVal = document.getElementById('_dt_time_input')?.value || '00:00';
-    if (!dateVal) { _dtPickerCancel(); return; }
-
-    const combined = `${dateVal}T${timeVal}`;
-    const hiddenInput = document.getElementById(`ot-${_dtPickerField}-at`);
-    if (hiddenInput) {
-        hiddenInput.value = combined;
-        // Fire change event so otUpdateScheduleGap picks it up
-        hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
-        hiddenInput.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-    _dtPickerClose();
-}
-
-function _dtPickerCancel() {
-    _dtPickerClose();
-}
-
-function _dtPickerClose() {
+function _dtClose() {
     const overlay = document.getElementById('dt-picker-overlay');
     if (!overlay) return;
     overlay.style.opacity = '0';
     setTimeout(() => { overlay.style.display = 'none'; }, 200);
-    _dtPickerField = null;
+    _dtField = null;
 }
 
-// Close on overlay backdrop click
+function _dtRender() {
+    const box = document.getElementById('dt-picker-box');
+    if (!box) return;
+    const MONTHS = ['January','February','March','April','May','June',
+                    'July','August','September','October','November','December'];
+    const DAYS   = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+    const today  = new Date();
+    const firstDay = new Date(_dtYear, _dtMonth, 1).getDay();
+    const daysInMonth = new Date(_dtYear, _dtMonth + 1, 0).getDate();
+
+    // Build calendar grid
+    let cells = '';
+    // Day headers
+    cells += DAYS.map(d => `<div style="font-size:0.7rem;font-weight:700;color:var(--text-muted);text-align:center;padding:4px 0">${d}</div>`).join('');
+    // Empty lead cells
+    for (let i = 0; i < firstDay; i++) cells += '<div></div>';
+    // Day cells
+    for (let d = 1; d <= daysInMonth; d++) {
+        const isSelected = (_dtSelY === _dtYear && _dtSelM === _dtMonth && _dtSelD === d);
+        const isToday    = (today.getFullYear() === _dtYear && today.getMonth() === _dtMonth && today.getDate() === d);
+        const bg    = isSelected ? 'var(--accent)' : isToday ? 'rgba(86,169,255,0.13)' : 'transparent';
+        const col   = isSelected ? '#fff' : 'var(--text)';
+        const fw    = (isSelected || isToday) ? '700' : '400';
+        const bord  = isToday && !isSelected ? '1.5px solid var(--accent)' : '1.5px solid transparent';
+        cells += `<div onclick="_dtPickDay(${d})" style="text-align:center;padding:7px 2px;border-radius:8px;cursor:pointer;font-size:0.85rem;background:${bg};color:${col};font-weight:${fw};border:${bord};transition:background .12s" onmouseover="if(!${isSelected})this.style.background='rgba(86,169,255,0.18)'" onmouseout="this.style.background='${bg}'">${d}</div>`;
+    }
+
+    // Time pickers
+    const hVal  = _dtSelH  !== null ? String(_dtSelH).padStart(2,'0')  : '--';
+    const mVal  = _dtSelMin !== null ? String(_dtSelMin).padStart(2,'0') : '--';
+
+    // Hour options
+    let hOpts = '';
+    for (let h = 0; h < 24; h++) {
+        const label = String(h).padStart(2,'0');
+        const sel   = _dtSelH === h;
+        hOpts += `<option value="${h}" ${sel ? 'selected' : ''}>${label}</option>`;
+    }
+    // Minute options (every 5 min)
+    let mOpts = '';
+    for (let m = 0; m < 60; m += 5) {
+        const label = String(m).padStart(2,'0');
+        const sel   = _dtSelMin !== null && Math.round(_dtSelMin/5)*5 % 60 === m;
+        mOpts += `<option value="${m}" ${sel ? 'selected' : ''}>${label}</option>`;
+    }
+
+    const canConfirm = (_dtSelY !== null && _dtSelD !== null && _dtSelH !== null && _dtSelMin !== null);
+    const fieldLabel = _dtField === 'live' ? '🟢 Goes Live At' : '🔴 Last Attempt By';
+
+    box.innerHTML = `
+      <div style="padding:16px 18px 10px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:0.85rem;font-weight:700;color:var(--text)">${fieldLabel}</span>
+          <button onclick="_dtClose()" style="background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:7px;width:26px;height:26px;cursor:pointer;color:var(--text-muted);font-size:0.85rem;display:flex;align-items:center;justify-content:center" onmouseover="this.style.background='rgba(255,107,107,0.15)';this.style.color='#ff6b6b'" onmouseout="this.style.background='rgba(255,255,255,0.06)';this.style.color='var(--text-muted)'">✕</button>
+        </div>
+      </div>
+      <div style="padding:14px 16px">
+        <!-- Month navigation -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <button onclick="_dtPrevMonth()" style="background:var(--bg-input);border:1.5px solid var(--border);border-radius:8px;width:30px;height:30px;cursor:pointer;color:var(--text);font-size:1rem;display:flex;align-items:center;justify-content:center;transition:all .13s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">‹</button>
+          <span style="font-size:0.9rem;font-weight:700;color:var(--text)">${MONTHS[_dtMonth]} ${_dtYear}</span>
+          <button onclick="_dtNextMonth()" style="background:var(--bg-input);border:1.5px solid var(--border);border-radius:8px;width:30px;height:30px;cursor:pointer;color:var(--text);font-size:1rem;display:flex;align-items:center;justify-content:center;transition:all .13s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">›</button>
+        </div>
+        <!-- Calendar grid -->
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:14px">
+          ${cells}
+        </div>
+        <!-- Time row -->
+        <div style="display:flex;align-items:center;gap:8px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:14px">
+          <span style="font-size:0.85rem;color:var(--text-muted);flex-shrink:0">⏰ Time</span>
+          <select onchange="_dtSetHour(this.value)" style="flex:1;background:var(--bg);border:1.5px solid var(--border);border-radius:7px;padding:6px 8px;color:var(--text);font-size:0.88rem;font-family:inherit;outline:none;cursor:pointer">${hOpts}</select>
+          <span style="color:var(--text-muted);font-weight:700">:</span>
+          <select onchange="_dtSetMin(this.value)" style="flex:1;background:var(--bg);border:1.5px solid var(--border);border-radius:7px;padding:6px 8px;color:var(--text);font-size:0.88rem;font-family:inherit;outline:none;cursor:pointer">${mOpts}</select>
+        </div>
+        <!-- Confirm button -->
+        <button onclick="_dtConfirm()" ${canConfirm ? '' : 'disabled'} style="width:100%;padding:10px;background:${canConfirm ? 'linear-gradient(135deg,var(--accent),var(--accent-2))' : 'var(--bg-input)'};border:none;border-radius:10px;color:${canConfirm ? '#fff' : 'var(--text-muted)'};font-size:0.88rem;font-weight:700;font-family:inherit;cursor:${canConfirm ? 'pointer' : 'not-allowed'};transition:all .15s;box-shadow:${canConfirm ? '0 4px 14px rgba(86,169,255,0.25)' : 'none'}">
+          ${canConfirm ? '✅ Confirm' : 'Select a date & time'}
+        </button>
+      </div>`;
+}
+
+function _dtPrevMonth() {
+    _dtMonth--;
+    if (_dtMonth < 0) { _dtMonth = 11; _dtYear--; }
+    _dtRender();
+}
+function _dtNextMonth() {
+    _dtMonth++;
+    if (_dtMonth > 11) { _dtMonth = 0; _dtYear++; }
+    _dtRender();
+}
+function _dtPickDay(d) {
+    _dtSelY = _dtYear; _dtSelM = _dtMonth; _dtSelD = d;
+    // Default time to 09:00 if not yet set
+    if (_dtSelH === null)   _dtSelH   = 9;
+    if (_dtSelMin === null) _dtSelMin = 0;
+    _dtRender();
+}
+function _dtSetHour(v)  { _dtSelH   = parseInt(v, 10); _dtRender(); }
+function _dtSetMin(v)   { _dtSelMin = parseInt(v, 10); _dtRender(); }
+
+function _dtConfirm() {
+    if (_dtSelY === null || _dtSelD === null || _dtSelH === null || _dtSelMin === null) return;
+    const dt = new Date(_dtSelY, _dtSelM, _dtSelD, _dtSelH, _dtSelMin);
+    // Store as ISO string in the hidden input
+    const iso = `${_dtSelY}-${String(_dtSelM+1).padStart(2,'0')}-${String(_dtSelD).padStart(2,'0')}T${String(_dtSelH).padStart(2,'0')}:${String(_dtSelMin).padStart(2,'0')}`;
+    const hidden = document.getElementById(`ot-${_dtField}-at`);
+    if (hidden) { hidden.value = iso; hidden.dispatchEvent(new Event('change', {bubbles:true})); }
+    _dtClose();
+}
+
+// Close picker when clicking outside the box
 document.addEventListener('click', function(e) {
     const overlay = document.getElementById('dt-picker-overlay');
-    if (overlay && e.target === overlay) _dtPickerClose();
+    const box     = document.getElementById('dt-picker-box');
+    if (overlay && overlay.style.display === 'flex' && box && !box.contains(e.target)) {
+        // Only close if the click was on the overlay backdrop, not on the display trigger
+        const liveDisplay = document.getElementById('ot-live-display');
+        const endsDisplay = document.getElementById('ot-ends-display');
+        if (e.target === overlay || (liveDisplay && !liveDisplay.contains(e.target) && endsDisplay && !endsDisplay.contains(e.target) && !box.contains(e.target) && e.target.closest('#dt-picker-overlay'))) {
+            _dtClose();
+        }
+    }
 });
 
 function _otFmtDt(val) {
@@ -269,10 +331,7 @@ function _otUpdateAssignedSummary() {
 
 function closeOnlineTestDetails() {
     const modal = document.getElementById('online-test-details-modal');
-    if (modal) { modal.style.display = 'none'; }
-    // Also reset strict mode and selected students for next open
-    _otStrictEnabled = false;
-    _updateStrictLabel();
+    if (modal) modal.style.display = 'none';
 }
 
 /* ═══════════════════════════════════════════════════════════
