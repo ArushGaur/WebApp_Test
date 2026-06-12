@@ -553,38 +553,106 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 /**
  * Build a full DOCX document for the given mode.
  * questions: array of { chapter, topic, lecture, qNum, q }
- * headerMeta: { subject, chapter, testType } — user-provided header fields
+ * headerMeta: { subject, chapter, testType, class: className } — user-provided header fields
  */
 async function buildPaperDoc(selectedQuestions, mode, title, headerMeta = {}) {
 	const allParas = [];
 	const subject = String(headerMeta.subject || '').trim();
 	const chapter = String(headerMeta.chapter || '').trim();
 	const testType = String(headerMeta.testType || '').trim();
+	const className = String(headerMeta.class || '').trim();
+
+	const noBorders = {
+		top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+		bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+		left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+		right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+	};
 
 	if (subject || chapter || testType) {
-		// Rich header: Subject on line 1, [Chapter] on line 2, Test Type on line 3
-		// Mirrors the "PHYSICS / [RAY OPTICS] / CHAPTER TEST" layout from the template.
+		// Rich header using a two-column table:
+		//   Left column  → CLASS X (top-left)
+		//   Right column → Subject / [Chapter] / Test Type (centered)
+		// Build centre-column paragraphs
+		const centreParas = [];
 		if (subject) {
-			allParas.push(new Paragraph({
-				spacing: { before: 0, after: 60 },
+			centreParas.push(new Paragraph({
+				spacing: { before: 0, after: 40 },
 				alignment: AlignmentType.CENTER,
 				children: [new TextRun({ text: subject.toUpperCase(), bold: true, font: "Arial", size: 30, color: "1a1a2e" })]
 			}));
 		}
 		if (chapter) {
-			allParas.push(new Paragraph({
-				spacing: { before: 0, after: 60 },
+			centreParas.push(new Paragraph({
+				spacing: { before: 0, after: 40 },
 				alignment: AlignmentType.CENTER,
 				children: [new TextRun({ text: `[ ${chapter.toUpperCase()} ]`, bold: true, font: "Arial", size: 28, color: "1a1a2e", underline: {} })]
 			}));
 		}
 		if (testType) {
-			allParas.push(new Paragraph({
-				spacing: { before: 0, after: 100 },
+			centreParas.push(new Paragraph({
+				spacing: { before: 0, after: 0 },
 				alignment: AlignmentType.CENTER,
 				children: [new TextRun({ text: testType.toUpperCase(), bold: true, font: "Arial", size: 32, color: "1a1a2e" })]
 			}));
 		}
+		if (!centreParas.length) {
+			centreParas.push(new Paragraph({ children: [] }));
+		}
+
+		// Left column: CLASS label (only if provided)
+		const leftParas = className
+			? [
+				new Paragraph({
+					spacing: { before: 0, after: 0 },
+					alignment: AlignmentType.LEFT,
+					children: [new TextRun({ text: `CLASS ${className.toUpperCase()}`, bold: true, font: "Arial", size: 26, color: "1a1a2e" })]
+				})
+			]
+			: [new Paragraph({ children: [] })];
+
+		// Render as a borderless 2-column table so CLASS sits top-left while title is centred
+		allParas.push(new Table({
+			width: { size: 100, type: WidthType.PERCENTAGE },
+			borders: {
+				top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+				bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+				left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+				right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+				insideH: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+				insideV: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+			},
+			rows: [
+				new TableRow({
+					children: [
+						// Left cell — CLASS label (20% width)
+						new TableCell({
+							width: { size: 20, type: WidthType.PERCENTAGE },
+							borders: noBorders,
+							verticalAlign: VerticalAlign.CENTER,
+							margins: { top: 80, bottom: 80, left: 0, right: 0 },
+							children: leftParas,
+						}),
+						// Centre cell — subject / chapter / test-type (60%)
+						new TableCell({
+							width: { size: 60, type: WidthType.PERCENTAGE },
+							borders: noBorders,
+							verticalAlign: VerticalAlign.CENTER,
+							margins: { top: 80, bottom: 80, left: 0, right: 0 },
+							children: centreParas,
+						}),
+						// Right cell — empty placeholder (20%)
+						new TableCell({
+							width: { size: 20, type: WidthType.PERCENTAGE },
+							borders: noBorders,
+							children: [new Paragraph({ children: [] })],
+						}),
+					],
+				}),
+			],
+		}));
+		// small gap after the header table
+		allParas.push(new Paragraph({ spacing: { before: 0, after: 60 }, children: [] }));
 	} else {
 		// Fallback: plain title (original behaviour)
 		allParas.push(new Paragraph({
@@ -1082,11 +1150,11 @@ const mergeDocxWithTemplate = (buf, tplB64) => postProcessDocx(buf, tplB64);
 
 
 // POST /api/admin/generate-paper
-// Body: { questions: [...], paperTitle, templateId? }
+// Body: { questions: [...], paperTitle, paperSubject, paperChapter, paperTestType, paperClass, templateId? }
 // Returns: JSON with base64-encoded buffers for question, answerkey, solution docx
 router.post("/api/admin/generate-paper", requireAdmin, async (req, res) => {
 	try {
-		const { questions, paperTitle, paperSubject, paperChapter, paperTestType, templateId } = req.body || {};
+		const { questions, paperTitle, paperSubject, paperChapter, paperTestType, paperClass, templateId } = req.body || {};
 		if (!Array.isArray(questions) || !questions.length) {
 			return res.status(400).json({ error: "No questions provided" });
 		}
@@ -1096,6 +1164,7 @@ router.post("/api/admin/generate-paper", requireAdmin, async (req, res) => {
 			subject: String(paperSubject || '').trim(),
 			chapter: String(paperChapter || '').trim(),
 			testType: String(paperTestType || '').trim(),
+			class: String(paperClass || '').trim(),
 		};
 		const normalizedQuestions = normalizePaperQuestions(questions);
 
@@ -1235,14 +1304,14 @@ async function docxToPdf(docxBuffer) {
 
 
 // POST /api/admin/generate-paper-pdf
-// Body: { questions: [...], paperTitle, templateId? }
+// Body: { questions: [...], paperTitle, paperSubject, paperChapter, paperTestType, paperClass, templateId? }
 // Returns: JSON with base64-encoded PDF buffers converted from the DOCX files.
 // Strategy: build the same high-quality DOCX files (with OMML equations and
 // template applied) that the Word download uses, then convert each one to PDF
 // via LibreOffice headless — so the PDF looks identical to the Word document.
 router.post("/api/admin/generate-paper-pdf", requireAdmin, async (req, res) => {
 	try {
-		const { questions, paperTitle, paperSubject, paperChapter, paperTestType, templateId } = req.body || {};
+		const { questions, paperTitle, paperSubject, paperChapter, paperTestType, paperClass, templateId } = req.body || {};
 		if (!Array.isArray(questions) || !questions.length) {
 			return res.status(400).json({ error: "No questions provided" });
 		}
@@ -1252,6 +1321,7 @@ router.post("/api/admin/generate-paper-pdf", requireAdmin, async (req, res) => {
 			subject: String(paperSubject || '').trim(),
 			chapter: String(paperChapter || '').trim(),
 			testType: String(paperTestType || '').trim(),
+			class: String(paperClass || '').trim(),
 		};
 		const normalizedQuestions = normalizePaperQuestions(questions);
 
