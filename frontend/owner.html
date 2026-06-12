@@ -111,7 +111,7 @@
                             <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                         </svg>
                     </div>
-                    <input id="passcode" type="text" style="-webkit-text-security: disc; text-security: disc;" class="login-field-input" placeholder="Enter your passcode"
+                    <input id="passcode" type="password" class="login-field-input" placeholder="Enter your passcode"
                         autocomplete="current-password" onkeydown="if(event.key==='Enter') login()"
                         oninput="document.getElementById('loginError').style.display='none';document.getElementById('loginFieldWrap').classList.remove('login-field-error')">
                     <button class="login-eye-btn" type="button" onclick="togglePasscodeVisibility(this)" tabindex="-1"
@@ -1251,7 +1251,8 @@
                 </div>
             </div>
 
-            <div id="institutesGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px;padding-bottom:40px">
+            <div id="institutesGrid"
+                style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px;padding-bottom:40px">
                 <div style="color:var(--text-muted);font-size:0.9rem;padding:20px 0">Loading institutes…</div>
             </div>
         </div>
@@ -1481,7 +1482,8 @@
         <div class="inst-modal-box">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
                 <h3 id="instModalTitle" style="margin:0">Add Institute</h3>
-                <button class="btn btn-ghost" style="padding:6px 10px;font-size:1rem" onclick="closeModal('instituteModal')">✕</button>
+                <button class="btn btn-ghost" style="padding:6px 10px;font-size:1rem"
+                    onclick="closeModal('instituteModal')">✕</button>
             </div>
             <input type="hidden" id="instModalId" value="">
 
@@ -1490,19 +1492,28 @@
                 <input type="text" id="instModalName" placeholder="e.g. Kota Physics Institute" maxlength="80">
             </div>
             <div class="inst-form-row">
-                <label>Institute Code (ID) * <span style="font-size:0.72rem;color:var(--text-muted)">Unique, alphanumeric, used as login ID</span></label>
-                <input type="text" id="instModalCode" placeholder="e.g. KOTA_PHYS" maxlength="30" style="font-family:'JetBrains Mono',monospace;text-transform:uppercase">
+                <label>Institute Code (ID) * <span style="font-size:0.72rem;color:var(--text-muted)">Unique,
+                        alphanumeric, used as login ID</span></label>
+                <input type="text" id="instModalCode" placeholder="e.g. KOTA_PHYS" maxlength="30"
+                    style="font-family:'JetBrains Mono',monospace;text-transform:uppercase">
             </div>
             <div class="inst-form-row">
-                <label id="instModalPasscodeLabel">Passcode * <span style="font-size:0.72rem;color:var(--text-muted)">Password used by teachers to login</span></label>
-                <input type="password" id="instModalPasscode" placeholder="Set a strong passcode" maxlength="100" autocomplete="new-password">
+                <label id="instModalPasscodeLabel">Passcode * <span
+                        style="font-size:0.72rem;color:var(--text-muted)">Password used by teachers to
+                        login</span></label>
+                <input type="password" id="instModalPasscode" placeholder="Set a strong passcode" maxlength="100"
+                    autocomplete="new-password">
             </div>
             <div class="inst-form-row">
-                <label id="instModalTeacherPasscodeLabel">Teacher Passcode * <span style="font-size:0.72rem;color:var(--text-muted)">Required to enter the Teacher role in client portal</span></label>
-                <input type="password" id="instModalTeacherPasscode" placeholder="Set a unique teacher passcode" maxlength="100" autocomplete="new-password">
+                <label id="instModalTeacherPasscodeLabel">Teacher Passcode * <span
+                        style="font-size:0.72rem;color:var(--text-muted)">Required to enter the Teacher role in client
+                        portal</span></label>
+                <input type="password" id="instModalTeacherPasscode" placeholder="Set a unique teacher passcode"
+                    maxlength="100" autocomplete="new-password">
             </div>
             <div class="inst-form-row">
-                <label>Plan Expiry Date <span style="font-size:0.72rem;color:var(--text-muted)">(leave blank = no expiry)</span></label>
+                <label>Plan Expiry Date <span style="font-size:0.72rem;color:var(--text-muted)">(leave blank = no
+                        expiry)</span></label>
                 <input type="date" id="instModalExpiry">
             </div>
             <div class="inst-form-row">
@@ -1520,10 +1531,13 @@
             <div class="inst-form-row">
                 <label>Permissions</label>
                 <div class="inst-perms-grid">
-                    <label class="inst-perm-item"><input type="checkbox" id="permOnlineTests" checked> Online Tests</label>
+                    <label class="inst-perm-item"><input type="checkbox" id="permOnlineTests" checked> Online
+                        Tests</label>
                     <label class="inst-perm-item"><input type="checkbox" id="permStarQuiz" checked> STAR Quiz</label>
-                    <label class="inst-perm-item"><input type="checkbox" id="permPaperGen" checked> Paper Generator</label>
-                    <label class="inst-perm-item"><input type="checkbox" id="permQuestionBank" checked> Question Bank</label>
+                    <label class="inst-perm-item"><input type="checkbox" id="permPaperGen" checked> Paper
+                        Generator</label>
+                    <label class="inst-perm-item"><input type="checkbox" id="permQuestionBank" checked> Question
+                        Bank</label>
                 </div>
             </div>
             <div id="instModalError" style="color:var(--error);font-size:0.82rem;margin-bottom:8px;display:none"></div>
@@ -1606,11 +1620,13 @@
 
 
 
+    <!-- Flag: tells shared-student.js client-guard IIFE to skip installation -->
+    <script>window.__IS_OWNER_PANEL = true;</script>
+
     <script src="/shared/shared-utils.js" defer></script>
     <script src="/shared/shared-crop.js" defer></script>
     <script src="/shared/shared-importer.js" defer></script>
     <script src="/shared/shared-manager.js" defer></script>
-    <script src="/shared/shared-online-test.js" defer></script>
     <script src="/shared/shared-student.js" defer></script>
     <script src="/shared/shared-paper.js" defer></script>
     <script src="/owner.js" defer></script>
@@ -1618,7 +1634,7 @@
     <!-- ═══════════════════════════════════════════════════════════
          PAPER BASKET — floating counter & controls
          ═══════════════════════════════════════════════════════════ -->
-    
+
 
     <div id="paper-basket">
         <!-- Minimised pill (always visible when basket has items) -->
@@ -1733,7 +1749,7 @@
         </div>
     </div>
 
-    
+
 
 
     <!-- ═══════════════════════════════════════════════════════════
@@ -1795,7 +1811,7 @@
         </div>
     </div>
 
-    
+
 
     <!-- ═══════════════════════════════════════════════════════════
          ADD STUDENTS POPUP
@@ -1939,7 +1955,7 @@
         </div>
     </div>
 
-    
+
 
     <!-- Custom Delete Confirmation Popup -->
     <div id="delete-confirm-overlay" onclick="if(event.target===this)closeDeleteConfirm()"
@@ -1982,7 +1998,7 @@
             </div>
         </div>
     </div>
-    
+
 
     <!-- ═══════════════════════════════════════════════════════════
          POPUP 1: OFFLINE vs ONLINE CHOICE
@@ -2117,7 +2133,7 @@
                                     time</span>
                                 <span style="font-size:0.7rem;color:var(--success)">▾</span>
                             </div>
-                            <input id="ot-live-at" type="datetime-local" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;overflow:hidden;top:0;left:0" aria-hidden="true" tabindex="-1">
+                            <input id="ot-live-at" type="hidden">
                             <div id="ot-live-preview"
                                 style="font-size:0.72rem;color:var(--text-muted);margin-top:5px;text-align:center;min-height:14px">
                             </div>
@@ -2140,7 +2156,7 @@
                                     time</span>
                                 <span style="font-size:0.7rem;color:var(--error)">▾</span>
                             </div>
-                            <input id="ot-ends-at" type="datetime-local" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;overflow:hidden;top:0;left:0" aria-hidden="true" tabindex="-1">
+                            <input id="ot-ends-at" type="hidden">
                             <div id="ot-ends-preview"
                                 style="font-size:0.72rem;color:var(--text-muted);margin-top:5px;text-align:center;min-height:14px">
                             </div>
@@ -2278,7 +2294,7 @@
             </div>
         </div>
     </div>
-    
+
 
     <!-- ═══════════════════════════════════════════════════════════
          CUSTOM DATETIME PICKER OVERLAY
@@ -2325,11 +2341,11 @@
         </div>
     </div>
 
-    
+
     <!-- ═══════════════════════════════════════════════════════════════════
      AUTO GENERATE PAPER — Modal Overlay
      ═══════════════════════════════════════════════════════════════════ -->
-    
+
 
     <!-- The modal markup -->
     <div id="ag-overlay" onclick="agOverlayClick(event)">
@@ -2756,15 +2772,18 @@
         </div>
     </div>
 
-    
-    
+
+
     <script defer
         src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447"
         integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ=="
         data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}'
         crossorigin="anonymous"></script>
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+    <script defer
+        src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447"
+        integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ=="
+        data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}'
+        crossorigin="anonymous"></script>
 </body>
 
 </html>
