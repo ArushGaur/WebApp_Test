@@ -1135,16 +1135,29 @@ async function mergeWithTemplate(genEntries, tplEntries) {
 								}
 							}
 							const newBody = `${genBeforeMarker}\n${tplBodyNoSecpr}\n${genAfterMarker}`;
-							genDoc = genDoc.replace(genBodyMatch[0], () => `<w:body>${newBody}</w:body>`);
+							// Validate that genBodyMatch[0] exists in genDoc before replacing
+							if (genDoc.includes(genBodyMatch[0])) {
+								genDoc = genDoc.replace(genBodyMatch[0], () => `<w:body>${newBody}</w:body>`);
+							} else {
+								console.error("[mergeWithTemplate] BODY MISMATCH — genBodyMatch[0] not found in genDoc");
+							}
+						} else {
+							console.error("[mergeWithTemplate] MARKER FAIL — lastOpenP:", lastOpenP, "pEnd:", pEnd);
 						}
+					} else {
+						console.error("[mergeWithTemplate] MARKER NOT FOUND in body content");
 					}
 				}
 			}
 		}
 
 		// Commit the single final rewrite
-		if (!/<w:body>[\s\S]*<\/w:body>/.test(genDoc) || (genDoc.match(/<\/w:body>/g) || []).length !== 1) {
-			console.error("[mergeWithTemplate] CORRUPTED document: missing or multiple <w:body> tags");
+		if (!/<w:body>[\s\S]*<\/w:body>/.test(genDoc)) {
+			console.error("[mergeWithTemplate] CORRUPTED body: missing <w:body> tags");
+		}
+		const bodyCount = (genDoc.match(/<\/w:body>/g) || []).length;
+		if (bodyCount !== 1) {
+			console.error("[mergeWithTemplate] CORRUPTED body: found", bodyCount, "</w:body> tags");
 		}
 		merged["word/document.xml"] = Buffer.from(genDoc, 'utf8');
 	}
