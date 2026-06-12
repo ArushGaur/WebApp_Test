@@ -166,10 +166,11 @@
             document.getElementById("sidebar").classList.remove("hidden");
             document.getElementById("mainContent").classList.remove("hidden");
 
-            // Load all data
-            await loadDashboard();
-            await loadChaptersAdmin();
-            await loadQuestionsAdmin();
+            // Load all data — each call is independently guarded so one failure
+            // cannot prevent the rest of the dashboard from loading.
+            try { await loadDashboard(); } catch(e) { console.warn("loadDashboard error:", e); }
+            try { if (typeof loadChaptersAdmin === "function") await loadChaptersAdmin(); } catch(e) { console.warn("loadChaptersAdmin error:", e); }
+            try { if (typeof loadQuestionsAdmin === "function") await loadQuestionsAdmin(); } catch(e) { console.warn("loadQuestionsAdmin error:", e); }
 
             // The initial page-load template fetch can run before the session is
             // authenticated (→ 401 → empty list). Re-fetch now that we're logged in
@@ -211,14 +212,19 @@
             const input = document.getElementById("passcode");
             const showIcon = btn.querySelector('.eye-show');
             const hideIcon = btn.querySelector('.eye-hide');
-            if (input.type === 'password') {
+            const isMasked = input.style.webkitTextSecurity === 'disc' || input.style.textSecurity === 'disc' || input.type === 'password';
+            if (isMasked) {
                 input.type = 'text';
-                showIcon.style.display = 'none';
-                hideIcon.style.display = '';
+                input.style.webkitTextSecurity = 'none';
+                input.style.textSecurity = 'none';
+                if (showIcon) showIcon.style.display = 'none';
+                if (hideIcon) hideIcon.style.display = '';
             } else {
-                input.type = 'password';
-                showIcon.style.display = '';
-                hideIcon.style.display = 'none';
+                input.type = 'text';
+                input.style.webkitTextSecurity = 'disc';
+                input.style.textSecurity = 'disc';
+                if (showIcon) showIcon.style.display = '';
+                if (hideIcon) hideIcon.style.display = 'none';
             }
         }
 
@@ -302,25 +308,56 @@
            NAVIGATION
         ══════════════════════════════════════════════════════════════════ */
         function showSection(name, push = true) {
+            // Guard: section element must exist
+            const sectionEl = document.getElementById(`section-${name}`);
+            const navEl     = document.getElementById(`nav-${name}`);
+            if (!sectionEl) { console.warn("showSection: unknown section", name); return; }
+
             document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
             document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
-            document.getElementById(`section-${name}`).classList.add("active");
-            document.getElementById(`nav-${name}`).classList.add("active");
-            if (name === "students") {
-                loadRegisteredStudents();
-                // Refresh request badge count
-                fetch(`${API_BASE}/api/admin/student-requests`, { credentials: 'include', cache: 'no-store' })
-                    .then(r => r.json()).then(data => updateRequestsBadge(data.length)).catch(() => { });
+            sectionEl.classList.add("active");
+            if (navEl) navEl.classList.add("active");
+
+            // Also sync mobile drawer
+            document.querySelectorAll('.drawer-item[id^="drawer-"]').forEach(el => el.classList.remove('active'));
+            const drawerEl = document.getElementById(`drawer-${name}`);
+            if (drawerEl) drawerEl.classList.add('active');
+
+            try {
+                if (name === "students") {
+                    if (typeof loadRegisteredStudents === "function") loadRegisteredStudents();
+                    fetch(`${API_BASE}/api/admin/student-requests`, { credentials: 'include', cache: 'no-store' })
+                        .then(r => r.json()).then(data => { if (typeof updateRequestsBadge === "function") updateRequestsBadge(data.length); }).catch(() => { });
+                }
+                if (name === "applications") {
+                    if (typeof populateStudentChapterFilter === "function") populateStudentChapterFilter();
+                    if (typeof filterStudents === "function") filterStudents('');
+                    if (typeof setStudentView === "function") setStudentView(studentViewMode);
+                }
+                if (name === "manageQuestions") {
+                    if (typeof showSubjectView === "function") showSubjectView();
+                    if (typeof renderSubjectCards === "function") renderSubjectCards(allQuestions);
+                }
+                if (name === "starQuiz") {
+                    if (typeof loadStarQuizData === "function") {
+                        if (push && typeof sqShowChapterView === "function") sqShowChapterView(false);
+                        loadStarQuizData().then(() => {
+                            if (typeof sqRenderChapters === "function") {
+                                const cv = document.getElementById("sq-chapter-view");
+                                if (!cv || cv.style.display !== "none") sqRenderChapters(_sqAllQuestions);
+                            }
+                        }).catch(() => {});
+                    }
+                }
+                if (name === "clients") { loadInstitutes(); }
+                if (name === "addQuestion") {
+                    // Populate chapter datalists if available
+                    if (typeof loadChaptersAdmin === "function") loadChaptersAdmin().catch(() => {});
+                }
+            } catch(err) {
+                console.warn("showSection handler error for", name, err);
             }
-            if (name === "applications") {
-                populateStudentChapterFilter();
-                filterStudents('');
-                setStudentView(studentViewMode);
-            }
-            if (name === "manageQuestions") { showSubjectView(); renderSubjectCards(allQuestions); }
-            if (name === "starQuiz" && push) { sqShowChapterView(false); loadStarQuizData().then(() => { if (document.getElementById("sq-chapter-view").style.display !== "none") sqRenderChapters(_sqAllQuestions); }); }
-            else if (name === "starQuiz" && !push) { loadStarQuizData().then(() => sqRenderChapters(_sqAllQuestions)); }
-            if (name === "clients") { loadInstitutes(); }
+
             if (push) history.pushState({ type: "section", name }, "", "");
         }
 
