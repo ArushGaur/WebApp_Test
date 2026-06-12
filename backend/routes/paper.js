@@ -958,7 +958,7 @@ async function processParagraph(paraXml) {
 
 async function processDocxXml(docXml) {
 	const matches = [...String(docXml || "").matchAll(/<w:p\b[^>]*>.*?<\/w:p>/gs)];
-	if (!matches.length) return docXml;
+	if (!matches.length) return sanitizeDocumentXml(docXml);
 
 	let result = "";
 	let lastIndex = 0;
@@ -968,7 +968,20 @@ async function processDocxXml(docXml) {
 		lastIndex = match.index + match[0].length;
 	}
 	result += docXml.slice(lastIndex);
-	return result;
+	return sanitizeDocumentXml(result);
+}
+
+// Final XML cleanup so Word accepts the file (invalid chars / bare ampersands break Word).
+function sanitizeDocumentXml(docXml) {
+	let xml = String(docXml || "");
+	// XML 1.0 forbids most C0 controls — Word rejects the file outright if present.
+	xml = xml.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+	// Escape bare ampersands inside text nodes (common in imported question text).
+	xml = xml.replace(/(<(?:w|m):t(?:\s[^>]*)?>)([\s\S]*?)(<\/(?:w|m):t>)/g, (match, open, content, close) => {
+		const fixed = content.replace(/&(?!amp;|lt;|gt;|quot;|apos;|#x?[0-9a-fA-F]+;)/g, "&amp;");
+		return open + fixed + close;
+	});
+	return xml;
 }
 
 function decodeXml(text) {
@@ -993,12 +1006,13 @@ async function zipToEntries(buffer) {
 async function entriesToZipBuffer(entries) {
 	const zip = new JSZip();
 	for (const [name, data] of Object.entries(entries)) {
-		zip.file(name, data);
+		zip.file(name.replace(/\\/g, "/"), data);
 	}
 	return zip.generateAsync({
 		type: "nodebuffer",
 		compression: "DEFLATE",
 		compressionOptions: { level: 6 },
+		platform: "UNIX",
 	});
 }
 
@@ -1132,7 +1146,10 @@ async function mergeWithTemplate(genEntries, tplEntries) {
 		}
 
 		// Commit the single final rewrite
-		merged["word/document.xml"] = Buffer.from(genDoc, 'utf8');
+		merged["word/document.xml"] = Buffer.from(
+			sanitizeDocumentXml(genDoc),
+			"utf8"
+		);
 	}
 
 	const ctKey = "[Content_Types].xml";
@@ -1182,7 +1199,7 @@ async function postProcessDocx(generatedBuf, templateBase64) {
 			if (!docXml.includes('xmlns:m=')) {
 				docXml = docXml.replace(/<w:document\b/, '<w:document xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"');
 			}
-			entries["word/document.xml"] = Buffer.from(docXml, "utf8");
+			entries["word/document.xml"] = Buffer.from(sanitizeDocumentXml(docXml), "utf8");
 		}
 
 		if (templateBase64) {
