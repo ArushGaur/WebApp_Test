@@ -198,6 +198,13 @@ async function buildTableElement(tbl, opts = {}) {
 	const cellBorder = { style: BorderStyle.SINGLE, size: 4, color: "888888" };
 	const cellBorders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder };
 
+
+	const tableWidthDxa = compact ? 10047 : 10466;
+	const colWidthDxa = Math.floor(tableWidthDxa / colCount);
+	// Last column absorbs any rounding remainder so widths always sum to tableWidthDxa.
+	const colWidthsArr = Array.from({ length: colCount }, (_, i) =>
+		i === colCount - 1 ? tableWidthDxa - colWidthDxa * (colCount - 1) : colWidthDxa
+	);
 	const makeCell = async (content, isHeader, colIdx) => new TableCell({
 		borders: cellBorders,
 		verticalAlign: VerticalAlign.CENTER,
@@ -227,12 +234,6 @@ async function buildTableElement(tbl, opts = {}) {
 	}
 
 	// A4 content width: 11906 - 720 - 720 = 10466 DXA. Compact tables use 96% = 10047.
-	const tableWidthDxa = compact ? 10047 : 10466;
-	const colWidthDxa = Math.floor(tableWidthDxa / colCount);
-	// Last column absorbs any rounding remainder so widths always sum to tableWidthDxa.
-	const colWidthsArr = Array.from({ length: colCount }, (_, i) =>
-		i === colCount - 1 ? tableWidthDxa - colWidthDxa * (colCount - 1) : colWidthDxa
-	);
 	elements.push(new Table({
 		width: { size: tableWidthDxa, type: WidthType.DXA },
 		columnWidths: colWidthsArr,
