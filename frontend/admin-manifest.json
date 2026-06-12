@@ -1,0 +1,43 @@
+{
+  "name": "Grip Physics Admin",
+  "short_name": "GP Admin",
+  "description": "Grip Physics Admin Panel — manage questions, students and statistics",
+  "start_url": "/owner.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#080714",
+  "theme_color": "#080714",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "/icon-1.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "url": "/owner.html#dashboard",
+      "description": "View student statistics"
+    },
+    {
+      "name": "Add Question",
+      "url": "/owner.html#addQuestion",
+      "description": "Add a new question"
+    },
+    {
+      "name": "Import Screenshot",
+      "url": "/owner.html#importQuestion",
+      "description": "Import questions from screenshot"
+    }
+  ]
+}

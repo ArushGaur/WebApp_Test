@@ -1,0 +1,29 @@
+{
+  "name": "grip-website",
+  "version": "2.0.0",
+  "description": "Grip Physics Student Portal",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@libsql/client": "^0.14.0",
+    "@napi-rs/canvas": "^0.1.61",
+    "cloudinary": "^2.5.1",
+    "cors": "^2.8.6",
+    "docx": "^9.6.1",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "jszip": "^3.10.1",
+    "latex-to-omml": "^2.1.1",
+    "mammoth": "^1.8.0",
+    "multer": "^1.4.5-lts.1",
+    "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^3.11.174",
+    "pdfkit": "^0.18.0"
+  }
+}
