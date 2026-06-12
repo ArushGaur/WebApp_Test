@@ -1108,7 +1108,7 @@ async function mergeWithTemplate(genEntries, tplEntries) {
 		//   visible instead of being replaced by the template. ─────────────
 		const bodyMatch = tplDoc.match(/<w:body>(.*?)<\/w:body>/s);
 		if (bodyMatch) {
-			let tplBodyNoSecpr = bodyMatch[1].replace(/<w:sectPr\b.*?<\/w:sectPr>/s, '').trim();
+			let tplBodyNoSecpr = bodyMatch[1].replace(/<w:sectPr\b.*?<\/w:sectPr>/gs, '').trim();
 			const hasRealContent = /<w:t[^>]*>[^<]+<\/w:t>/.test(tplBodyNoSecpr);
 			if (hasRealContent && tplBodyNoSecpr) {
 				const genBodyMatch = genDoc.match(/<w:body>(.*?)<\/w:body>/s);
@@ -1143,6 +1143,9 @@ async function mergeWithTemplate(genEntries, tplEntries) {
 		}
 
 		// Commit the single final rewrite
+		if (!/<w:body>[\s\S]*<\/w:body>/.test(genDoc) || (genDoc.match(/<\/w:body>/g) || []).length !== 1) {
+			console.error("[mergeWithTemplate] CORRUPTED document: missing or multiple <w:body> tags");
+		}
 		merged["word/document.xml"] = Buffer.from(genDoc, 'utf8');
 	}
 
