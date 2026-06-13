@@ -1438,7 +1438,7 @@ async function docxToPdf(docxBuffer) {
 
 			// 2. Start Task
 			const startResp = await fetch("https://api.ilovepdf.com/v1/start/officepdf", {
-				method: "POST",
+				method: "GET",
 				headers: { "Authorization": `Bearer ${token}` }
 			});
 			if (!startResp.ok) {
