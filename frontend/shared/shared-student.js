@@ -1101,7 +1101,9 @@ async function deleteCorrupted() {
 ══════════════════════════════════════════════════════════════════ */
 if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/admin-sw.js")
+        const isClient = window.location.pathname.includes("client.html") || window.location.pathname.includes("client");
+        const swUrl = isClient ? "/client-sw.js" : "/admin-sw.js";
+        navigator.serviceWorker.register(swUrl)
             .then(r => console.log("SW:", r.scope))
             .catch(e => console.warn("SW failed:", e));
     });
@@ -1110,10 +1112,12 @@ if ("serviceWorker" in navigator) {
 let _dip = null;
 window.addEventListener("beforeinstallprompt", e => {
     e.preventDefault(); _dip = e;
+    const isClient = window.location.pathname.includes("client.html") || window.location.pathname.includes("client");
+    const appName = isClient ? "Grip Physics Client" : "Grip Physics Admin";
     const b = document.createElement("div");
     b.id = "installBanner";
     b.style.cssText = "position:fixed;bottom:76px;left:50%;transform:translateX(-50%);background:var(--bg-card);border:1px solid rgba(91,95,239,0.3);border-radius:14px;padding:14px 18px;display:flex;align-items:center;gap:12px;z-index:9000;box-shadow:0 8px 32px rgba(0,0,0,0.5);max-width:340px;width:calc(100% - 32px);animation:slideUp 0.3s ease";
-    b.innerHTML = `<span style="font-size:1.6rem">⚛</span><div style="flex:1"><div style="font-weight:700;font-size:0.88rem">Install Grip Physics Admin</div><div style="font-size:0.74rem;color:var(--text-dim);margin-top:2px">Add to Home Screen</div></div><div style="display:flex;gap:6px"><button onclick="installApp()" class="btn btn-primary" style="padding:7px 12px;font-size:0.8rem">Install</button><button onclick="dismissInstall()" class="btn btn-ghost" style="padding:7px 10px;font-size:0.8rem">✕</button></div>`;
+    b.innerHTML = `<span style="font-size:1.6rem">⚛</span><div style="flex:1"><div style="font-weight:700;font-size:0.88rem">Install ${appName}</div><div style="font-size:0.74rem;color:var(--text-dim);margin-top:2px">Add to Home Screen</div></div><div style="display:flex;gap:6px"><button onclick="installApp()" class="btn btn-primary" style="padding:7px 12px;font-size:0.8rem">Install</button><button onclick="dismissInstall()" class="btn btn-ghost" style="padding:7px 10px;font-size:0.8rem">✕</button></div>`;
     document.body.appendChild(b);
 });
 async function installApp() { if (!_dip) return; _dip.prompt(); await _dip.userChoice; _dip = null; dismissInstall(); }
