@@ -3387,7 +3387,17 @@ function _agShowDownloadModal(files, safeTitle, paperTitle, questions) {
     const modal = document.getElementById('generate-paper-modal');
     if (!modal) { alert('Download ready but modal not found. Please refresh.'); return; }
 
-    window._lastPaperGenData = { files, safeTitle, paperTitle, questions, pdfFiles: null };
+    window._lastPaperGenData = {
+        files,
+        safeTitle,
+        paperTitle,
+        questions,
+        pdfFiles: null,
+        paperSubject: window._lastPaperGenData?.paperSubject || '',
+        paperChapter: window._lastPaperGenData?.paperChapter || '',
+        paperTestType: window._lastPaperGenData?.paperTestType || 'Chapter Test',
+        paperClass: window._lastPaperGenData?.paperClass || ''
+    };
 
     // Hide/show the right sections — guard every lookup with a null check
     const progressEl = document.getElementById('paper-generate-progress');
