@@ -1152,12 +1152,30 @@ function applyHeaderMetaToXml(xml, headerMeta) {
 
 	// Step 2: also handle any remaining non-split placeholders (e.g. in non-paragraph nodes
 	// like text boxes, or paragraphs that weren't merged above for some reason).
-	return xml
+	let result = xml
 		.replaceAll("{{SUBJECT}}", encode(headerMeta.subject))
 		.replaceAll("{{CHAPTER}}", formatPlaceholderForXml(splitChapter))
 		.replaceAll("{{TEST_TYPE}}", encode(headerMeta.testType))
 		.replaceAll("{{CLASS}}", encode(headerMeta.class))
 		.replaceAll("{{TITLE}}", formatPlaceholderForXml(splitTitle));
+
+	if (headerMeta.mode && headerMeta.mode !== "question") {
+		result = result.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (paraXml) => {
+			const runTexts = [...paraXml.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)].map(m => m[1]);
+			const joinedText = runTexts.join('');
+			if (/name\s+of\s+student|student\'?s?\s+name/i.test(joinedText)) {
+				console.log(`[applyHeaderMetaToXml] Clearing student name paragraph runs (mode: ${headerMeta.mode})`);
+				return paraXml.replace(/<w:t[^>]*>[\s\S]*?<\/w:t>/g, (tTag) => {
+					const openTagMatch = tTag.match(/^<w:t\b[^>]*>/);
+					const openTag = openTagMatch ? openTagMatch[0] : '<w:t>';
+					return `${openTag}</w:t>`;
+				});
+			}
+			return paraXml;
+		});
+	}
+
+	return result;
 }
 
 async function mergeWithTemplate(genEntries, tplEntries, headerMeta) {
@@ -1450,9 +1468,9 @@ router.post("/api/admin/generate-paper", requireAdmin, async (req, res) => {
 		// Include title in headerMeta so {{TITLE}} placeholder is also replaced.
 		headerMeta.title = title;
 		[qBuf, akBuf, solBuf] = await Promise.all([
-			postProcessDocx(qBuf, tplBase64, headerMeta),
-			postProcessDocx(akBuf, tplBase64, headerMeta),
-			postProcessDocx(solBuf, tplBase64, headerMeta),
+			postProcessDocx(qBuf, tplBase64, { ...headerMeta, mode: "question" }),
+			postProcessDocx(akBuf, tplBase64, { ...headerMeta, mode: "answerkey" }),
+			postProcessDocx(solBuf, tplBase64, { ...headerMeta, mode: "solution" }),
 		]);
 
 		res.json({
@@ -1687,9 +1705,9 @@ router.post("/api/admin/generate-paper-pdf", requireAdmin, async (req, res) => {
 		// Include title in headerMeta so {{TITLE}} placeholder is also replaced.
 		headerMeta.title = title;
 		[qBuf, akBuf, solBuf] = await Promise.all([
-			postProcessDocx(qBuf, tplBase64, headerMeta),
-			postProcessDocx(akBuf, tplBase64, headerMeta),
-			postProcessDocx(solBuf, tplBase64, headerMeta),
+			postProcessDocx(qBuf, tplBase64, { ...headerMeta, mode: "question" }),
+			postProcessDocx(akBuf, tplBase64, { ...headerMeta, mode: "answerkey" }),
+			postProcessDocx(solBuf, tplBase64, { ...headerMeta, mode: "solution" }),
 		]);
 
 		// Step 3: Convert each DOCX → PDF using LibreOffice headless.
