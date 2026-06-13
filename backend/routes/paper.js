@@ -595,10 +595,14 @@ async function buildPaperDoc(selectedQuestions, mode, title, headerMeta = {}) {
 			}));
 		}
 		if (chapter) {
+			let sz = 28;
+			if (chapter.length > 35) sz = 20;
+			else if (chapter.length > 25) sz = 24;
+
 			centreParas.push(new Paragraph({
 				spacing: { before: 0, after: 40 },
 				alignment: AlignmentType.CENTER,
-				children: [new TextRun({ text: `[ ${chapter.toUpperCase()} ]`, bold: true, font: "Arial", size: 28, color: "1a1a2e", underline: {} })]
+				children: [new TextRun({ text: `[ ${chapter.toUpperCase()} ]`, bold: true, font: "Arial", size: sz, color: "1a1a2e", underline: {} })]
 			}));
 		}
 		if (testType) {
@@ -1045,7 +1049,7 @@ function applyHeaderMetaToXml(xml, headerMeta) {
 
 		// Extract the first run's rPr to re-use for the merged run
 		const rPrMatch = paraXml.match(/<w:rPr>([\s\S]*?)<\/w:rPr>/);
-		const rPr = rPrMatch ? `<w:rPr>${rPrMatch[1]}</w:rPr>` : '';
+		let rPr = rPrMatch ? `<w:rPr>${rPrMatch[1]}</w:rPr>` : '';
 
 		// Replace placeholder tokens in the joined text
 		let replaced = joined
@@ -1054,6 +1058,23 @@ function applyHeaderMetaToXml(xml, headerMeta) {
 			.replaceAll('{{TEST_TYPE}}', encode(headerMeta.testType))
 			.replaceAll('{{CLASS}}', encode(headerMeta.class))
 			.replaceAll('{{TITLE}}', encode(headerMeta.title || ''));
+
+		if ((joined.includes('{{CHAPTER}}') || joined.includes('{{TITLE}}')) && replaced.length > 20) {
+			const len = replaced.length;
+			let scale = 1.0;
+			if (len > 35) scale = 0.65;
+			else if (len > 25) scale = 0.75;
+			else scale = 0.85;
+
+			rPr = rPr.replace(/<w:sz\b([^>]*)w:val="(\d+)"([^>]*)\/>/g, (m, p1, val, p2) => {
+				const newVal = Math.round(Number(val) * scale);
+				return `<w:sz${p1}w:val="${newVal}"${p2}/>`;
+			});
+			rPr = rPr.replace(/<w:szCs\b([^>]*)w:val="(\d+)"([^>]*)\/>/g, (m, p1, val, p2) => {
+				const newVal = Math.round(Number(val) * scale);
+				return `<w:szCs${p1}w:val="${newVal}"${p2}/>`;
+			});
+		}
 
 		// Rebuild: keep <w:pPr> intact, replace all runs with a single merged run.
 		const pPrMatch = paraXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
