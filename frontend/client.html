@@ -206,7 +206,7 @@
                         to opt an admin-style access code out of browser password autofill.
                     -->
                         <input id="passcode" type="password" class="login-field-input" placeholder="Enter your passcode"
-                            name="institute-access-code" autocomplete="off" data-form-type="other" data-lpignore="true"
+                            name="institute-access-code" autocomplete="one-time-code" data-form-type="other" data-lpignore="true"
                             data-1p-ignore="true" onkeydown="if(event.key==='Enter') login()"
                             oninput="document.getElementById('loginError').style.display='none';document.getElementById('loginFieldWrap').classList.remove('login-field-error')">
                         <button class="login-eye-btn" type="button" onclick="togglePasscodeVisibility(this)"
@@ -1363,7 +1363,7 @@
             <div class="login-field-wrap" id="teacherPasscodeWrap" style="margin-bottom:15px">
                 <span class="login-field-icon">🔑</span>
                 <input type="password" id="teacherPasscode" class="login-field-input"
-                    placeholder="Enter teacher passcode" autocomplete="current-password"
+                    placeholder="Enter teacher passcode" autocomplete="one-time-code"
                     onkeydown="if(event.key === 'Enter') submitTeacherPasscode()">
                 <button class="login-eye-btn" type="button" onclick="toggleTeacherPasscodeVisibility(this)"
                     tabindex="-1">👁️</button>
