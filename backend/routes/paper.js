@@ -735,11 +735,11 @@ async function buildPaperDoc(selectedQuestions, mode, title, headerMeta = {}) {
 
 	// Date line + student name line
 	allParas.push(new Paragraph({
-		spacing: { before: 0, after: subject || chapter || testType ? 120 : 480 },
+		spacing: { before: 0, after: (subject || chapter || testType) && mode === "question" ? 120 : 360 },
 		alignment: AlignmentType.CENTER,
 		children: [new TextRun({ text: `Date: _______________   Total Questions: ${selectedQuestions.length}`, font: "Arial", size: 22, color: "555555" })]
 	}));
-	if (subject || chapter || testType) {
+	if ((subject || chapter || testType) && mode === "question") {
 		allParas.push(new Paragraph({
 			spacing: { before: 0, after: 360 },
 			children: [new TextRun({ text: "NAME OF STUDENT ________________________________", font: "Arial", size: 22, bold: true, color: "1a1a2e" })]
