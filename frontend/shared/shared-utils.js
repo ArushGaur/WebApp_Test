@@ -648,17 +648,21 @@
             const mime = format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
             const labelPrefix = format === 'pdf' ? '📕' : '📄';
 
-            const downloads = [
+            let downloads = [
                 { key: 'questionPaper', label: `${labelPrefix} Question Paper`, filename: `${safeTitle}_Questions${ext}` },
                 { key: 'answerKey', label: `🔑 Answer Key`, filename: `${safeTitle}_AnswerKey${ext}` },
                 { key: 'solutions', label: `💡 Solutions`, filename: `${safeTitle}_Solutions${ext}` }
             ];
 
+            if (format === 'pdf') {
+                downloads = downloads.filter(d => d.key !== 'answerKey');
+            }
+
             let html = `
             <button onclick="downloadAllFiles('${format}')" 
                 style="width:100%;padding:10px;background:var(--success);color:#fff;border:none;border-radius:8px;font-size:0.82rem;font-weight:700;cursor:pointer;margin-bottom:12px;transition:opacity 0.15s;display:flex;align-items:center;justify-content:center;gap:6px"
                 onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">
-                ⚡ Download All (3 Files)
+                ⚡ Download All (${downloads.length} Files)
             </button>`;
 
             for (const dl of downloads) {
@@ -688,11 +692,15 @@
             const ext = format === 'pdf' ? '.pdf' : '.docx';
             const mime = format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
-            const downloads = [
+            let downloads = [
                 { key: 'questionPaper', filename: `${safeTitle}_Questions${ext}` },
                 { key: 'answerKey', filename: `${safeTitle}_AnswerKey${ext}` },
                 { key: 'solutions', filename: `${safeTitle}_Solutions${ext}` }
             ];
+
+            if (format === 'pdf') {
+                downloads = downloads.filter(d => d.key !== 'answerKey');
+            }
 
             downloads.forEach((dl, index) => {
                 setTimeout(() => {
