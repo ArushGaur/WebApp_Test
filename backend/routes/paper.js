@@ -52,6 +52,66 @@ async function resolveImageBuffer(imgSrc) {
 	}
 }
 
+// Read pixel dimensions from an image buffer without any external library.
+// Supports PNG, JPEG, GIF, and WebP by parsing their binary headers.
+// Returns { width, height } in pixels, or null if unrecognised.
+async function getImageDimensions(buffer) {
+	if (!buffer || buffer.length < 24) return null;
+	try {
+		// PNG: 8-byte signature, then IHDR chunk (4 len + 4 type + 4 width + 4 height)
+		if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+			const width  = buffer.readUInt32BE(16);
+			const height = buffer.readUInt32BE(20);
+			if (width > 0 && height > 0) return { width, height };
+		}
+		// JPEG: scan SOF markers (0xFF 0xC0 / 0xC1 / 0xC2)
+		if (buffer[0] === 0xFF && buffer[1] === 0xD8) {
+			let i = 2;
+			while (i < buffer.length - 8) {
+				if (buffer[i] !== 0xFF) break;
+				const marker = buffer[i + 1];
+				if (marker === 0xC0 || marker === 0xC1 || marker === 0xC2) {
+					const height = buffer.readUInt16BE(i + 5);
+					const width  = buffer.readUInt16BE(i + 7);
+					if (width > 0 && height > 0) return { width, height };
+				}
+				if (i + 3 >= buffer.length) break;
+				const segLen = buffer.readUInt16BE(i + 2);
+				if (segLen < 2) break;
+				i += 2 + segLen;
+			}
+		}
+		// GIF: 6-byte header then width/height as little-endian uint16
+		if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) {
+			const width  = buffer.readUInt16LE(6);
+			const height = buffer.readUInt16LE(8);
+			if (width > 0 && height > 0) return { width, height };
+		}
+		// WebP: RIFF????WEBP header
+		if (
+			buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+			buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50
+		) {
+			const chunk = buffer.slice(12, 16).toString('ascii');
+			if (chunk === 'VP8 ' && buffer.length >= 30) {
+				const width  = (buffer.readUInt16LE(26) & 0x3FFF) + 1;
+				const height = (buffer.readUInt16LE(28) & 0x3FFF) + 1;
+				if (width > 0 && height > 0) return { width, height };
+			} else if (chunk === 'VP8L' && buffer.length >= 25) {
+				const b = buffer[21] | (buffer[22] << 8) | (buffer[23] << 16) | (buffer[24] << 24);
+				const width  = (b & 0x3FFF) + 1;
+				const height = ((b >> 14) & 0x3FFF) + 1;
+				if (width > 0 && height > 0) return { width, height };
+			} else if (chunk === 'VP8X' && buffer.length >= 30) {
+				const width  = (buffer[24] | (buffer[25] << 8) | (buffer[26] << 16)) + 1;
+				const height = (buffer[27] | (buffer[28] << 8) | (buffer[29] << 16)) + 1;
+				if (width > 0 && height > 0) return { width, height };
+			}
+		}
+	} catch (_) {}
+	return null;
+}
+
 function imgType(src) {
 	if (!src) return "jpg";
 	if (src.startsWith("data:image/png") || src.includes("iVBOR")) return "png";
@@ -415,9 +475,29 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 
 	let qImgBuf = null;
 	let qImgType = "jpg";
+	// Rendered size in points. Height is fixed at 100pt; width is computed from
+	// the actual pixel aspect ratio so the image is never stretched or squished.
+	const TARGET_HEIGHT_PT = 100;
+	const MAX_WIDTH_PT     = 200; // cap for very wide/panoramic images
+	let qImgWidth  = 130;         // default fallback (roughly square)
+	let qImgHeight = TARGET_HEIGHT_PT;
+
 	if (q.questionImage) {
-		qImgBuf = await resolveImageBuffer(q.questionImage);
+		qImgBuf  = await resolveImageBuffer(q.questionImage);
 		qImgType = imgType(q.questionImage);
+		if (qImgBuf) {
+			const dims = await getImageDimensions(qImgBuf);
+			if (dims && dims.width > 0 && dims.height > 0) {
+				const aspect = dims.width / dims.height;
+				qImgWidth  = Math.round(TARGET_HEIGHT_PT * aspect);
+				qImgHeight = TARGET_HEIGHT_PT;
+				// If the image is very wide, cap width and scale height down instead
+				if (qImgWidth > MAX_WIDTH_PT) {
+					qImgWidth  = MAX_WIDTH_PT;
+					qImgHeight = Math.round(MAX_WIDTH_PT / aspect);
+				}
+			}
+		}
 	}
 
 	// ── 1. Question text — always full-width, outside any table ──────────────
@@ -438,9 +518,15 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 	}
 
 	// ── 2. Build options-only paragraphs ──────────────────────────────────────
-	// Tab stop: narrower when image present so options don't overflow under it.
-	// 3700 DXA ≈ midpoint of 68% left cell | 4873 DXA ≈ midpoint of full-width
-	const tabPos = qImgBuf ? 3700 : 4873;
+	// Tab stop for two-column option layout (A+B on row 1, C+D on row 2).
+	// When an image is present the options live in a narrower left column, so we
+	// compute the tab stop from the expected left-column width. We use qImgWidth
+	// computed above to mirror the same dynamic column sizing used in the table.
+	// 1pt = 20 DXA; right col = qImgWidth*20+240 clamped [2400,4400]; left = 10466 - right.
+	// Midpoint of left col ≈ leftCol / 2 in DXA, but a tab at ~half gives good split.
+	const tabPos = qImgBuf
+		? Math.round((10466 - Math.min(Math.max(Math.round(qImgWidth * 20) + 240, 2400), 4400)) / 2)
+		: 4873;
 	const optionParas = [];
 
 	if (hasOptionTables) {
@@ -496,7 +582,9 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 			optImgBufs[oi] = optImg ? { buf: await resolveImageBuffer(optImg), type: imgType(optImg) } : null;
 		}
 		// Two-per-line layout uses a tab stop to separate the left/right columns.
-		const imgTabPos = qImgBuf ? 3700 : 4873;
+		const imgTabPos = qImgBuf
+			? Math.round((10466 - Math.min(Math.max(Math.round(qImgWidth * 20) + 240, 2400), 4400)) / 2)
+			: 4873;
 		for (let oi = 0; oi < 4; oi += 2) {
 			const rowChildren = [];
 			// Left column (option oi)
@@ -543,10 +631,15 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 			insideH: noBorder, insideV: noBorder,
 		};
 
-		// A4 content width = 10466 DXA. Left (options) = 68% ≈ 7116, Right (image) = 32% ≈ 3350.
+		// A4 content width = 10466 DXA.
+		// Right column width scales with the image's actual rendered width (1pt = 20 DXA),
+		// plus padding, clamped between 2400 DXA (120pt) and 4400 DXA (220pt).
+		const rightColDxa = Math.min(Math.max(Math.round(qImgWidth * 20) + 240, 2400), 4400);
+		const leftColDxa  = 10466 - rightColDxa;
+
 		paragraphs.push(new Table({
 			width: { size: 10466, type: WidthType.DXA },
-			columnWidths: [7116, 3350],
+			columnWidths: [leftColDxa, rightColDxa],
 			borders: {
 				top: noBorder,
 				bottom: noBorder,
@@ -558,17 +651,17 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 			rows: [
 				new TableRow({
 					children: [
-						// Left cell — options only (68%)
+						// Left cell — options only
 						new TableCell({
-							width: { size: 7116, type: WidthType.DXA },
+							width: { size: leftColDxa, type: WidthType.DXA },
 							borders: noBorders,
 							verticalAlign: VerticalAlign.TOP,
 							margins: { top: 0, bottom: 0, left: 0, right: 100 },
 							children: optionParas,
 						}),
-						// Right cell — question image, centred vertically (32%)
+						// Right cell — question image, aspect-ratio preserved
 						new TableCell({
-							width: { size: 3350, type: WidthType.DXA },
+							width: { size: rightColDxa, type: WidthType.DXA },
 							borders: noBorders,
 							verticalAlign: VerticalAlign.CENTER,
 							margins: { top: 40, bottom: 0, left: 60, right: 0 },
@@ -580,7 +673,7 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 										new ImageRun({
 											data: qImgBuf,
 											type: qImgType,
-											transformation: { width: 130, height: 100 },
+											transformation: { width: qImgWidth, height: qImgHeight },
 										}),
 									],
 								}),
@@ -836,7 +929,9 @@ function splitMath(text) {
 
 // Convert LaTeX to safe plain-text XML run when OMML conversion fails.
 function latexFallbackRun(src) {
-	const readable = String(src || "")
+	// Normalise to raw text first so we never double-encode (&amp; -> &amp;amp; etc.)
+	const normalized = fullyDecodeXml(String(src || ""));
+	const readable = normalized
 		.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, '($1)/($2)')
 		.replace(/\\sqrt\{([^{}]*)\}/g, '\u221a($1)')
 		.replace(/\\left\(/g, '(').replace(/\\right\)/g, ')')
@@ -845,9 +940,11 @@ function latexFallbackRun(src) {
 		.replace(/\\([a-zA-Z]+)\{([^{}]*)\}/g, '$1($2)')
 		.replace(/\\([a-zA-Z]+)/g, '$1')
 		.replace(/[\{\}]/g, '')
+		// XML-encode AFTER all transforms — & must come first to avoid double-encoding
 		.replace(/&/g, '&amp;')
 		.replace(/</g, '&lt;')
 		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
 		.trim();
 	const spaceAttr = readable.startsWith(' ') || readable.endsWith(' ') ? ' xml:space="preserve"' : '';
 	return `<w:r><w:t${spaceAttr}>${readable}</w:t></w:r>`;
@@ -900,13 +997,19 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 			'$1$3$2'
 		);
 
-		// 3. Fix unescaped &, <, > inside text content tags (m:t and w:t)
+		// 3. Normalise text-node content: fully decode then re-encode exactly once.
+		// This eliminates double-encoding (&amp;amp;, &amp;lt; etc.) regardless of
+		// what the OMML library produced, and catches all entity forms including &#NNN;.
 		return clean.replace(/(<(?:m|w):t[^>]*>)([\s\S]*?)(<\/(?:m|w):t>)/g, (match, open, content, close) => {
-			// Re-escape & that isn't already part of an entity, and escape raw < and >
-			const fixed = content
-				.replace(/&(?!amp;|lt;|gt;|quot;|apos;|#)/g, '&amp;')
+			// Decode fully to raw text first
+			const raw = fullyDecodeXml(content);
+			// Re-encode cleanly — & must be first to avoid double-encoding
+			const fixed = raw
+				.replace(/&/g, '&amp;')
 				.replace(/</g, '&lt;')
 				.replace(/>/g, '&gt;');
+			// ' and " are intentionally left unencoded in text nodes —
+			// they are legal unencoded in XML text content and Word handles them fine.
 			return open + fixed + close;
 		});
 	}
@@ -950,7 +1053,17 @@ async function processParagraph(paraXml) {
 	const runs = [...inner.matchAll(/<w:r\b[^>]*>.*?<\/w:r>/gs)];
 	if (!runs.length) return paraXml;
 
-	const allText = runs.map((r) => extractTextFromRun(r[0])).join("");
+	// Use fullyDecodeXml so &#39; &#34; and other numeric char refs are decoded
+	// before splitMath, and then correctly re-encoded by encodeRunText.
+	// The old extractTextFromRun used decodeXml which missed &#NNN; refs, causing
+	// encodeRunText to encode the & in &#39; -> &amp;#39; (corrupt XML).
+	function extractRunTextFull(runXml) {
+		const texts = [...String(runXml || "").matchAll(/<w:t[^>]*>(.*?)<\/w:t>/gs)]
+			.map((m) => fullyDecodeXml(m[1]));
+		return texts.join("");
+	}
+
+	const allText = runs.map((r) => extractRunTextFull(r[0])).join("");
 	if (!allText.includes("$")) return paraXml;
 
 	// Build a character-position → run-rPr map so each non-math text fragment
@@ -961,7 +1074,7 @@ async function processParagraph(paraXml) {
 	const rprByPos = []; // rprByPos[i] = rPr string that applies to character i of mergedText
 	let firstRpr = "";
 	for (const r of runs) {
-		const t = extractTextFromRun(r[0]);
+		const t = extractRunTextFull(r[0]);
 		const rpr = extractRprFromRun(r[0]);
 		if (!firstRpr) firstRpr = rpr;
 		runTexts.push(t);
@@ -973,13 +1086,15 @@ async function processParagraph(paraXml) {
 	if (!parts.some((part) => part.isMath)) return paraXml;
 
 	// Encode raw XML text-node content safely.
+	// Use &#39; for apostrophe (numeric ref) — safer than &apos; which some
+	// older Word versions reject in text nodes.
 	function encodeRunText(s) {
 		return String(s)
-			.replace(/&/g, "&amp;")
+			.replace(/&/g, "&amp;")   // MUST be first
 			.replace(/</g, "&lt;")
 			.replace(/>/g, "&gt;")
 			.replace(/"/g, "&quot;")
-			.replace(/'/g, "&apos;");
+			.replace(/'/g, "&#39;");
 	}
 
 	let newRunsXml = "";
@@ -1042,6 +1157,23 @@ function decodeXml(text) {
 		.replace(/&amp;/g, "&");
 }
 
+// Fully decode ALL XML/HTML entities including numeric char refs like &#39; &#34;
+// The docx library emits &#39; for apostrophes; decodeXml misses those, causing
+// encodeRunText to encode the & in &#39; -> &amp;#39; (corrupt XML).
+// &amp; MUST be decoded last to avoid turning &amp;lt; into < prematurely.
+function fullyDecodeXml(text) {
+	return String(text || "")
+		.replace(/&apos;/g,  "'")
+		.replace(/&#39;/g,   "'")
+		.replace(/&quot;/g,  '"')
+		.replace(/&#34;/g,   '"')
+		.replace(/&gt;/g,    ">")
+		.replace(/&lt;/g,    "<")
+		.replace(/&nbsp;/g,  " ")
+		.replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+		.replace(/&amp;/g,   "&");  // MUST be last
+}
+
 async function zipToEntries(buffer) {
 	const zip = await JSZip.loadAsync(buffer);
 	const entries = {};
@@ -1078,8 +1210,10 @@ async function entriesToZipBuffer(entries) {
 function applyHeaderMetaToXml(xml, headerMeta) {
 	if (!headerMeta || typeof xml !== "string") return xml;
 	console.log("[applyHeaderMetaToXml] headerMeta:", JSON.stringify(headerMeta));
+	// Also encode ' and " to prevent attribute injection via headerMeta values
 	const encode = (s) => String(s || "")
-		.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+		.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 	const splitChapter = splitTextIntoTwoLines(headerMeta.chapter || '');
 	const splitTitle = splitTextIntoTwoLines(headerMeta.title || '');
@@ -1159,12 +1293,15 @@ function applyHeaderMetaToXml(xml, headerMeta) {
 
 	// Step 2: also handle any remaining non-split placeholders (e.g. in non-paragraph nodes
 	// like text boxes, or paragraphs that weren't merged above for some reason).
-	let result = xml
-		.replaceAll("{{SUBJECT}}", encode(headerMeta.subject))
-		.replaceAll("{{CHAPTER}}", formatPlaceholderForXml(splitChapter))
-		.replaceAll("{{TEST_TYPE}}", encode(headerMeta.testType))
-		.replaceAll("{{CLASS}}", encode(headerMeta.class))
-		.replaceAll("{{TITLE}}", formatPlaceholderForXml(splitTitle));
+	// Guard each replacement with an includes() check: Step 1 already consumed all {{
+	// in paragraphs it rebuilt, so these replaceAll calls only fire on genuine remaining
+	// occurrences — preventing any risk of double-processing already-encoded XML.
+	let result = xml;
+	if (result.includes("{{SUBJECT}}"))   result = result.replaceAll("{{SUBJECT}}",   encode(headerMeta.subject));
+	if (result.includes("{{CHAPTER}}"))   result = result.replaceAll("{{CHAPTER}}",   formatPlaceholderForXml(splitChapter));
+	if (result.includes("{{TEST_TYPE}}")) result = result.replaceAll("{{TEST_TYPE}}", encode(headerMeta.testType));
+	if (result.includes("{{CLASS}}"))     result = result.replaceAll("{{CLASS}}",     encode(headerMeta.class));
+	if (result.includes("{{TITLE}}"))     result = result.replaceAll("{{TITLE}}",     formatPlaceholderForXml(splitTitle));
 
 	if (headerMeta.mode && headerMeta.mode !== "question") {
 		result = result.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (paraXml) => {
