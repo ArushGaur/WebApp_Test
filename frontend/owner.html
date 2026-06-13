@@ -112,7 +112,7 @@
                         </svg>
                     </div>
                     <input id="passcode" type="password" class="login-field-input" placeholder="Enter your passcode"
-                        autocomplete="current-password" onkeydown="if(event.key==='Enter') login()"
+                        autocomplete="one-time-code" onkeydown="if(event.key==='Enter') login()"
                         oninput="document.getElementById('loginError').style.display='none';document.getElementById('loginFieldWrap').classList.remove('login-field-error')">
                     <button class="login-eye-btn" type="button" onclick="togglePasscodeVisibility(this)" tabindex="-1"
                         title="Show/hide">
