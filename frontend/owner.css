@@ -2180,6 +2180,17 @@
             padding: 20px;
         }
 
+        .modal-flex-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .ag-grid-2col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
         #student-picker-modal {
             z-index: 10020;
         }
@@ -4304,6 +4315,15 @@
         }
 
         @media (max-width: 680px) {
+            .modal-flex-row {
+                flex-direction: column !important;
+                gap: 12px !important;
+            }
+
+            .ag-grid-2col {
+                grid-template-columns: 1fr !important;
+            }
+
             #ag-overlay {
                 padding: 8px;
                 align-items: flex-start;
