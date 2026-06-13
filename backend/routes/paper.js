@@ -79,6 +79,47 @@ function decodeHtmlEntities(s) {
 		.replace(/&nbsp;/g, " ");
 }
 
+function splitTextIntoTwoLines(s) {
+	if (!s || s.length <= 25) return s;
+	
+	// Try to split around ' & ' first, if it exists
+	const ampIndex = s.indexOf(' & ');
+	if (ampIndex !== -1) {
+		const part1 = s.substring(0, ampIndex + 2).trim(); // includes '&'
+		const part2 = s.substring(ampIndex + 2).trim();
+		return part1 + '\n' + part2;
+	}
+	
+	// Try to split around ' and ' (case-insensitive)
+	const andIndex = s.toLowerCase().indexOf(' and ');
+	if (andIndex !== -1) {
+		const part1 = s.substring(0, andIndex + 4).trim(); // includes 'and'
+		const part2 = s.substring(andIndex + 4).trim();
+		return part1 + '\n' + part2;
+	}
+	
+	// Otherwise, find the space closest to the middle of the string
+	const mid = Math.floor(s.length / 2);
+	let bestSpace = -1;
+	let minDiff = Infinity;
+	
+	for (let i = 0; i < s.length; i++) {
+		if (s[i] === ' ') {
+			const diff = Math.abs(i - mid);
+			if (diff < minDiff) {
+				minDiff = diff;
+				bestSpace = i;
+			}
+		}
+	}
+	
+	if (bestSpace !== -1) {
+		return s.substring(0, bestSpace).trim() + '\n' + s.substring(bestSpace + 1).trim();
+	}
+	
+	return s;
+}
+
 function normalizePaperQuestions(selectedQuestions) {
 	return (Array.isArray(selectedQuestions) ? selectedQuestions : []).map((item, index) => {
 		const source = item && typeof item === "object" ? item : {};
@@ -595,14 +636,26 @@ async function buildPaperDoc(selectedQuestions, mode, title, headerMeta = {}) {
 			}));
 		}
 		if (chapter) {
-			let sz = 28;
-			if (chapter.length > 35) sz = 20;
-			else if (chapter.length > 25) sz = 24;
-
+			const splitLines = splitTextIntoTwoLines(chapter.toUpperCase()).split('\n');
+			const children = [];
+			for (let i = 0; i < splitLines.length; i++) {
+				const lineText = splitLines.length > 1
+					? (i === 0 ? `[ ${splitLines[i]}` : `${splitLines[i]} ]`)
+					: `[ ${splitLines[i]} ]`;
+				children.push(new TextRun({
+					text: lineText,
+					bold: true,
+					font: "Arial",
+					size: 28,
+					color: "1a1a2e",
+					underline: {},
+					break: i > 0 ? 1 : undefined
+				}));
+			}
 			centreParas.push(new Paragraph({
 				spacing: { before: 0, after: 40 },
 				alignment: AlignmentType.CENTER,
-				children: [new TextRun({ text: `[ ${chapter.toUpperCase()} ]`, bold: true, font: "Arial", size: sz, color: "1a1a2e", underline: {} })]
+				children: children
 			}));
 		}
 		if (testType) {
@@ -1020,6 +1073,9 @@ function applyHeaderMetaToXml(xml, headerMeta) {
 	const encode = (s) => String(s || "")
 		.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+	const splitChapter = splitTextIntoTwoLines(headerMeta.chapter || '');
+	const splitTitle = splitTextIntoTwoLines(headerMeta.title || '');
+
 	// Word sometimes splits placeholder text like {{SUBJECT}} across multiple <w:r> runs,
 	// e.g. <w:r>...<w:t>{{SUB</w:t></w:r><w:r>...<w:t>JECT}}</w:t></w:r>.
 	// A simple replaceAll() won't find them. Fix: collapse adjacent <w:t> text nodes
@@ -1054,46 +1110,53 @@ function applyHeaderMetaToXml(xml, headerMeta) {
 		// Replace placeholder tokens in the joined text
 		let replaced = joined
 			.replaceAll('{{SUBJECT}}', encode(headerMeta.subject))
-			.replaceAll('{{CHAPTER}}', encode(headerMeta.chapter))
+			.replaceAll('{{CHAPTER}}', encode(splitChapter))
 			.replaceAll('{{TEST_TYPE}}', encode(headerMeta.testType))
 			.replaceAll('{{CLASS}}', encode(headerMeta.class))
-			.replaceAll('{{TITLE}}', encode(headerMeta.title || ''));
+			.replaceAll('{{TITLE}}', encode(splitTitle));
 
-		if ((joined.includes('{{CHAPTER}}') || joined.includes('{{TITLE}}')) && replaced.length > 20) {
-			const len = replaced.length;
-			let scale = 1.0;
-			if (len > 35) scale = 0.65;
-			else if (len > 25) scale = 0.75;
-			else scale = 0.85;
-
-			rPr = rPr.replace(/<w:sz\b([^>]*)w:val="(\d+)"([^>]*)\/>/g, (m, p1, val, p2) => {
-				const newVal = Math.round(Number(val) * scale);
-				return `<w:sz${p1}w:val="${newVal}"${p2}/>`;
-			});
-			rPr = rPr.replace(/<w:szCs\b([^>]*)w:val="(\d+)"([^>]*)\/>/g, (m, p1, val, p2) => {
-				const newVal = Math.round(Number(val) * scale);
-				return `<w:szCs${p1}w:val="${newVal}"${p2}/>`;
-			});
-		}
-
-		// Rebuild: keep <w:pPr> intact, replace all runs with a single merged run.
+		// Rebuild: keep <w:pPr> intact, replace all runs with merged run(s).
 		const pPrMatch = paraXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
 		const pPr = pPrMatch ? pPrMatch[0] : '';
 		const pOpenMatch = paraXml.match(/^<w:p\b[^>]*>/);
 		const pOpen = pOpenMatch ? pOpenMatch[0] : '<w:p>';
-		const spaceAttr = replaced.startsWith(' ') || replaced.endsWith(' ') ? ' xml:space="preserve"' : '';
-		const mergedRun = `<w:r>${rPr}<w:t${spaceAttr}>${replaced}</w:t></w:r>`;
+		
+		let mergedRun = '';
+		if (replaced.includes('\n')) {
+			const lines = replaced.split('\n');
+			mergedRun = `<w:r>${rPr}`;
+			for (let i = 0; i < lines.length; i++) {
+				if (i > 0) {
+					mergedRun += '<w:br/>';
+				}
+				const spaceAttr = lines[i].startsWith(' ') || lines[i].endsWith(' ') ? ' xml:space="preserve"' : '';
+				mergedRun += `<w:t${spaceAttr}>${lines[i]}</w:t>`;
+			}
+			mergedRun += `</w:r>`;
+		} else {
+			const spaceAttr = replaced.startsWith(' ') || replaced.endsWith(' ') ? ' xml:space="preserve"' : '';
+			mergedRun = `<w:r>${rPr}<w:t${spaceAttr}>${replaced}</w:t></w:r>`;
+		}
+		
 		return `${pOpen}${pPr}${mergedRun}</w:p>`;
 	});
+
+	const formatPlaceholderForXml = (text) => {
+		const encoded = encode(text);
+		if (encoded.includes('\n')) {
+			return encoded.split('\n').join('</w:t><w:br/><w:t xml:space="preserve">');
+		}
+		return encoded;
+	};
 
 	// Step 2: also handle any remaining non-split placeholders (e.g. in non-paragraph nodes
 	// like text boxes, or paragraphs that weren't merged above for some reason).
 	return xml
 		.replaceAll("{{SUBJECT}}", encode(headerMeta.subject))
-		.replaceAll("{{CHAPTER}}", encode(headerMeta.chapter))
+		.replaceAll("{{CHAPTER}}", formatPlaceholderForXml(splitChapter))
 		.replaceAll("{{TEST_TYPE}}", encode(headerMeta.testType))
 		.replaceAll("{{CLASS}}", encode(headerMeta.class))
-		.replaceAll("{{TITLE}}", encode(headerMeta.title || ""));
+		.replaceAll("{{TITLE}}", formatPlaceholderForXml(splitTitle));
 }
 
 async function mergeWithTemplate(genEntries, tplEntries, headerMeta) {
