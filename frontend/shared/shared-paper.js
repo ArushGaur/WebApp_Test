@@ -906,7 +906,32 @@
                     statusEl.style.background = 'var(--bg-input)';
                     statusEl.style.border = '1px solid var(--border)';
                     statusEl.style.color = 'var(--text-dim)';
-                    statusEl.innerHTML = `<span class="spinner" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px"></span> Generating PDFs...`;
+                    statusEl.style.padding = '14px 18px';
+                    statusEl.style.borderRadius = '10px';
+                    statusEl.innerHTML = `
+                        <div style="display:flex;align-items:center;justify-content:between;gap:8px;font-size:0.8rem;font-weight:700;margin-bottom:6px">
+                            <span id="pdf-progress-text" style="color:var(--text)">Preparing files for PDF conversion...</span>
+                            <span id="pdf-progress-percent" style="margin-left:auto;color:var(--text-dim)">0%</span>
+                        </div>
+                        <div style="width:100%;height:6px;background:rgba(255,255,255,0.06);border-radius:6px;overflow:hidden">
+                            <div id="pdf-progress-bar" style="width:0%;height:100%;background:linear-gradient(90deg,#ef4444,#f87171);transition:width 0.4s ease;border-radius:6px"></div>
+                        </div>
+                    `;
+
+                    const updateProgress = (pct, text) => {
+                        const bar = document.getElementById('pdf-progress-bar');
+                        const txt = document.getElementById('pdf-progress-text');
+                        const num = document.getElementById('pdf-progress-percent');
+                        if (bar) bar.style.width = pct + '%';
+                        if (txt && text) txt.textContent = text;
+                        if (num) num.textContent = pct + '%';
+                    };
+
+                    let progressTimers = [];
+                    progressTimers.push(setTimeout(() => updateProgress(15, "Uploading files..."), 150));
+                    progressTimers.push(setTimeout(() => updateProgress(45, "Converting Question Paper..."), 1200));
+                    progressTimers.push(setTimeout(() => updateProgress(78, "Converting Solutions..."), 3500));
+                    progressTimers.push(setTimeout(() => updateProgress(95, "Finishing up conversion..."), 6000));
 
                     try {
                         const resp = await fetch(`${API_BASE}/api/admin/generate-paper-pdf`, {
@@ -926,10 +951,16 @@
                         const resData = await resp.json();
                         if (!resp.ok || !resData.success) throw new Error(resData.error || 'Failed to generate PDF');
 
+                        // Clear timers and finish
+                        progressTimers.forEach(clearTimeout);
+                        updateProgress(100, "Done!");
+                        await new Promise(r => setTimeout(r, 200));
+
                         window._lastPaperGenData.pdfFiles = resData.files;
                         statusEl.style.display = 'none';
                         renderFormatLinks('pdf', resData.files);
                     } catch (err) {
+                        progressTimers.forEach(clearTimeout);
                         statusEl.style.background = 'rgba(239,68,68,0.1)';
                         statusEl.style.border = '1px solid rgba(239,68,68,0.2)';
                         statusEl.style.color = 'var(--error)';
