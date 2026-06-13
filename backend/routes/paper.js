@@ -1387,14 +1387,6 @@ router.post("/api/admin/generate-paper", requireAdmin, async (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════
 //  PDF GENERATION — convert DOCX → PDF via LibreOffice headless
 // ══════════════════════════════════════════════════════════════════════════
-
-/**
- * Convert a DOCX Buffer to a PDF Buffer using LibreOffice headless.
- * This preserves equations (OMML), template styles, images, and layout
- * exactly as they appear in the Word document.
- * @param {Buffer} docxBuffer - The DOCX file contents
- * @returns {Promise<Buffer>} - The PDF file contents
- */
 /**
  * Resolve the LibreOffice binary. Tries PATH names and common absolute
  * install locations so it works on Ubuntu/Debian, macOS, and custom installs.
@@ -1420,13 +1412,99 @@ function resolveLibreOfficeBin() {
 	return null;
 }
 
+/**
+ * Convert a DOCX Buffer to a PDF Buffer using LibreOffice headless.
+ * This preserves equations (OMML), template styles, images, and layout
+ * exactly as they appear in the Word document.
+ * @param {Buffer} docxBuffer - The DOCX file contents
+ * @returns {Promise<Buffer>} - The PDF file contents
+ */
 async function docxToPdf(docxBuffer) {
+	const publicKey = process.env.ILOVEPDF_PUBLIC_KEY;
+	if (publicKey) {
+		console.log("[docxToPdf] Attempting conversion via iLovePDF API...");
+		try {
+			// 1. Authenticate
+			const authResp = await fetch("https://api.ilovepdf.com/v1/auth", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ public_key: publicKey })
+			});
+			if (!authResp.ok) {
+				const errText = await authResp.text();
+				throw new Error(`iLovePDF auth failed: ${authResp.status} ${errText}`);
+			}
+			const { token } = await authResp.json();
+
+			// 2. Start Task
+			const startResp = await fetch("https://api.ilovepdf.com/v1/start/officepdf", {
+				method: "POST",
+				headers: { "Authorization": `Bearer ${token}` }
+			});
+			if (!startResp.ok) {
+				const errText = await startResp.text();
+				throw new Error(`iLovePDF start task failed: ${startResp.status} ${errText}`);
+			}
+			const { server, task } = await startResp.json();
+
+			// 3. Upload File
+			const formData = new FormData();
+			formData.append("task", task);
+			formData.append("file", new Blob([docxBuffer]), "paper.docx");
+
+			const uploadResp = await fetch(`https://${server}/v1/upload`, {
+				method: "POST",
+				headers: { "Authorization": `Bearer ${token}` },
+				body: formData
+			});
+			if (!uploadResp.ok) {
+				const errText = await uploadResp.text();
+				throw new Error(`iLovePDF upload failed: ${uploadResp.status} ${errText}`);
+			}
+			const { server_filename } = await uploadResp.json();
+
+			// 4. Process Task
+			const processResp = await fetch(`https://${server}/v1/process`, {
+				method: "POST",
+				headers: {
+					"Authorization": `Bearer ${token}`,
+					"Content-Type": "application/json"
+				},
+				body: JSON.stringify({
+					task: task,
+					tool: "officepdf",
+					files: [{ server_filename, filename: "paper.docx" }]
+				})
+			});
+			if (!processResp.ok) {
+				const errText = await processResp.text();
+				throw new Error(`iLovePDF process failed: ${processResp.status} ${errText}`);
+			}
+
+			// 5. Download Result
+			const downloadResp = await fetch(`https://${server}/v1/download/${task}`, {
+				method: "GET",
+				headers: { "Authorization": `Bearer ${token}` }
+			});
+			if (!downloadResp.ok) {
+				const errText = await downloadResp.text();
+				throw new Error(`iLovePDF download failed: ${downloadResp.status} ${errText}`);
+			}
+			const pdfBuffer = Buffer.from(await downloadResp.arrayBuffer());
+			console.log("[docxToPdf] iLovePDF conversion completed successfully.");
+			return pdfBuffer;
+
+		} catch (apiErr) {
+			console.warn("[docxToPdf] iLovePDF API error, falling back to local LibreOffice:", apiErr.message);
+		}
+	}
+
 	return new Promise((resolve, reject) => {
 		const bin = resolveLibreOfficeBin();
 		if (!bin) {
 			return reject(new Error(
-				"LibreOffice is not installed on this server. " +
-				"Add `apt-get install -y libreoffice` to your Dockerfile or build script."
+				"LibreOffice is not installed on this server and iLovePDF API is unconfigured/failed. " +
+				"Please configure ILOVEPDF_PUBLIC_KEY or install LibreOffice."
 			));
 		}
 
@@ -1481,11 +1559,6 @@ async function docxToPdf(docxBuffer) {
 		);
 	});
 }
-
-
-// POST /api/admin/generate-paper-pdf
-// Body: { questions: [...], paperTitle, paperSubject, paperChapter, paperTestType, paperClass, templateId? }
-// Returns: JSON with base64-encoded PDF buffers converted from the DOCX files.
 // Strategy: build the same high-quality DOCX files (with OMML equations and
 // template applied) that the Word download uses, then convert each one to PDF
 // via LibreOffice headless — so the PDF looks identical to the Word document.
