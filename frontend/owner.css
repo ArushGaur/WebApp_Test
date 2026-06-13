@@ -4300,6 +4300,7 @@
 
         #ag-modal-body {
             flex: 1;
+            min-height: 0;
             overflow-y: auto;
             padding: 18px 22px;
         }
@@ -4327,12 +4328,14 @@
             #ag-overlay {
                 padding: 8px;
                 align-items: flex-start;
+                overflow-y: auto;
             }
 
             #ag-modal {
                 width: 100%;
                 max-width: 100%;
                 max-height: calc(100vh - 16px);
+                max-height: calc(100dvh - 16px);
                 border-radius: 16px;
             }
 
