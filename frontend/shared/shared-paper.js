@@ -592,6 +592,7 @@
             if (lbl) lbl.textContent = 'Uploading…';
 
             const fd = new FormData();
+            fd.append('template', file);
 
             const xhr = new XMLHttpRequest();
             xhr.open('POST', `${API_BASE}/api/admin/paper-templates`);
