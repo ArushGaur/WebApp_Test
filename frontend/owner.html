@@ -1678,7 +1678,7 @@
 
             <!-- ── Paper metadata fields ── -->
             <div id="paper-header-fields" style="margin-bottom:4px">
-                <div style="display:flex;gap:10px;margin-bottom:12px">
+                <div class="modal-flex-row" style="display:flex;gap:10px;margin-bottom:12px">
                     <div style="flex:1;display:flex;flex-direction:column;gap:5px">
                         <label for="paper-class-input" style="font-size:0.78rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em">Class <span style="color:var(--accent);font-size:0.85em">(e.g. XI)</span></label>
                         <input id="paper-class-input" type="text" placeholder="e.g. XI"
@@ -2457,7 +2457,7 @@
                     <div id="ag-sub-choose">
                         <div style="font-weight:700;font-size:0.88rem;color:var(--text-dim);margin-bottom:12px">📤 How
                             do you want to deliver this paper?</div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                        <div class="ag-grid-2col" style="gap:12px">
                             <button onclick="agChooseDelivery('offline')"
                                 style="padding:22px 12px;background:var(--bg-input);border:2px solid var(--border);border-radius:14px;cursor:pointer;color:var(--text);font-family:inherit;text-align:center;transition:all .2s;display:flex;flex-direction:column;align-items:center;gap:7px"
                                 onmouseover="this.style.borderColor='var(--accent-4)';this.style.background='rgba(245,158,11,0.07)'"
@@ -2503,7 +2503,7 @@
                         <!-- Paper Header Fields -->
                         <div style="background:var(--bg-input);border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:16px">
                             <div style="font-size:0.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:12px">📄 Paper Header Info</div>
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+                            <div class="ag-grid-2col" style="margin-bottom:10px">
                                 <div>
                                     <label style="font-size:0.78rem;color:var(--text-dim);font-weight:600;display:block;margin-bottom:5px">🎓 Class</label>
                                     <input id="ag-class-input" type="text" placeholder="e.g. XI"
@@ -2517,7 +2517,7 @@
                                         onfocus="this.style.borderColor='var(--border-focus)'" onblur="this.style.borderColor='var(--border)'">
                                 </div>
                             </div>
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                            <div class="ag-grid-2col">
                                 <div>
                                     <label style="font-size:0.78rem;color:var(--text-dim);font-weight:600;display:block;margin-bottom:5px">📖 Chapter / Topic</label>
                                     <input id="ag-chapter-input" type="text" placeholder="e.g. Ray Optics"
