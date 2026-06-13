@@ -796,7 +796,7 @@ async function buildPaperDoc(selectedQuestions, mode, title, headerMeta = {}) {
  * and on Windows without relying on a local Python runtime.
  */
 function extractTextFromRun(runXml) {
-	const texts = [...String(runXml || "").matchAll(/<w:t[^>]*>(.*?)<\/w:t>/gs)].map((m) => m[1]);
+	const texts = [...String(runXml || "").matchAll(/<w:t[^>]*>(.*?)<\/w:t>/gs)].map((m) => decodeXml(m[1]));
 	return texts.join("");
 }
 
@@ -969,12 +969,14 @@ async function processParagraph(paraXml) {
 	const parts = splitMath(mergedText);
 	if (!parts.some((part) => part.isMath)) return paraXml;
 
-	// Encode raw XML text-node content once without double-encoding existing entities.
+	// Encode raw XML text-node content safely.
 	function encodeRunText(s) {
 		return String(s)
-			.replace(/&amp;/g, "___AMP___").replace(/&lt;/g, "___LT___").replace(/&gt;/g, "___GT___").replace(/&quot;/g, "___QUOT___").replace(/&apos;/g, "___APOS___")
-			.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-			.replace(/___AMP___/g, "&amp;").replace(/___LT___/g, "&lt;").replace(/___GT___/g, "&gt;").replace(/___QUOT___/g, "&quot;").replace(/___APOS___/g, "&apos;");
+			.replace(/&/g, "&amp;")
+			.replace(/</g, "&lt;")
+			.replace(/>/g, "&gt;")
+			.replace(/"/g, "&quot;")
+			.replace(/'/g, "&apos;");
 	}
 
 	let newRunsXml = "";
@@ -1029,9 +1031,11 @@ async function processDocxXml(docXml) {
 function decodeXml(text) {
 	return String(text || "")
 		.replace(/&apos;/g, "'")
+		.replace(/&#39;/g, "'")
 		.replace(/&quot;/g, '"')
 		.replace(/&gt;/g, ">")
 		.replace(/&lt;/g, "<")
+		.replace(/&nbsp;/g, " ")
 		.replace(/&amp;/g, "&");
 }
 
