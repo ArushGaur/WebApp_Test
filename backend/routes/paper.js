@@ -900,10 +900,13 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 			'$1$3$2'
 		);
 
-		// 3. Fix unescaped & inside text content tags (m:t and w:t)
+		// 3. Fix unescaped &, <, > inside text content tags (m:t and w:t)
 		return clean.replace(/(<(?:m|w):t[^>]*>)([\s\S]*?)(<\/(?:m|w):t>)/g, (match, open, content, close) => {
-			// Re-escape & that isn't already part of an entity
-			const fixed = content.replace(/&(?!amp;|lt;|gt;|quot;|apos;|#)/g, '&amp;');
+			// Re-escape & that isn't already part of an entity, and escape raw < and >
+			const fixed = content
+				.replace(/&(?!amp;|lt;|gt;|quot;|apos;|#)/g, '&amp;')
+				.replace(/</g, '&lt;')
+				.replace(/>/g, '&gt;');
 			return open + fixed + close;
 		});
 	}
