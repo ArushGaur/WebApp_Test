@@ -1,0 +1,38 @@
+{
+  "name": "Grip Physics Client",
+  "short_name": "GP Client",
+  "description": "Grip Physics Client Panel — access question library and manage students",
+  "start_url": "/client.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#080714",
+  "theme_color": "#080714",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "/icon-1.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Question Library",
+      "url": "/client.html#manageQuestions",
+      "description": "Browse the question library"
+    },
+    {
+      "name": "Students",
+      "url": "/client.html#students",
+      "description": "Manage registered students"
+    }
+  ]
+}
