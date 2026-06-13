@@ -1070,6 +1070,7 @@ async function entriesToZipBuffer(entries) {
  */
 function applyHeaderMetaToXml(xml, headerMeta) {
 	if (!headerMeta || typeof xml !== "string") return xml;
+	console.log("[applyHeaderMetaToXml] headerMeta:", JSON.stringify(headerMeta));
 	const encode = (s) => String(s || "")
 		.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -1649,6 +1650,14 @@ async function docxToPdf(docxBuffer) {
 router.post("/api/admin/generate-paper-pdf", requireAdmin, async (req, res) => {
 	try {
 		const { questions, paperTitle, paperSubject, paperChapter, paperTestType, paperClass, templateId } = req.body || {};
+		console.log("[generate-paper-pdf] req.body:", {
+			paperTitle,
+			paperSubject,
+			paperChapter,
+			paperTestType,
+			paperClass,
+			templateId
+		});
 		if (!Array.isArray(questions) || !questions.length) {
 			return res.status(400).json({ error: "No questions provided" });
 		}
@@ -1688,7 +1697,8 @@ router.post("/api/admin/generate-paper-pdf", requireAdmin, async (req, res) => {
 		// shared system resources even with isolated profiles, causing "source file
 		// could not be loaded" on containers.
 		const qPdf = await docxToPdf(qBuf);
-		const akPdf = await docxToPdf(akBuf);
+		// Do not convert answer key PDF via iLovePDF (saves credits)
+		const akPdf = Buffer.from("JVBERi0xLjEKMSAwIG9iagogIDw8IC9UeXBlIC9DYXRhbG9nCiAgICAgL1BhZ2VzIDIgMCBSCiAgPj4KZW5kb2JqCjIgMCBvYmoKICA8PCAvVHlwZSAvUGFnZXMKICAgICAvS2lkcyBbMyAwIFJdCiAgICAgL0NvdW50IDEKICA+PgplbmRvYmoKMyAwIG9iaagogIDw8IC9UeXBlIC9QYWdlCiAgICAgL1BhcmVudCAyIDAgUgogICAgIC9SZXNvdXJjZXMgPDw+PgogICAgIC9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCiAgPj4KZW5kb2JqCnRyYWlsZXIKICA8PCAvUm9vdCAxIDAgUgogID4+CiUlRU9G", "base64");
 		const solPdf = await docxToPdf(solBuf);
 
 		res.json({
