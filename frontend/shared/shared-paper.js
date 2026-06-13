@@ -918,7 +918,9 @@
                         </div>
                     `;
 
+                    let currentPct = 0;
                     const updateProgress = (pct, text) => {
+                        currentPct = pct;
                         const bar = document.getElementById('pdf-progress-bar');
                         const txt = document.getElementById('pdf-progress-text');
                         const num = document.getElementById('pdf-progress-percent');
@@ -929,9 +931,15 @@
 
                     let progressTimers = [];
                     progressTimers.push(setTimeout(() => updateProgress(15, "Uploading files..."), 150));
-                    progressTimers.push(setTimeout(() => updateProgress(45, "Converting Question Paper..."), 1200));
-                    progressTimers.push(setTimeout(() => updateProgress(78, "Converting Solutions..."), 3500));
-                    progressTimers.push(setTimeout(() => updateProgress(95, "Finishing up conversion..."), 6000));
+                    progressTimers.push(setTimeout(() => updateProgress(40, "Converting Question Paper..."), 1500));
+                    progressTimers.push(setTimeout(() => updateProgress(70, "Converting Solutions..."), 4500));
+                    progressTimers.push(setTimeout(() => updateProgress(88, "Finishing up conversion..."), 9000));
+
+                    const creepInterval = setInterval(() => {
+                        if (currentPct >= 88 && currentPct < 98) {
+                            updateProgress(currentPct + 1, "Finishing up conversion...");
+                        }
+                    }, 800);
 
                     try {
                         const resp = await fetch(`${API_BASE}/api/admin/generate-paper-pdf`, {
@@ -953,6 +961,7 @@
 
                         // Clear timers and finish
                         progressTimers.forEach(clearTimeout);
+                        clearInterval(creepInterval);
                         updateProgress(100, "Done!");
                         await new Promise(r => setTimeout(r, 200));
 
@@ -961,6 +970,7 @@
                         renderFormatLinks('pdf', resData.files);
                     } catch (err) {
                         progressTimers.forEach(clearTimeout);
+                        clearInterval(creepInterval);
                         statusEl.style.background = 'rgba(239,68,68,0.1)';
                         statusEl.style.border = '1px solid rgba(239,68,68,0.2)';
                         statusEl.style.color = 'var(--error)';
