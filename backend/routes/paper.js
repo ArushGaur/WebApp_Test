@@ -296,124 +296,20 @@ async function buildTableElement(tbl, opts = {}) {
 	for (const r of rows) colCount = Math.max(colCount, r.length);
 	if (colCount === 0) return elements;
 
-	// ── Matrix detection ──────────────────────────────────────────────────────
-	// A table is treated as a matrix when it is explicitly flagged OR when it has
-	// no headers and every cell is a number/simple expression (no image cells).
-	const isMatrix = tbl.isMatrix === true || tbl.matrix === true || (
-		!headers.length &&
-		rows.length >= 2 &&
-		rows.every(r => r.every(c => !isDocxImageCell(c) && /^[\d\s\.\-\+\/\*\^a-zA-Z_,;]+$/.test(String(c ?? "").trim())))
-	);
-
-	if (isMatrix) {
-		// Render as a proper matrix with bracket notation.
-		// Each row is a paragraph; cells are separated by fixed-width tabs.
-		// Surrounding brackets are built from Unicode box-drawing characters scaled
-		// to span the full row count.
-		const cellFontSize = compact ? 18 : 20;
-		const rowCount = rows.length;
-
-		// Compute a uniform column width in ems so alignment is consistent.
-		// Measure max text length across all cells.
-		let maxCellLen = 1;
-		for (const r of rows) {
-			for (const c of r) {
-				const t = docxStripMath(c ?? "").length;
-				if (t > maxCellLen) maxCellLen = t;
-			}
-		}
-		// Each column takes ~(maxCellLen * 110 + 200) DXA, min 600, max 1600.
-		const colW = Math.min(1600, Math.max(600, maxCellLen * 110 + 200));
-		// Tab stops: one per column boundary starting after the bracket char.
-		const tabStops = Array.from({ length: colCount }, (_, i) => ({
-			type: TabStopType.LEFT,
-			position: 400 + i * colW,
-		}));
-
-		for (let ri = 0; ri < rowCount; ri++) {
-			const isFirst = ri === 0;
-			const isLast  = ri === rowCount - 1;
-			// Choose bracket characters based on row position
-			const bracketL = rowCount === 1 ? "(" : isFirst ? "⎡" : isLast ? "⎣" : "⎢";
-			const bracketR = rowCount === 1 ? ")" : isFirst ? "⎤" : isLast ? "⎦" : "⎥";
-
-			const runChildren = [];
-			// Opening bracket
-			runChildren.push(new TextRun({ text: bracketL, font: "Arial Unicode MS", size: cellFontSize + 4, bold: false }));
-			// Cells separated by tabs
-			for (let ci = 0; ci < colCount; ci++) {
-				const cellText = docxStripMath(rows[ri][ci] ?? "");
-				if (ci === 0) {
-					runChildren.push(new TextRun({ text: "\t" + cellText, font: "Arial", size: cellFontSize }));
-				} else {
-					runChildren.push(new TextRun({ text: "\t" + cellText, font: "Arial", size: cellFontSize }));
-				}
-			}
-			// Closing bracket tab stop after last column
-			runChildren.push(new TextRun({ text: "\t" + bracketR, font: "Arial Unicode MS", size: cellFontSize + 4, bold: false }));
-
-			const extraTabStops = [...tabStops, { type: TabStopType.LEFT, position: 400 + colCount * colW }];
-			elements.push(new Paragraph({
-				spacing: { before: ri === 0 ? (compact ? 40 : 60) : 0, after: ri === rowCount - 1 ? (compact ? 40 : 60) : 0 },
-				tabStops: extraTabStops,
-				children: runChildren,
-			}));
-		}
-
-		if (tbl.caption) {
-			elements.push(new Paragraph({
-				spacing: { before: 20, after: compact ? 40 : 60 },
-				children: [new TextRun({ text: docxStripMath(tbl.caption), italics: true, font: "Arial", size: fontSize, color: "555555" })],
-			}));
-		}
-		return elements;
-	}
-
-	// ── Regular table ─────────────────────────────────────────────────────────
 	const cellBorder = { style: BorderStyle.SINGLE, size: 4, color: "888888" };
 	const cellBorders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder };
 
-	// Compute a content-aware column width so the table only occupies the space
-	// it needs rather than always stretching to full page width.
-	// Each column gets at most ~1500 DXA (≈ 1 inch) per character of the longest
-	// cell, clamped between MIN_COL (900 DXA) and MAX_COL (3600 DXA).
-	// The total table width is then capped at the page content width (10466 DXA).
-	const MAX_TABLE_DXA = compact ? 10047 : 10466;
-	const MIN_COL_DXA   = 900;
-	const MAX_COL_DXA   = 3600;
-	const CHAR_DXA       = 110; // approx DXA per character
 
-	// Measure max text length per column
-	const colMaxLen = Array(colCount).fill(0);
-	for (let c = 0; c < colCount; c++) {
-		if (headers[c]) colMaxLen[c] = Math.max(colMaxLen[c], docxStripMath(headers[c] ?? "").length);
-		for (const r of rows) {
-			if (!isDocxImageCell(r[c])) {
-				colMaxLen[c] = Math.max(colMaxLen[c], docxStripMath(r[c] ?? "").length);
-			} else {
-				colMaxLen[c] = Math.max(colMaxLen[c], 12); // image cell placeholder
-			}
-		}
-	}
-	const rawColWidths = colMaxLen.map(len => Math.min(MAX_COL_DXA, Math.max(MIN_COL_DXA, len * CHAR_DXA + 200)));
-	const rawTotal = rawColWidths.reduce((a, b) => a + b, 0);
-
-	// If raw total exceeds page width, scale all columns down proportionally.
-	const scale = rawTotal > MAX_TABLE_DXA ? MAX_TABLE_DXA / rawTotal : 1;
-	const colWidthsArr = rawColWidths.map((w, i) => {
-		const scaled = Math.floor(w * scale);
-		// Last column absorbs rounding errors
-		return i === colCount - 1
-			? Math.round(rawTotal * scale) - Math.floor(rawTotal * scale / colCount) * (colCount - 1)
-			: scaled;
-	});
-	// Recompute exact sum after flooring
-	const tableWidthDxa = colWidthsArr.reduce((a, b) => a + b, 0);
-
+	const tableWidthDxa = compact ? 10047 : 10466;
+	const colWidthDxa = Math.floor(tableWidthDxa / colCount);
+	// Last column absorbs any rounding remainder so widths always sum to tableWidthDxa.
+	const colWidthsArr = Array.from({ length: colCount }, (_, i) =>
+		i === colCount - 1 ? tableWidthDxa - colWidthDxa * (colCount - 1) : colWidthDxa
+	);
 	const makeCell = async (content, isHeader, colIdx) => new TableCell({
 		borders: cellBorders,
 		verticalAlign: VerticalAlign.CENTER,
-		width: { size: colWidthsArr[colIdx] ?? MIN_COL_DXA, type: WidthType.DXA },
+		width: { size: colWidthsArr[colIdx] ?? colWidthDxa, type: WidthType.DXA },
 		shading: isHeader ? { fill: "E8E8F0", type: ShadingType.CLEAR, color: "auto" } : undefined,
 		margins: { top: 40, bottom: 40, left: 80, right: 80 },
 		children: await buildTableCellChildren(content, isHeader, fontSize),
@@ -438,6 +334,7 @@ async function buildTableElement(tbl, opts = {}) {
 		}));
 	}
 
+	// A4 content width: 11906 - 720 - 720 = 10466 DXA. Compact tables use 96% = 10047.
 	elements.push(new Table({
 		width: { size: tableWidthDxa, type: WidthType.DXA },
 		columnWidths: colWidthsArr,
