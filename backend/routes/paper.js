@@ -299,17 +299,51 @@ async function buildTableElement(tbl, opts = {}) {
 	const cellBorder = { style: BorderStyle.SINGLE, size: 4, color: "888888" };
 	const cellBorders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder };
 
+	// ── Auto-size columns to fit content, not always full page width ─────────
+	// Estimate each column's natural width from its longest cell text.
+	// Arial ~10pt (size=20 half-points): ~110 DXA per char. Cell pad = 80+80 = 160 DXA.
+	const MAX_TABLE_DXA = compact ? 10047 : 10466;
+	const CHAR_WIDTH_DXA = 110;
+	const CELL_PAD_DXA   = 160;
+	const MIN_COL_DXA    = 600;
+	const IMG_COL_DXA    = 1800;
 
-	const tableWidthDxa = compact ? 10047 : 10466;
-	const colWidthDxa = Math.floor(tableWidthDxa / colCount);
-	// Last column absorbs any rounding remainder so widths always sum to tableWidthDxa.
-	const colWidthsArr = Array.from({ length: colCount }, (_, i) =>
-		i === colCount - 1 ? tableWidthDxa - colWidthDxa * (colCount - 1) : colWidthDxa
-	);
+	const naturalColWidths = Array.from({ length: colCount }, (_, c) => {
+		let maxChars = 0;
+		if (headers[c] !== undefined) {
+			if (isDocxImageCell(headers[c])) return IMG_COL_DXA;
+			maxChars = Math.max(maxChars, docxStripMath(headers[c] || "").length);
+		}
+		for (const r of rows) {
+			const cell = r[c];
+			if (cell === undefined || cell === null) continue;
+			if (isDocxImageCell(cell)) return IMG_COL_DXA;
+			maxChars = Math.max(maxChars, docxStripMath(cell || "").length);
+		}
+		return Math.max(MIN_COL_DXA, maxChars * CHAR_WIDTH_DXA + CELL_PAD_DXA);
+	});
+
+	const naturalTotalDxa = naturalColWidths.reduce((s, w) => s + w, 0);
+
+	let colWidthsArr;
+	if (naturalTotalDxa <= MAX_TABLE_DXA) {
+		// Table fits within page — use natural widths (table narrower than page)
+		colWidthsArr = naturalColWidths;
+	} else {
+		// Scale columns proportionally to fit within page width
+		const scale = MAX_TABLE_DXA / naturalTotalDxa;
+		colWidthsArr = naturalColWidths.map(w => Math.max(MIN_COL_DXA, Math.floor(w * scale)));
+		// Absorb rounding error into last column
+		const scaledTotal = colWidthsArr.reduce((s, w) => s + w, 0);
+		colWidthsArr[colCount - 1] += MAX_TABLE_DXA - scaledTotal;
+	}
+
+	const tableWidthDxa = colWidthsArr.reduce((s, w) => s + w, 0);
+
 	const makeCell = async (content, isHeader, colIdx) => new TableCell({
 		borders: cellBorders,
 		verticalAlign: VerticalAlign.CENTER,
-		width: { size: colWidthsArr[colIdx] ?? colWidthDxa, type: WidthType.DXA },
+		width: { size: colWidthsArr[colIdx] ?? MIN_COL_DXA, type: WidthType.DXA },
 		shading: isHeader ? { fill: "E8E8F0", type: ShadingType.CLEAR, color: "auto" } : undefined,
 		margins: { top: 40, bottom: 40, left: 80, right: 80 },
 		children: await buildTableCellChildren(content, isHeader, fontSize),
@@ -334,7 +368,6 @@ async function buildTableElement(tbl, opts = {}) {
 		}));
 	}
 
-	// A4 content width: 11906 - 720 - 720 = 10466 DXA. Compact tables use 96% = 10047.
 	elements.push(new Table({
 		width: { size: tableWidthDxa, type: WidthType.DXA },
 		columnWidths: colWidthsArr,
@@ -931,22 +964,46 @@ function splitMath(text) {
 function latexFallbackRun(src) {
 	// Normalise to raw text first so we never double-encode (&amp; -> &amp;amp; etc.)
 	const normalized = fullyDecodeXml(String(src || ""));
-	const readable = normalized
-		.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, '($1)/($2)')
-		.replace(/\\sqrt\{([^{}]*)\}/g, '\u221a($1)')
-		.replace(/\\left\(/g, '(').replace(/\\right\)/g, ')')
-		.replace(/\\left\[/g, '[').replace(/\\right\]/g, ']')
-		.replace(/\\text\{([^{}]*)\}/g, '$1')
-		.replace(/\\([a-zA-Z]+)\{([^{}]*)\}/g, '$1($2)')
-		.replace(/\\([a-zA-Z]+)/g, '$1')
-		.replace(/[\{\}]/g, '')
+
+	// If this looks like matrix content (has \\\\ row separators and & col separators),
+	// render it in a readable [row1; row2] style instead of garbled & characters.
+	function matrixFallback(s) {
+		if (!s.includes("\\\\") && !(/(?<!\\)&/.test(s))) return null;
+		// Strip any \begin{...} ... \end{...} wrappers first
+		const inner = s.replace(/\\begin\{[^}]*\}/g, "").replace(/\\end\{[^}]*\}/g, "").trim();
+		const rows = inner.split("\\\\").map(row =>
+			row.split(/(?<!\\)&/).map(cell =>
+				cell
+					.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, "($1)/($2)")
+					.replace(/\\sqrt\{([^{}]*)\}/g, "\u221a($1)")
+					.replace(/\\text\{([^{}]*)\}/g, "$1")
+					.replace(/\\([a-zA-Z]+)\{([^{}]*)\}/g, "$1($2)")
+					.replace(/\\([a-zA-Z]+)/g, "$1")
+					.replace(/[\\&{}]/g, "")
+					.trim()
+			).join("  ")
+		).filter(r => r.trim());
+		if (!rows.length) return null;
+		return "[" + rows.join(" ; ") + "]";
+	}
+
+	const matrixText = matrixFallback(normalized);
+	const readable = (matrixText || normalized
+		.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, "($1)/($2)")
+		.replace(/\\sqrt\{([^{}]*)\}/g, "\u221a($1)")
+		.replace(/\\left\(/g, "(").replace(/\\right\)/g, ")")
+		.replace(/\\left\[/g, "[").replace(/\\right\]/g, "]")
+		.replace(/\\text\{([^{}]*)\}/g, "$1")
+		.replace(/\\([a-zA-Z]+)\{([^{}]*)\}/g, "$1($2)")
+		.replace(/\\([a-zA-Z]+)/g, "$1")
+		.replace(/[\{\}]/g, ""))
 		// XML-encode AFTER all transforms — & must come first to avoid double-encoding
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;')
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
 		.trim();
-	const spaceAttr = readable.startsWith(' ') || readable.endsWith(' ') ? ' xml:space="preserve"' : '';
+	const spaceAttr = readable.startsWith(" ") || readable.endsWith(" ") ? ' xml:space="preserve"' : "";
 	return `<w:r><w:t${spaceAttr}>${readable}</w:t></w:r>`;
 }
 
@@ -955,10 +1012,29 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 	if (typeof latexToOMML !== "function") {
 		return latexFallbackRun(src);
 	}
-	const hasAlignmentEnv = /\\begin\{(?:aligned|array|matrix|cases|align|alignedat)\}/i.test(src);
-	const primarySrc = !hasAlignmentEnv && src.includes("&")
-		? src.replace(/(?<!\\)&/g, "\\&")
-		: src;
+
+	// ── Pre-process: detect bare matrix content (rows separated by \\\\ and columns
+	// by & or \\&) that has no \begin{...} wrapper and wrap it so the library
+	// can convert it properly. This covers patterns like:
+	//   p_1(x) & p_1'(x) \\\\ p_2(x) & p_2'(x)
+	// which the DB stores without an explicit matrix environment.
+	function wrapBareMatrix(s) {
+		// Already has an environment — leave alone
+		if (/\\begin\{/.test(s)) return s;
+		// Must have at least one \\\\ row separator AND at least one & column separator
+		if (!s.includes("\\\\") || !(/(?<!\\)&/.test(s))) return s;
+		// Count max columns across rows to pick the right bracket-matrix
+		const rowStrs = s.split("\\\\");
+		const maxCols = Math.max(...rowStrs.map(r => (r.match(/(?<!\\)&/g) || []).length + 1));
+		// Use pmatrix for round brackets (standard for matrices in physics/math)
+		return `\\begin{pmatrix}${s}\\end{pmatrix}`;
+	}
+
+	const preprocessed = wrapBareMatrix(src);
+	const hasAlignmentEnv = /\\begin\{(?:aligned|array|matrix|pmatrix|bmatrix|vmatrix|cases|align|alignedat)\}/i.test(preprocessed);
+	const primarySrc = !hasAlignmentEnv && preprocessed.includes("&")
+		? preprocessed.replace(/(?<!\\)&/g, "\\&")
+		: preprocessed;
 	// Sanitize OMML output: fix bare & characters inside <m:t> tags that break Word's XML parser
 	function sanitizeOmml(omml) {
 		// 1. Normalise <m:oMath> — ensure xmlns:m is present, injecting it when missing.
@@ -997,41 +1073,19 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 			'$1$3$2'
 		);
 
-		// 3. Fix unescaped &, <, > inside text content tags (m:t and w:t).
-		// The latex-to-omml library sometimes emits LITERAL mathematical
-		// operators (e.g. from \ll, \lt, \gt, or bare < / > in the source LaTeX)
-		// as raw, unescaped < / > characters inside <m:t>...</m:t>. Raw < and >
-		// are illegal in XML text content and make Word reject the whole file
-		// (e.g. "d \ll l" -> <m:t>d<<l</m:t>, "\pi < \alpha" -> <m:t>π<α</m:t>,
-		// "t_1 > t_2" -> <m:t>></m:t>).
-		//
-		// However, in rare cases the library ALSO emits raw nested OMML/WML
-		// structure tags inside <m:t> (e.g. <m:t></m:fPr><m:num>...</m:t>).
-		// We must NOT escape those, or we'd permanently destroy the OMML
-		// structure and Word still couldn't parse the file.
-		//
-		// So: preserve any substring that looks like a genuine <m:...> or
-		// <w:...> tag, and escape every other bare & / < / > as entities.
-		const tagPattern = /<\/?(?:m|w):[A-Za-z][\w-]*(?:\s[^<>]*)?\/?>/g;
+		// 3. Fix unescaped & inside text content tags (m:t and w:t).
+		// IMPORTANT: We intentionally do NOT encode < and > here.
+		// The latex-to-omml library sometimes emits raw XML structure tags inside
+		// <m:t> elements (e.g. <m:t></m:fPr><m:num>...</m:t>). If we encode
+		// those < > to &lt; &gt;, we permanently destroy the OMML structure and
+		// Word cannot parse the file at all. Instead we only fix bare & that is
+		// not already part of a valid XML entity reference — the one character
+		// that is always illegal unescaped in XML text content.
 		return clean.replace(/(<(?:m|w):t[^>]*>)([\s\S]*?)(<\/(?:m|w):t>)/g, (match, open, content, close) => {
-			// Escape bare & that isn't already the start of an entity reference.
+			// Only escape bare & that isn't already the start of an entity reference.
 			// This handles cases like "a & b" (bare &) without touching &amp; &lt; &#39; etc.
-			const ampFixed = content.replace(/&(?!amp;|lt;|gt;|quot;|apos;|#[0-9]+;|#x[0-9a-fA-F]+;)/g, '&amp;');
-
-			// Now walk the content, leaving genuine <m:...>/<w:...> tags intact
-			// and escaping any other < or > as &lt; / &gt;.
-			let result = '';
-			let lastIndex = 0;
-			let tagMatch;
-			tagPattern.lastIndex = 0;
-			while ((tagMatch = tagPattern.exec(ampFixed)) !== null) {
-				result += ampFixed.slice(lastIndex, tagMatch.index).replace(/</g, '&lt;').replace(/>/g, '&gt;');
-				result += tagMatch[0];
-				lastIndex = tagMatch.index + tagMatch[0].length;
-			}
-			result += ampFixed.slice(lastIndex).replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-			return open + result + close;
+			const fixed = content.replace(/&(?!amp;|lt;|gt;|quot;|apos;|#[0-9]+;|#x[0-9a-fA-F]+;)/g, '&amp;');
+			return open + fixed + close;
 		});
 	}
 
@@ -1039,29 +1093,29 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 		const omml = await latexToOMML(primarySrc, { displayMode });
 		return sanitizeOmml(omml);
 	} catch (err) {
-		const hasAmp = src.includes("&");
+		const hasAmp = preprocessed.includes("&");
 		const msg = String(err && err.message ? err.message : err).toLowerCase();
 
 		if (hasAmp || msg.includes('misplaced &')) {
 			try {
-				const wrapped = `\\begin{aligned}${src}\\end{aligned}`;
+				const wrapped = `\\begin{aligned}${preprocessed}\\end{aligned}`;
 				return sanitizeOmml(await latexToOMML(wrapped, { displayMode }));
 			} catch (e2) { }
 
 			try {
-				const escaped = src.replace(/&/g, '\\&');
+				const escaped = preprocessed.replace(/&/g, '\\&');
 				return sanitizeOmml(await latexToOMML(escaped, { displayMode }));
 			} catch (e3) { }
 
 			try {
-				const matrixed = `\\begin{matrix}${src}\\end{matrix}`;
+				const matrixed = `\\begin{pmatrix}${preprocessed}\\end{pmatrix}`;
 				return sanitizeOmml(await latexToOMML(matrixed, { displayMode }));
 			} catch (e4) {
 				console.warn('[latexToOmmlWrapped] fallbacks failed:', e4 && e4.message ? e4.message : e4);
 			}
 		}
 
-		return latexFallbackRun(src);
+		return latexFallbackRun(preprocessed);
 	}
 }
 
