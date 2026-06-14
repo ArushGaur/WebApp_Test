@@ -1682,14 +1682,44 @@
     <div id="generate-paper-modal" class="modal-overlay" style="display:none;align-items:center;justify-content:center">
         <div class="modal-box" style="max-width:480px;width:94%;max-height:90vh;overflow-y:auto">
             <div class="modal-title">&#128196; Generate Question Paper</div>
+            <!-- ── Paper metadata fields ── -->
+            <div id="paper-header-fields" style="margin-bottom:4px">
+                <div class="modal-flex-row" style="display:flex;gap:10px;margin-bottom:12px">
+                    <div style="flex:1;display:flex;flex-direction:column;gap:5px">
+                        <label for="paper-class-input" style="font-size:0.78rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em">Class <span style="color:var(--accent);font-size:0.85em">(e.g. XI)</span></label>
+                        <input id="paper-class-input" type="text" placeholder="e.g. XI"
+                            style="padding:9px 13px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-family:inherit;font-size:0.9rem;outline:none;transition:border-color 0.2s"
+                            onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                    </div>
+                    <div style="flex:2;display:flex;flex-direction:column;gap:5px">
+                        <label for="paper-subject-input" style="font-size:0.78rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em">Subject <span style="color:var(--accent);font-size:0.85em">(e.g. Physics)</span></label>
+                        <input id="paper-subject-input" type="text" placeholder="e.g. Physics"
+                            style="padding:9px 13px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-family:inherit;font-size:0.9rem;outline:none;transition:border-color 0.2s"
+                            onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                    </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px">
+                    <label for="paper-chapter-input" style="font-size:0.78rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em">Chapter / Topic <span style="color:var(--accent);font-size:0.85em">(e.g. Ray Optics)</span></label>
+                    <input id="paper-chapter-input" type="text" placeholder="e.g. Ray Optics"
+                        style="padding:9px 13px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-family:inherit;font-size:0.9rem;outline:none;transition:border-color 0.2s"
+                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                </div>
+                <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px">
+                    <label for="paper-test-type-input" style="font-size:0.78rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em">Test Type <span style="color:var(--accent);font-size:0.85em">(shown as heading)</span></label>
+                    <input id="paper-test-type-input" type="text" placeholder="e.g. Chapter Test" value="Chapter Test"
+                        style="padding:9px 13px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-family:inherit;font-size:0.9rem;outline:none;transition:border-color 0.2s"
+                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                </div>
+                <div style="margin:2px 0 14px;border-top:1px solid var(--border)"></div>
+            </div>
+
             <div style="margin-bottom:14px">
-                <label style="font-size:0.85rem;font-weight:600;color:var(--text-dim);display:block;margin-bottom:6px">
-                    Paper Title
+                <label style="font-size:0.78rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">
+                    Paper Title <span style="color:var(--text-muted);font-size:0.85em;text-transform:none;letter-spacing:0">(used as document filename)</span>
                 </label>
-                <input id="paper-title-input" type="text" placeholder="e.g. Physics Unit Test – Chapter 5" style="width:100%;background:var(--bg-input);border:1.5px solid var(--border);
-                    border-radius:var(--radius-sm);padding:10px 14px;color:var(--text);font-size:0.9rem;
-                    outline:none;font-family:inherit" onfocus="this.style.borderColor='var(--border-focus)'"
-                    onblur="this.style.borderColor='var(--border)'">
+                <input id="paper-title-input" type="text" placeholder="e.g. Physics Unit Test – Chapter 5"
+                    style="width:100%;background:var(--bg-input);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;color:var(--text);font-size:0.9rem;outline:none;font-family:inherit"
+                    onfocus="this.style.borderColor='var(--border-focus)'" onblur="this.style.borderColor='var(--border)'">
             </div>
             <div id="paper-generate-info" style="font-size:0.82rem;color:var(--text-muted);margin-bottom:16px">
                 3 DOCX files will be created: <strong>Question Paper</strong>, <strong>Answer Key</strong>, and
