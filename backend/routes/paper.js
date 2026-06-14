@@ -127,16 +127,6 @@ function imgType(src) {
 	return "jpg";
 }
 
-// Wrap a replacement value so String.replace/replaceAll inserts it LITERALLY.
-// When a replacement STRING contains "$" sequences ($&, $`, $', $$, $1…), JS treats
-// them as special replacement patterns and corrupts the result — producing invalid
-// XML that Microsoft Word refuses to open. Passing a function as the replacement
-// bypasses all "$" interpretation, so dynamic text (subject/title/etc. that may
-// contain "$", or encoded entities) is preserved exactly as-is.
-function litRepl(value) {
-	return () => String(value);
-}
-
 // Decode HTML entities that may be stored in question text from AI extraction.
 function decodeHtmlEntities(s) {
 	return String(s || "")
@@ -908,33 +898,6 @@ function extractRprFromRun(runXml) {
 	return match ? match[0] : "";
 }
 
-// Heuristic: decide whether the text captured between $...$ delimiters is genuine
-// LaTeX math rather than ordinary prose that merely happens to contain two "$"
-// signs (e.g. currency/prices like "$5 < $10", or "cost is $20 per unit").
-// Mis-detecting prose as math is harmful: latexToOMML can be extremely slow (or
-// effectively hang) on long sentence-like input, and even when it succeeds it
-// turns plain text into a garbled equation. We only treat a span as math when it
-// is short and looks equation-like. When unsure we keep it as plain text, which is
-// always safe — the literal "$" characters are preserved verbatim.
-function looksLikeMath(content) {
-	const s = String(content || "");
-	if (!s.trim()) return false;
-	// Real inline math is short. Long spans are almost always mis-paired "$" in prose.
-	if (s.length > 120) return false;
-	// A backslash command (\frac, \sqrt, \alpha…) is a strong LaTeX signal.
-	if (/\\[a-zA-Z]/.test(s)) return true;
-	// Common math constructs: superscripts/subscripts, fractions, operators, braces.
-	if (/[\^_{}]/.test(s)) return true;
-	if (/[=<>+\-*/]/.test(s) && /[A-Za-z0-9]/.test(s) && !/\s{2,}/.test(s)) {
-		// Reject obvious prose: a span that reads like a sentence (several words).
-		const wordCount = s.trim().split(/\s+/).length;
-		if (wordCount <= 6) return true;
-	}
-	// Single symbol/number like $x$, $n$, $3$.
-	if (/^[A-Za-z0-9]{1,3}$/.test(s.trim())) return true;
-	return false;
-}
-
 function splitMath(text) {
 	const parts = [];
 	const source = String(text || "");
@@ -943,29 +906,20 @@ function splitMath(text) {
 		if (source.slice(i, i + 2) === "$$") {
 			const end = source.indexOf("$$", i + 2);
 			if (end !== -1) {
-				const content = source.slice(i + 2, end);
-				if (looksLikeMath(content)) {
-					parts.push({ isMath: true, content, display: true });
-					i = end + 2;
-					continue;
-				}
+				parts.push({ isMath: true, content: source.slice(i + 2, end), display: true });
+				i = end + 2;
+				continue;
 			}
 		}
 		if (source[i] === "$") {
 			const end = source.indexOf("$", i + 1);
 			if (end !== -1 && end > i + 1) {
-				const content = source.slice(i + 1, end);
-				if (looksLikeMath(content)) {
-					parts.push({ isMath: true, content, display: false });
-					i = end + 1;
-					continue;
-				}
+				parts.push({ isMath: true, content: source.slice(i + 1, end), display: false });
+				i = end + 1;
+				continue;
 			}
 		}
-		// Not math: consume one "$" (or run of non-"$" text) as plain text and continue.
-		// We advance past a leading "$" so a stray/currency "$" never loops forever.
 		let j = i;
-		if (source[j] === "$") j++;
 		while (j < source.length && source[j] !== "$") j++;
 		if (j > i) parts.push({ isMath: false, content: source.slice(i, j), display: false });
 		i = j;
@@ -996,63 +950,6 @@ function latexFallbackRun(src) {
 	return `<w:r><w:t${spaceAttr}>${readable}</w:t></w:r>`;
 }
 
-// Escape the text content of every <m:t>…</m:t> and <w:t>…</w:t> node in an OMML/XML
-// fragment so it is valid XML, even when the source contains RAW unescaped "<" / ">" / "&"
-// inside those text nodes (which the latex-to-omml library emits for input like
-// "\frac{a}{b} < 1", producing `<m:t><1</m:t>`).
-//
-// We CANNOT use a regex like /<m:t[^>]*>([\s\S]*?)<\/m:t>/ here, because a stray "<" inside
-// the content makes a regex (and any XML parser) mis-detect tag boundaries and swallow real
-// structural tags. Instead we scan the string linearly: find each opening "<m:t"/"<w:t" tag,
-// read to the end of that opening tag (the next ">"), then find the matching literal close
-// tag "</m:t>"/"</w:t>" via indexOf, and escape only the bytes in between.
-//
-// When normalize=true we fully decode entities first then re-encode exactly once (used by
-// step 3 of sanitizeOmml to collapse any double-encoding). When false (step 0) we only
-// escape the bare special chars that the library left raw, without touching valid entities.
-function escapeMathTextNodes(xml, normalize = false) {
-	const s = String(xml || "");
-	let out = "";
-	let i = 0;
-	const encodeText = (content) => {
-		const raw = normalize ? fullyDecodeXml(content) : content;
-		// & must be first. When NOT normalizing we still must avoid turning a valid "&amp;"
-		// into "&amp;amp;", so guard & that already starts a known entity.
-		let res;
-		if (normalize) {
-			res = raw.replace(/&/g, "&amp;");
-		} else {
-			res = raw.replace(/&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)/g, "&amp;");
-		}
-		// Escape any raw < and > that are not part of an entity. After the & pass above,
-		// every remaining bare "<" / ">" is genuine text content that must be escaped.
-		return res.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-		// ' and " are left as-is: both are legal in XML text content and Word accepts them.
-	};
-	while (i < s.length) {
-		// Look for the next <m:t or <w:t opening tag (followed by space, "/", or ">").
-		const m = s.slice(i).match(/<([mw]):t(?=[\s/>])/);
-		if (!m) { out += s.slice(i); break; }
-		const tagStart = i + m.index;
-		const prefix = m[1]; // "m" or "w"
-		out += s.slice(i, tagStart);
-		// Find the end of the opening tag.
-		const openEnd = s.indexOf(">", tagStart);
-		if (openEnd === -1) { out += s.slice(tagStart); break; }
-		const openTag = s.slice(tagStart, openEnd + 1);
-		// Self-closing <m:t/> has no text content.
-		if (openTag.endsWith("/>")) { out += openTag; i = openEnd + 1; continue; }
-		// Find the matching literal close tag.
-		const closeTag = `</${prefix}:t>`;
-		const closeIdx = s.indexOf(closeTag, openEnd + 1);
-		if (closeIdx === -1) { out += openTag; i = openEnd + 1; continue; }
-		const content = s.slice(openEnd + 1, closeIdx);
-		out += openTag + encodeText(content) + closeTag;
-		i = closeIdx + closeTag.length;
-	}
-	return out;
-}
-
 async function latexToOmmlWrapped(latex, displayMode = false) {
 	const src = String(latex || "");
 	if (typeof latexToOMML !== "function") {
@@ -1064,23 +961,11 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 		: src;
 	// Sanitize OMML output: fix bare & characters inside <m:t> tags that break Word's XML parser
 	function sanitizeOmml(omml) {
-		let clean = String(omml || "");
-
-		// 0. CRITICAL — escape stray <, > and & that the OMML library leaves UNESCAPED
-		//    inside <m:t>…</m:t> (and <w:t>…</w:t>) text nodes. e.g. LaTeX "\frac{a}{b} < 1"
-		//    is emitted by latex-to-omml as `<m:t xml:space="preserve"><1</m:t>` — that raw "<"
-		//    is already invalid XML, and (worse) it makes EVERY later regex/parser mis-detect
-		//    tag boundaries, escaping real structural tags like </m:fPr> into &lt;/m:fPr&gt;
-		//    and corrupting the whole equation. We MUST fix this FIRST, before steps 1-3 run.
-		//    We locate each text node by literal scanning of the fixed "</m:t>" / "</w:t>"
-		//    close tag — NOT a greedy regex — so a stray "<" inside the content can't fool us.
-		clean = escapeMathTextNodes(clean);
-
 		// 1. Normalise <m:oMath> — ensure xmlns:m is present, injecting it when missing.
 		//    Keep all other attributes (e.g. xml:space, m:defJc) intact.
 		//    Word's XML parser is strict: if xmlns:m is absent both here and on <w:document>
 		//    the file is rejected as invalid XML and cannot be opened at all.
-		clean = clean.replace(/<m:oMath\b([^>]*)>/g, (match, attrs) => {
+		let clean = String(omml || "").replace(/<m:oMath\b([^>]*)>/g, (match, attrs) => {
 			if (/\bxmlns:m\s*=\s*"/.test(attrs)) return `<m:oMath${attrs}>`;
 			return `<m:oMath${attrs} xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">`;
 		});
@@ -1115,8 +1000,18 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 		// 3. Normalise text-node content: fully decode then re-encode exactly once.
 		// This eliminates double-encoding (&amp;amp;, &amp;lt; etc.) regardless of
 		// what the OMML library produced, and catches all entity forms including &#NNN;.
-		// Uses the same literal-scan helper as step 0 so it is immune to stray "<".
-		return escapeMathTextNodes(clean, /* normalize */ true);
+		return clean.replace(/(<(?:m|w):t[^>]*>)([\s\S]*?)(<\/(?:m|w):t>)/g, (match, open, content, close) => {
+			// Decode fully to raw text first
+			const raw = fullyDecodeXml(content);
+			// Re-encode cleanly — & must be first to avoid double-encoding
+			const fixed = raw
+				.replace(/&/g, '&amp;')
+				.replace(/</g, '&lt;')
+				.replace(/>/g, '&gt;');
+			// ' and " are intentionally left unencoded in text nodes —
+			// they are legal unencoded in XML text content and Word handles them fine.
+			return open + fixed + close;
+		});
 	}
 
 	try {
@@ -1320,11 +1215,6 @@ function applyHeaderMetaToXml(xml, headerMeta) {
 		.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 		.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
-	// Insert dynamic header values LITERALLY (see litRepl): prevents "$" sequences
-	// in subject/chapter/title/etc. from being mis-read as replacement patterns,
-	// which would otherwise corrupt the XML and make Word reject the file.
-	const lit = litRepl;
-
 	const splitChapter = splitTextIntoTwoLines(headerMeta.chapter || '');
 	const splitTitle = splitTextIntoTwoLines(headerMeta.title || '');
 
@@ -1361,11 +1251,11 @@ function applyHeaderMetaToXml(xml, headerMeta) {
 
 		// Replace placeholder tokens in the joined text
 		let replaced = joined
-			.replaceAll('{{SUBJECT}}', lit(encode(headerMeta.subject)))
-			.replaceAll('{{CHAPTER}}', lit(encode(splitChapter)))
-			.replaceAll('{{TEST_TYPE}}', lit(encode(headerMeta.testType)))
-			.replaceAll('{{CLASS}}', lit(encode(headerMeta.class)))
-			.replaceAll('{{TITLE}}', lit(encode(splitTitle)));
+			.replaceAll('{{SUBJECT}}', encode(headerMeta.subject))
+			.replaceAll('{{CHAPTER}}', encode(splitChapter))
+			.replaceAll('{{TEST_TYPE}}', encode(headerMeta.testType))
+			.replaceAll('{{CLASS}}', encode(headerMeta.class))
+			.replaceAll('{{TITLE}}', encode(splitTitle));
 
 		// Rebuild: keep <w:pPr> intact, replace all runs with merged run(s).
 		const pPrMatch = paraXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
@@ -1407,11 +1297,11 @@ function applyHeaderMetaToXml(xml, headerMeta) {
 	// in paragraphs it rebuilt, so these replaceAll calls only fire on genuine remaining
 	// occurrences — preventing any risk of double-processing already-encoded XML.
 	let result = xml;
-	if (result.includes("{{SUBJECT}}"))   result = result.replaceAll("{{SUBJECT}}",   lit(encode(headerMeta.subject)));
-	if (result.includes("{{CHAPTER}}"))   result = result.replaceAll("{{CHAPTER}}",   lit(formatPlaceholderForXml(splitChapter)));
-	if (result.includes("{{TEST_TYPE}}")) result = result.replaceAll("{{TEST_TYPE}}", lit(encode(headerMeta.testType)));
-	if (result.includes("{{CLASS}}"))     result = result.replaceAll("{{CLASS}}",     lit(encode(headerMeta.class)));
-	if (result.includes("{{TITLE}}"))     result = result.replaceAll("{{TITLE}}",     lit(formatPlaceholderForXml(splitTitle)));
+	if (result.includes("{{SUBJECT}}"))   result = result.replaceAll("{{SUBJECT}}",   encode(headerMeta.subject));
+	if (result.includes("{{CHAPTER}}"))   result = result.replaceAll("{{CHAPTER}}",   formatPlaceholderForXml(splitChapter));
+	if (result.includes("{{TEST_TYPE}}")) result = result.replaceAll("{{TEST_TYPE}}", encode(headerMeta.testType));
+	if (result.includes("{{CLASS}}"))     result = result.replaceAll("{{CLASS}}",     encode(headerMeta.class));
+	if (result.includes("{{TITLE}}"))     result = result.replaceAll("{{TITLE}}",     formatPlaceholderForXml(splitTitle));
 
 	if (headerMeta.mode && headerMeta.mode !== "question") {
 		result = result.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (paraXml) => {
@@ -1474,7 +1364,7 @@ async function mergeWithTemplate(genEntries, tplEntries, headerMeta) {
 			if (numMatch && genUsedIds.has(Number(numMatch[1]))) {
 				const newId = `rId${nextFree++}`;
 				idRemap[oldId] = newId;
-				relTag = relTag.replace(`Id="${oldId}"`, litRepl(`Id="${newId}"`));
+				relTag = relTag.replace(`Id="${oldId}"`, `Id="${newId}"`);
 			} else if (numMatch) {
 				genUsedIds.add(Number(numMatch[1]));
 			}
@@ -1491,8 +1381,8 @@ async function mergeWithTemplate(genEntries, tplEntries, headerMeta) {
 				if (!name.startsWith("word/header") && !name.startsWith("word/footer")) continue;
 				let xml = merged[name].toString('utf8');
 				for (const [oldId, newId] of Object.entries(idRemap)) {
-					xml = xml.replaceAll(`r:id="${oldId}"`, litRepl(`r:id="${newId}"`));
-					xml = xml.replaceAll(`r:embed="${oldId}"`, litRepl(`r:embed="${newId}"`));
+					xml = xml.replaceAll(`r:id="${oldId}"`, `r:id="${newId}"`);
+					xml = xml.replaceAll(`r:embed="${oldId}"`, `r:embed="${newId}"`);
 				}
 				merged[name] = Buffer.from(xml, 'utf8');
 			}
@@ -1529,7 +1419,7 @@ async function mergeWithTemplate(genEntries, tplEntries, headerMeta) {
 			// Remap any relationship IDs that were renumbered to avoid collisions
 			if (Object.keys(idRemap || {}).length) {
 				for (const [oldId, newId] of Object.entries(idRemap)) {
-					tplSecpr = tplSecpr.replaceAll(`r:id="${oldId}"`, litRepl(`r:id="${newId}"`));
+					tplSecpr = tplSecpr.replaceAll(`r:id="${oldId}"`, `r:id="${newId}"`);
 				}
 			}
 			if (/<w:sectPr\b/.test(genDoc)) {
@@ -1576,8 +1466,8 @@ async function mergeWithTemplate(genEntries, tplEntries, headerMeta) {
 							const genAfterMarker = genBodyContent.slice(markerPEnd);    // questions / answer key
 							if (Object.keys(idRemap || {}).length) {
 								for (const [oldId, newId] of Object.entries(idRemap)) {
-									tplBodyNoSecpr = tplBodyNoSecpr.replaceAll(`r:embed="${oldId}"`, litRepl(`r:embed="${newId}"`));
-									tplBodyNoSecpr = tplBodyNoSecpr.replaceAll(`r:id="${oldId}"`, litRepl(`r:id="${newId}"`));
+									tplBodyNoSecpr = tplBodyNoSecpr.replaceAll(`r:embed="${oldId}"`, `r:embed="${newId}"`);
+									tplBodyNoSecpr = tplBodyNoSecpr.replaceAll(`r:id="${oldId}"`, `r:id="${newId}"`);
 								}
 							}
 							// Replace {{SUBJECT}}, {{CHAPTER}}, {{TEST_TYPE}}, {{CLASS}}, {{TITLE}}
