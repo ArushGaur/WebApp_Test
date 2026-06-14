@@ -997,19 +997,18 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 			'$1$3$2'
 		);
 
-		// 3. Normalise text-node content: fully decode then re-encode exactly once.
-		// This eliminates double-encoding (&amp;amp;, &amp;lt; etc.) regardless of
-		// what the OMML library produced, and catches all entity forms including &#NNN;.
+		// 3. Fix unescaped & inside text content tags (m:t and w:t).
+		// IMPORTANT: We intentionally do NOT encode < and > here.
+		// The latex-to-omml library sometimes emits raw XML structure tags inside
+		// <m:t> elements (e.g. <m:t></m:fPr><m:num>...</m:t>). If we encode
+		// those < > to &lt; &gt;, we permanently destroy the OMML structure and
+		// Word cannot parse the file at all. Instead we only fix bare & that is
+		// not already part of a valid XML entity reference — the one character
+		// that is always illegal unescaped in XML text content.
 		return clean.replace(/(<(?:m|w):t[^>]*>)([\s\S]*?)(<\/(?:m|w):t>)/g, (match, open, content, close) => {
-			// Decode fully to raw text first
-			const raw = fullyDecodeXml(content);
-			// Re-encode cleanly — & must be first to avoid double-encoding
-			const fixed = raw
-				.replace(/&/g, '&amp;')
-				.replace(/</g, '&lt;')
-				.replace(/>/g, '&gt;');
-			// ' and " are intentionally left unencoded in text nodes —
-			// they are legal unencoded in XML text content and Word handles them fine.
+			// Only escape bare & that isn't already the start of an entity reference.
+			// This handles cases like "a & b" (bare &) without touching &amp; &lt; &#39; etc.
+			const fixed = content.replace(/&(?!amp;|lt;|gt;|quot;|apos;|#[0-9]+;|#x[0-9a-fA-F]+;)/g, '&amp;');
 			return open + fixed + close;
 		});
 	}
@@ -1045,7 +1044,14 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 }
 
 async function processParagraph(paraXml) {
-	if (!String(paraXml || "").includes("$")) return paraXml;
+	const paraStr = String(paraXml || "");
+	if (!paraStr.includes("$")) return paraXml;
+	// Skip paragraphs that already contain OMML equations (<m:oMath).
+	// These were already processed by latexToOmmlWrapped/sanitizeOmml and their
+	// m:t / w:t content may legitimately contain $ chars inside math text nodes.
+	// Running extractRunTextFull + splitMath on them would corrupt the
+	// interleaved OMML+text structure irreversibly.
+	if (paraStr.includes('<m:oMath')) return paraXml;
 
 	const pOpen = String(paraXml).match(/<w:p\b[^>]*>/);
 	const pOpenTag = pOpen ? pOpen[0] : "<w:p>";
