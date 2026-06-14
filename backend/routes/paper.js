@@ -997,19 +997,41 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 			'$1$3$2'
 		);
 
-		// 3. Fix unescaped & inside text content tags (m:t and w:t).
-		// IMPORTANT: We intentionally do NOT encode < and > here.
-		// The latex-to-omml library sometimes emits raw XML structure tags inside
-		// <m:t> elements (e.g. <m:t></m:fPr><m:num>...</m:t>). If we encode
-		// those < > to &lt; &gt;, we permanently destroy the OMML structure and
-		// Word cannot parse the file at all. Instead we only fix bare & that is
-		// not already part of a valid XML entity reference — the one character
-		// that is always illegal unescaped in XML text content.
+		// 3. Fix unescaped &, <, > inside text content tags (m:t and w:t).
+		// The latex-to-omml library sometimes emits LITERAL mathematical
+		// operators (e.g. from \ll, \lt, \gt, or bare < / > in the source LaTeX)
+		// as raw, unescaped < / > characters inside <m:t>...</m:t>. Raw < and >
+		// are illegal in XML text content and make Word reject the whole file
+		// (e.g. "d \ll l" -> <m:t>d<<l</m:t>, "\pi < \alpha" -> <m:t>π<α</m:t>,
+		// "t_1 > t_2" -> <m:t>></m:t>).
+		//
+		// However, in rare cases the library ALSO emits raw nested OMML/WML
+		// structure tags inside <m:t> (e.g. <m:t></m:fPr><m:num>...</m:t>).
+		// We must NOT escape those, or we'd permanently destroy the OMML
+		// structure and Word still couldn't parse the file.
+		//
+		// So: preserve any substring that looks like a genuine <m:...> or
+		// <w:...> tag, and escape every other bare & / < / > as entities.
+		const tagPattern = /<\/?(?:m|w):[A-Za-z][\w-]*(?:\s[^<>]*)?\/?>/g;
 		return clean.replace(/(<(?:m|w):t[^>]*>)([\s\S]*?)(<\/(?:m|w):t>)/g, (match, open, content, close) => {
-			// Only escape bare & that isn't already the start of an entity reference.
+			// Escape bare & that isn't already the start of an entity reference.
 			// This handles cases like "a & b" (bare &) without touching &amp; &lt; &#39; etc.
-			const fixed = content.replace(/&(?!amp;|lt;|gt;|quot;|apos;|#[0-9]+;|#x[0-9a-fA-F]+;)/g, '&amp;');
-			return open + fixed + close;
+			const ampFixed = content.replace(/&(?!amp;|lt;|gt;|quot;|apos;|#[0-9]+;|#x[0-9a-fA-F]+;)/g, '&amp;');
+
+			// Now walk the content, leaving genuine <m:...>/<w:...> tags intact
+			// and escaping any other < or > as &lt; / &gt;.
+			let result = '';
+			let lastIndex = 0;
+			let tagMatch;
+			tagPattern.lastIndex = 0;
+			while ((tagMatch = tagPattern.exec(ampFixed)) !== null) {
+				result += ampFixed.slice(lastIndex, tagMatch.index).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+				result += tagMatch[0];
+				lastIndex = tagMatch.index + tagMatch[0].length;
+			}
+			result += ampFixed.slice(lastIndex).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+			return open + result + close;
 		});
 	}
 
