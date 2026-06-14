@@ -252,10 +252,11 @@ async function buildTableCellChildren(cell, isHeader, fontSize) {
 				? String(cell.image) : `data:image/jpeg;base64,${cell.image}`
 		) : null;
 		if (buf) {
+			const bufSize = await calcImgSize(buf, 90, 80);
 			children.push(new Paragraph({
 				alignment: AlignmentType.CENTER,
 				spacing: { before: 20, after: cell.text ? 0 : 20 },
-				children: [new ImageRun({ data: buf, transformation: { width: 90, height: 70 }, type: imgType(String(cell.image)) })],
+				children: [new ImageRun({ data: buf, transformation: bufSize, type: imgType(String(cell.image)) })],
 			}));
 		}
 		const capText = docxStripMath(cell.text || "");
@@ -383,6 +384,27 @@ async function buildTableElement(tbl, opts = {}) {
 }
 
 /**
+ * Compute aspect-ratio-correct rendered dimensions for an image buffer.
+ * targetWidth — desired width in points (default 120).
+ * maxHeight   — cap on rendered height in points (default 110).
+ * Returns { width, height } in points.
+ */
+async function calcImgSize(buf, targetWidth = 120, maxHeight = 110) {
+	const dims = await getImageDimensions(buf);
+	if (!dims || dims.width <= 0 || dims.height <= 0) {
+		return { width: targetWidth, height: Math.min(targetWidth, maxHeight) };
+	}
+	const aspect = dims.width / dims.height;
+	let w = targetWidth;
+	let h = Math.round(w / aspect);
+	if (h > maxHeight) {
+		h = maxHeight;
+		w = Math.round(h * aspect);
+	}
+	return { width: w, height: h };
+}
+
+/**
  * Build a list of docx Paragraph / ImageRun elements from a question object.
  * Returns an array of Paragraph objects.
  */
@@ -469,10 +491,11 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 							: `data:image/jpeg;base64,${imgSrc}`
 					);
 					if (buf) {
+						const bufSize = await calcImgSize(buf, 280, 200);
 						paragraphs.push(new Paragraph({
 							spacing: { before: 40, after: 40 },
 							alignment: AlignmentType.CENTER,
-							children: [new ImageRun({ data: buf, transformation: { width: 280, height: 160 }, type: imgType(imgSrc) })]
+							children: [new ImageRun({ data: buf, transformation: bufSize, type: imgType(imgSrc) })]
 						}));
 					}
 				}
@@ -563,147 +586,32 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 	const optionParas = [];
 
 	if (hasOptionTables) {
-		// Build content for each option slot (label + table/image/text elements).
-		// Then decide: can we fit two options side-by-side, or must each be full-width?
-		//
-		// "Fits side-by-side" = every option table's natural column total is ≤ half
-		// the available content width (5233 DXA for a half-page with a small gap).
-		// We estimate natural table width the same way buildTableElement does:
-		// ~110 DXA/char + 160 DXA cell padding per column, minimum 600 DXA/col.
-		const CHAR_W = 110, CELL_PAD = 160, MIN_COL = 600, IMG_COL = 1800;
-		const HALF_DXA = 5233; // (10466 - ~0 gap) / 2 — borderless outer cell width
-
-		function estimateOptTblWidth(tbl) {
-			if (!tbl || typeof tbl !== "object") return 0;
-			const headers = Array.isArray(tbl.headers) ? tbl.headers : [];
-			const rows = Array.isArray(tbl.rows) ? tbl.rows.filter(r => Array.isArray(r)) : [];
-			let colCount = headers.length;
-			for (const r of rows) colCount = Math.max(colCount, r.length);
-			if (colCount === 0) return 0;
-			let total = 0;
-			for (let c = 0; c < colCount; c++) {
-				let maxChars = 0;
-				if (headers[c] !== undefined) {
-					if (isDocxImageCell(headers[c])) { total += IMG_COL; continue; }
-					maxChars = Math.max(maxChars, docxStripMath(headers[c] || "").length);
-				}
-				for (const r of rows) {
-					const cell = r[c];
-					if (cell === undefined || cell === null) continue;
-					if (isDocxImageCell(cell)) { total += IMG_COL; maxChars = -Infinity; break; }
-					maxChars = Math.max(maxChars, docxStripMath(cell || "").length);
-				}
-				if (maxChars !== -Infinity) total += Math.max(MIN_COL, maxChars * CHAR_W + CELL_PAD);
-			}
-			return total;
-		}
-
-		// Check if ALL four option tables (that exist) fit within half the page width.
-		const allOptTblsFitHalf = optionTables.every((tbl, oi) => {
-			const hasTbl = tbl && typeof tbl === "object" &&
-				((Array.isArray(tbl.headers) && tbl.headers.length) ||
-				 (Array.isArray(tbl.rows) && tbl.rows.length));
-			if (!hasTbl) return true; // non-table options (text/image) are flexible
-			return estimateOptTblWidth(tbl) <= HALF_DXA;
-		});
-
-		const noBorderCell = { style: BorderStyle.NIL, size: 0, color: "auto" };
-		const noBordersAll = {
-			top: noBorderCell, bottom: noBorderCell,
-			left: noBorderCell, right: noBorderCell,
-			insideH: noBorderCell, insideV: noBorderCell,
-		};
-
-		if (allOptTblsFitHalf) {
-			// ── Two-per-row layout: (A)+(B) on row 1, (C)+(D) on row 2 ──────────
-			// Build each option's children list (label paragraph + table/image/text).
-			async function buildOptCellChildren(oi) {
-				const tbl = optionTables[oi];
-				const hasTbl = tbl && typeof tbl === "object" &&
-					((Array.isArray(tbl.headers) && tbl.headers.length) ||
-					 (Array.isArray(tbl.rows) && tbl.rows.length));
-				const children = [];
-				children.push(new Paragraph({
-					spacing: { before: 40, after: 20 },
-					children: [new TextRun({ text: `  (${LETTERS[oi]})`, bold: true, font: "Arial", size: 22 })],
-				}));
-				if (hasTbl) {
-					// buildTableElement returns [optionalCaption, Table, spacerPara]
-					// TableCell.children accepts Table elements directly.
-					children.push(...(await buildTableElement(tbl, { compact: true })));
-				} else if (optionImages[oi]) {
-					const ob = await resolveImageBuffer(optionImages[oi]);
-					if (ob) {
-						children.push(new Paragraph({
-							spacing: { before: 0, after: 40 },
-							children: [new ImageRun({ data: ob, transformation: { width: 150, height: 85 }, type: imgType(optionImages[oi]) })],
-						}));
-					}
-				} else {
-					children.push(new Paragraph({
-						spacing: { before: 0, after: 40 },
-						children: [new TextRun({ text: stripMath(options[oi] || ""), font: "Arial", size: 22 })],
-					}));
-				}
-				return children;
-			}
-
-			for (let oi = 0; oi < 4; oi += 2) {
-				const leftChildren  = await buildOptCellChildren(oi);
-				const rightChildren = await buildOptCellChildren(oi + 1);
-				optionParas.push(new Table({
-					width: { size: 10466, type: WidthType.DXA },
-					columnWidths: [5233, 5233],
-					borders: noBordersAll,
-					rows: [
-						new TableRow({
-							children: [
-								new TableCell({
-									width: { size: 5233, type: WidthType.DXA },
-									borders: noBordersAll,
-									verticalAlign: VerticalAlign.TOP,
-									margins: { top: 0, bottom: 0, left: 0, right: 80 },
-									children: leftChildren,
-								}),
-								new TableCell({
-									width: { size: 5233, type: WidthType.DXA },
-									borders: noBordersAll,
-									verticalAlign: VerticalAlign.TOP,
-									margins: { top: 0, bottom: 0, left: 80, right: 0 },
-									children: rightChildren,
-								}),
-							],
-						}),
-					],
-				}));
-			}
-		} else {
-			// ── One-per-row fallback (tables are too wide to share a row) ─────────
-			for (let oi = 0; oi < 4; oi++) {
-				const optTbl = optionTables[oi];
-				const hasTbl = optTbl && typeof optTbl === "object" &&
-					((Array.isArray(optTbl.headers) && optTbl.headers.length) ||
-					 (Array.isArray(optTbl.rows) && optTbl.rows.length));
-				optionParas.push(new Paragraph({
-					spacing: { before: 60, after: 20 },
-					children: [new TextRun({ text: `  (${LETTERS[oi]})  `, bold: true, font: "Arial", size: 22 })],
-				}));
-				if (hasTbl) {
-					optionParas.push(...(await buildTableElement(optTbl, { compact: true })));
-				} else if (optionImages[oi]) {
-					const ob = await resolveImageBuffer(optionImages[oi]);
-					if (ob) {
-						optionParas.push(new Paragraph({
-							spacing: { before: 0, after: 40 },
-							children: [new ImageRun({ data: ob, transformation: { width: 150, height: 85 }, type: imgType(optionImages[oi]) })],
-						}));
-					}
-				} else {
+		// Each option (A/B/C/D) is its own mini-table. Render a bold label line
+		// followed by the option's table (or its text/image fallback) one per row.
+		for (let oi = 0; oi < 4; oi++) {
+			const optTbl = optionTables[oi];
+			const hasTbl = optTbl && typeof optTbl === "object" && ((Array.isArray(optTbl.headers) && optTbl.headers.length) || (Array.isArray(optTbl.rows) && optTbl.rows.length));
+			// Label line: "(A)"
+			optionParas.push(new Paragraph({
+				spacing: { before: 60, after: 20 },
+				children: [new TextRun({ text: `  (${LETTERS[oi]})  `, bold: true, font: "Arial", size: 22 })],
+			}));
+			if (hasTbl) {
+				optionParas.push(...(await buildTableElement(optTbl, { compact: true })));
+			} else if (optionImages[oi]) {
+				const ob = await resolveImageBuffer(optionImages[oi]);
+				if (ob) {
+					const obSize = await calcImgSize(ob, 120, 110);
 					optionParas.push(new Paragraph({
 						spacing: { before: 0, after: 40 },
-						children: [new TextRun({ text: stripMath(options[oi] || ""), font: "Arial", size: 22 })],
+						children: [new ImageRun({ data: ob, transformation: obSize, type: imgType(optionImages[oi]) })],
 					}));
 				}
+			} else {
+				optionParas.push(new Paragraph({
+					spacing: { before: 0, after: 40 },
+					children: [new TextRun({ text: stripMath(options[oi] || ""), font: "Arial", size: 22 })],
+				}));
 			}
 		}
 	} else if (allOptsShort) {
@@ -724,11 +632,17 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 		}
 	} else if (hasAnyOptImg) {
 		// Option images → 2 images per line (A & B on row 1, C & D on row 2)
-		// Pre-resolve all option image buffers so we can lay them out two-per-row.
+		// Pre-resolve all option image buffers and compute correct aspect-ratio sizes.
 		const optImgBufs = [];
 		for (let oi = 0; oi < 4; oi++) {
 			const optImg = optionImages[oi] || null;
-			optImgBufs[oi] = optImg ? { buf: await resolveImageBuffer(optImg), type: imgType(optImg) } : null;
+			if (optImg) {
+				const buf = await resolveImageBuffer(optImg);
+				const size = buf ? await calcImgSize(buf, 120, 110) : { width: 120, height: 80 };
+				optImgBufs[oi] = { buf, type: imgType(optImg), size };
+			} else {
+				optImgBufs[oi] = null;
+			}
 		}
 		// Two-per-line layout uses a tab stop to separate the left/right columns.
 		const imgTabPos = qImgBuf
@@ -739,14 +653,14 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 			// Left column (option oi)
 			rowChildren.push(new TextRun({ text: `  (${LETTERS[oi]})  `, bold: true, font: "Arial", size: 22 }));
 			if (optImgBufs[oi] && optImgBufs[oi].buf) {
-				rowChildren.push(new ImageRun({ data: optImgBufs[oi].buf, transformation: { width: 150, height: 85 }, type: optImgBufs[oi].type }));
+				rowChildren.push(new ImageRun({ data: optImgBufs[oi].buf, transformation: optImgBufs[oi].size, type: optImgBufs[oi].type }));
 			} else {
 				rowChildren.push(new TextRun({ text: stripMath(options[oi] || ""), font: "Arial", size: 22 }));
 			}
 			// Tab → right column (option oi+1)
 			rowChildren.push(new TextRun({ text: `\t  (${LETTERS[oi + 1]})  `, bold: true, font: "Arial", size: 22 }));
 			if (optImgBufs[oi + 1] && optImgBufs[oi + 1].buf) {
-				rowChildren.push(new ImageRun({ data: optImgBufs[oi + 1].buf, transformation: { width: 150, height: 85 }, type: optImgBufs[oi + 1].type }));
+				rowChildren.push(new ImageRun({ data: optImgBufs[oi + 1].buf, transformation: optImgBufs[oi + 1].size, type: optImgBufs[oi + 1].type }));
 			} else {
 				rowChildren.push(new TextRun({ text: stripMath(options[oi + 1] || ""), font: "Arial", size: 22 }));
 			}
