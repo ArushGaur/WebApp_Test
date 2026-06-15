@@ -303,7 +303,9 @@ async function buildTableElement(tbl, opts = {}) {
 	// ── Auto-size columns to fit content, not always full page width ─────────
 	// Estimate each column's natural width from its longest cell text.
 	// Arial ~10pt (size=20 half-points): ~110 DXA per char. Cell pad = 80+80 = 160 DXA.
-	const MAX_TABLE_DXA = compact ? 10047 : 10466;
+	// opts.maxWidth caps the table when it lives inside a narrower container cell
+	// (e.g. the left column of the options+image layout when a question image is present).
+	const MAX_TABLE_DXA = opts.maxWidth != null ? opts.maxWidth : (compact ? 10047 : 10466);
 	const CHAR_WIDTH_DXA = 110;
 	const CELL_PAD_DXA   = 160;
 	const MIN_COL_DXA    = 600;
@@ -573,49 +575,144 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 		paragraphs.push(...(await buildTableElement(tbl)));
 	}
 
-	// ── 2. Build options-only paragraphs ──────────────────────────────────────
-	// Tab stop for two-column option layout (A+B on row 1, C+D on row 2).
-	// When an image is present the options live in a narrower left column, so we
-	// compute the tab stop from the expected left-column width. We use qImgWidth
-	// computed above to mirror the same dynamic column sizing used in the table.
-	// 1pt = 20 DXA; right col = qImgWidth*20+240 clamped [2400,4400]; left = 10466 - right.
-	// Midpoint of left col ≈ leftCol / 2 in DXA, but a tab at ~half gives good split.
-	const tabPos = qImgBuf
-		? Math.round((10466 - Math.min(Math.max(Math.round(qImgWidth * 20) + 240, 2400), 4400)) / 2)
-		: 4873;
+	// ── 2. Pre-compute layout column widths ─────────────────────────────────
+	// Must be done BEFORE building optionParas so that option tables inside
+	// hasOptionTables are correctly width-constrained to the available left column.
+	// A4 content = 10466 DXA. Right col = image rendered width (1pt = 20 DXA) +
+	// 240 DXA padding, clamped [2400, 4400]. Left col = everything else.
+	const noBorder  = { style: BorderStyle.NIL, size: 0, color: "auto" };
+	const noBorders = {
+		top: noBorder, bottom: noBorder, left: noBorder, right: noBorder,
+		insideH: noBorder, insideV: noBorder,
+	};
+	const rightColDxa = qImgBuf
+		? Math.min(Math.max(Math.round(qImgWidth * 20) + 240, 2400), 4400)
+		: 0;
+	const leftColDxa  = 10466 - rightColDxa;
+	// Usable width for options content (subtract right-margin padding on left cell).
+	const optAvailDxa = qImgBuf ? leftColDxa - 100 : leftColDxa;
+	// Tab stop midpoint for two-column text-option layout.
+	const tabPos = Math.round(optAvailDxa / 2);
 	const optionParas = [];
 
 	if (hasOptionTables) {
-		// Each option (A/B/C/D) is its own mini-table. Render a bold label line
-		// followed by the option's table (or its text/image fallback) one per row.
-		for (let oi = 0; oi < 4; oi++) {
-			const optTbl = optionTables[oi];
-			const hasTbl = optTbl && typeof optTbl === "object" && ((Array.isArray(optTbl.headers) && optTbl.headers.length) || (Array.isArray(optTbl.rows) && optTbl.rows.length));
-			// Label line: "(A)"
-			optionParas.push(new Paragraph({
-				spacing: { before: 60, after: 20 },
-				children: [new TextRun({ text: `  (${LETTERS[oi]})  `, bold: true, font: "Arial", size: 22 })],
+		// ── Two-per-row layout for option tables ──────────────────────────────
+		// Each pair (A+B, then C+D) goes into a borderless 2-column outer table.
+		// halfDxa = width of each column (tight gap of 120 DXA between them).
+		const GAP_DXA  = 120;
+		const halfDxa  = Math.floor((optAvailDxa - GAP_DXA) / 2);
+
+		// Estimate natural width of an option table (same heuristic as buildTableElement).
+		function estimateOptTblWidth(tbl) {
+			if (!tbl || typeof tbl !== "object") return 0;
+			const headers = Array.isArray(tbl.headers) ? tbl.headers : [];
+			const rows    = Array.isArray(tbl.rows)    ? tbl.rows.filter(r => Array.isArray(r)) : [];
+			let colCount  = headers.length;
+			for (const r of rows) colCount = Math.max(colCount, r.length);
+			if (colCount === 0) return 0;
+			let total = 0;
+			for (let c = 0; c < colCount; c++) {
+				let maxChars = 0;
+				if (headers[c] !== undefined) {
+					if (isDocxImageCell(headers[c])) { total += 1800; continue; }
+					maxChars = Math.max(maxChars, docxStripMath(headers[c] || "").length);
+				}
+				for (const r of rows) {
+					const cell = r[c];
+					if (cell === undefined || cell === null) continue;
+					if (isDocxImageCell(cell)) { total += 1800; maxChars = -Infinity; break; }
+					maxChars = Math.max(maxChars, docxStripMath(cell || "").length);
+				}
+				if (maxChars !== -Infinity) total += Math.max(600, maxChars * 110 + 160);
+			}
+			return total;
+		}
+
+		// Check if every option table fits within halfDxa (i.e. can share a row).
+		const allFitHalf = optionTables.every(tbl => {
+			const hasTbl = tbl && typeof tbl === "object" &&
+				((Array.isArray(tbl.headers) && tbl.headers.length) ||
+				 (Array.isArray(tbl.rows) && tbl.rows.length));
+			return !hasTbl || estimateOptTblWidth(tbl) <= halfDxa;
+		});
+
+		// Build children for one option slot: label paragraph + table/image/text.
+		async function buildOptCellChildren(oi, maxWidth) {
+			const tbl    = optionTables[oi];
+			const hasTbl = tbl && typeof tbl === "object" &&
+				((Array.isArray(tbl.headers) && tbl.headers.length) ||
+				 (Array.isArray(tbl.rows)    && tbl.rows.length));
+			const children = [];
+			children.push(new Paragraph({
+				spacing: { before: 40, after: 16 },
+				children: [new TextRun({ text: `  (${LETTERS[oi]})`, bold: true, font: "Arial", size: 22 })],
 			}));
 			if (hasTbl) {
-				optionParas.push(...(await buildTableElement(optTbl, { compact: true })));
+				children.push(...(await buildTableElement(tbl, { compact: true, maxWidth })));
 			} else if (optionImages[oi]) {
 				const ob = await resolveImageBuffer(optionImages[oi]);
 				if (ob) {
 					const obSize = await calcImgSize(ob, 120, 110);
-					optionParas.push(new Paragraph({
+					children.push(new Paragraph({
 						spacing: { before: 0, after: 40 },
 						children: [new ImageRun({ data: ob, transformation: obSize, type: imgType(optionImages[oi]) })],
 					}));
 				}
 			} else {
-				optionParas.push(new Paragraph({
+				children.push(new Paragraph({
 					spacing: { before: 0, after: 40 },
 					children: [new TextRun({ text: stripMath(options[oi] || ""), font: "Arial", size: 22 })],
 				}));
 			}
+			return children;
+		}
+
+		if (allFitHalf) {
+			// Two-per-row: (A)+(B) on row 1, (C)+(D) on row 2
+			for (let oi = 0; oi < 4; oi += 2) {
+				const leftChildren  = await buildOptCellChildren(oi,     halfDxa);
+				const rightChildren = await buildOptCellChildren(oi + 1, halfDxa);
+				optionParas.push(new Table({
+					width: { size: optAvailDxa, type: WidthType.DXA },
+					columnWidths: [halfDxa, GAP_DXA, halfDxa],
+					borders: noBorders,
+					rows: [
+						new TableRow({
+							children: [
+								new TableCell({
+									width: { size: halfDxa, type: WidthType.DXA },
+									borders: noBorders,
+									verticalAlign: VerticalAlign.TOP,
+									margins: { top: 0, bottom: 0, left: 0, right: 0 },
+									children: leftChildren,
+								}),
+								// Narrow spacer cell for the gap
+								new TableCell({
+									width: { size: GAP_DXA, type: WidthType.DXA },
+									borders: noBorders,
+									children: [new Paragraph({ children: [] })],
+								}),
+								new TableCell({
+									width: { size: halfDxa, type: WidthType.DXA },
+									borders: noBorders,
+									verticalAlign: VerticalAlign.TOP,
+									margins: { top: 0, bottom: 0, left: 0, right: 0 },
+									children: rightChildren,
+								}),
+							],
+						}),
+					],
+				}));
+			}
+		} else {
+			// Fallback: one per row (tables too wide to share a row)
+			for (let oi = 0; oi < 4; oi++) {
+				const children = await buildOptCellChildren(oi, optAvailDxa);
+				optionParas.push(...children);
+			}
 		}
 	} else if (allOptsShort) {
-		// A + B on row 1, C + D on row 2
+		// A + B on row 1, C + D on row 2 (short text options)
 		for (let oi = 0; oi < 4; oi += 2) {
 			const textA = stripMath(options[oi] || "");
 			const textB = stripMath(options[oi + 1] || "");
@@ -631,33 +728,26 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 			}));
 		}
 	} else if (hasAnyOptImg) {
-		// Option images → 2 images per line (A & B on row 1, C & D on row 2)
-		// Pre-resolve all option image buffers and compute correct aspect-ratio sizes.
+		// Option images → 2 per row (A & B on row 1, C & D on row 2)
 		const optImgBufs = [];
 		for (let oi = 0; oi < 4; oi++) {
 			const optImg = optionImages[oi] || null;
 			if (optImg) {
-				const buf = await resolveImageBuffer(optImg);
+				const buf  = await resolveImageBuffer(optImg);
 				const size = buf ? await calcImgSize(buf, 120, 110) : { width: 120, height: 80 };
 				optImgBufs[oi] = { buf, type: imgType(optImg), size };
 			} else {
 				optImgBufs[oi] = null;
 			}
 		}
-		// Two-per-line layout uses a tab stop to separate the left/right columns.
-		const imgTabPos = qImgBuf
-			? Math.round((10466 - Math.min(Math.max(Math.round(qImgWidth * 20) + 240, 2400), 4400)) / 2)
-			: 4873;
 		for (let oi = 0; oi < 4; oi += 2) {
 			const rowChildren = [];
-			// Left column (option oi)
 			rowChildren.push(new TextRun({ text: `  (${LETTERS[oi]})  `, bold: true, font: "Arial", size: 22 }));
 			if (optImgBufs[oi] && optImgBufs[oi].buf) {
 				rowChildren.push(new ImageRun({ data: optImgBufs[oi].buf, transformation: optImgBufs[oi].size, type: optImgBufs[oi].type }));
 			} else {
 				rowChildren.push(new TextRun({ text: stripMath(options[oi] || ""), font: "Arial", size: 22 }));
 			}
-			// Tab → right column (option oi+1)
 			rowChildren.push(new TextRun({ text: `\t  (${LETTERS[oi + 1]})  `, bold: true, font: "Arial", size: 22 }));
 			if (optImgBufs[oi + 1] && optImgBufs[oi + 1].buf) {
 				rowChildren.push(new ImageRun({ data: optImgBufs[oi + 1].buf, transformation: optImgBufs[oi + 1].size, type: optImgBufs[oi + 1].type }));
@@ -666,12 +756,12 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 			}
 			optionParas.push(new Paragraph({
 				spacing: { before: 40, after: 40 },
-				tabStops: [{ type: TabStopType.LEFT, position: imgTabPos }],
+				tabStops: [{ type: TabStopType.LEFT, position: tabPos }],
 				children: rowChildren,
 			}));
 		}
 	} else {
-		// One option per line (long text only)
+		// One option per line (long text)
 		for (let oi = 0; oi < 4; oi++) {
 			const optText = stripMath(options[oi] || "");
 			optionParas.push(new Paragraph({
@@ -686,35 +776,14 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 
 	// ── 3. Combine options + image ────────────────────────────────────────────
 	if (qImgBuf) {
-		// Use BorderStyle.NIL (w:nil) — the correct OOXML way to truly suppress all borders.
-		// BorderStyle.NONE still renders as a hairline in some Word/LibreOffice versions.
-		const noBorder = { style: BorderStyle.NIL, size: 0, color: "auto" };
-		const noBorders = {
-			top: noBorder, bottom: noBorder, left: noBorder, right: noBorder,
-			insideH: noBorder, insideV: noBorder,
-		};
-
-		// A4 content width = 10466 DXA.
-		// Right column width scales with the image's actual rendered width (1pt = 20 DXA),
-		// plus padding, clamped between 2400 DXA (120pt) and 4400 DXA (220pt).
-		const rightColDxa = Math.min(Math.max(Math.round(qImgWidth * 20) + 240, 2400), 4400);
-		const leftColDxa  = 10466 - rightColDxa;
-
 		paragraphs.push(new Table({
 			width: { size: 10466, type: WidthType.DXA },
 			columnWidths: [leftColDxa, rightColDxa],
-			borders: {
-				top: noBorder,
-				bottom: noBorder,
-				left: noBorder,
-				right: noBorder,
-				insideH: noBorder,
-				insideV: noBorder,
-			},
+			borders: noBorders,
 			rows: [
 				new TableRow({
 					children: [
-						// Left cell — options only
+						// Left cell — options
 						new TableCell({
 							width: { size: leftColDxa, type: WidthType.DXA },
 							borders: noBorders,
@@ -747,11 +816,11 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 			],
 		}));
 	} else {
-		// No image — plain full-width option paragraphs
+		// No image — full-width option paragraphs / tables
 		paragraphs.push(...optionParas);
 	}
 
-	// ── 4. Render any tables explicitly positioned after the options ─────────
+		// ── 4. Render any tables explicitly positioned after the options ─────────
 	for (const tbl of tablesAfterOptions) {
 		paragraphs.push(...(await buildTableElement(tbl)));
 	}
