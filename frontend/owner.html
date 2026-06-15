@@ -24,6 +24,497 @@
 
 
     <link rel="stylesheet" href="/owner.css">
+    <style>
+        /* ── LIQUID GLASS TOKEN OVERRIDES ── injected after owner.css ── */
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.08);
+            --glass-bg-hover: rgba(255, 255, 255, 0.14);
+            --glass-bg-active: rgba(255, 255, 255, 0.18);
+            --glass-bg-strong: rgba(255, 255, 255, 0.13);
+            --glass-border: rgba(255, 255, 255, 0.22);
+            --glass-border-bright: rgba(255, 255, 255, 0.42);
+            --glass-shine: rgba(255, 255, 255, 0.55);
+            --glass-blur: blur(24px) saturate(1.8);
+            --glass-blur-heavy: blur(40px) saturate(2.2);
+            --glass-blur-light: blur(12px) saturate(1.4);
+            --liquid-blue: #5b8fff;
+            --liquid-cyan: #38e8e8;
+            --liquid-purple: #a78bfa;
+            --liquid-pink: #f472b6;
+            --liquid-green: #34d399;
+            --liquid-gold: #fbbf24;
+            --bg: #0a0f1e;
+            --bg-card: rgba(255, 255, 255, 0.07);
+            --bg-input: rgba(255, 255, 255, 0.06);
+            --bg-hover: rgba(255, 255, 255, 0.12);
+            --bg-sidebar: rgba(10, 15, 30, 0.72);
+            --border: rgba(255, 255, 255, 0.18);
+            --border-focus: rgba(91, 143, 255, 0.8);
+            --accent: #5b8fff;
+            --accent-2: #38e8e8;
+            --accent-3: #34d399;
+            --accent-4: #fbbf24;
+            --accent-glow: rgba(91, 143, 255, 0.3);
+            --success: #34d399;
+            --warn: #fbbf24;
+            --error: #f87171;
+            --text: rgba(255, 255, 255, 0.95);
+            --text-dim: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.45);
+            --radius: 18px;
+            --radius-sm: 12px;
+            --radius-xs: 8px;
+            --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+            --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+
+        [data-theme="light"] {
+            --glass-bg: rgba(255, 255, 255, 0.55);
+            --glass-bg-hover: rgba(255, 255, 255, 0.72);
+            --glass-bg-active: rgba(255, 255, 255, 0.8);
+            --glass-bg-strong: rgba(255, 255, 255, 0.65);
+            --glass-border: rgba(180, 200, 255, 0.4);
+            --glass-border-bright: rgba(120, 160, 255, 0.6);
+            --bg: #b8c8f0;
+            --bg-card: rgba(255, 255, 255, 0.6);
+            --bg-input: rgba(255, 255, 255, 0.45);
+            --bg-hover: rgba(255, 255, 255, 0.75);
+            --bg-sidebar: rgba(200, 215, 255, 0.65);
+            --border: rgba(100, 140, 255, 0.22);
+            --border-focus: #4d72f7;
+            --accent: #3b5af5;
+            --accent-2: #06b6d4;
+            --accent-3: #10b981;
+            --accent-4: #d97706;
+            --warn: #b45309;
+            --text: rgba(10, 20, 60, 0.95);
+            --text-dim: rgba(10, 20, 60, 0.68);
+            --text-muted: rgba(10, 20, 60, 0.45);
+            --accent-glow: rgba(59, 90, 245, 0.22);
+            --shadow-card: 0 8px 32px rgba(80, 100, 200, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+            --shadow-modal: 0 24px 64px rgba(60, 80, 160, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+        }
+
+        [data-theme="dark"] {
+            --bg: #060c1a;
+        }
+
+        /* ── BACKGROUND ── */
+        body {
+            background: var(--bg) !important;
+        }
+
+        [data-theme="dark"] body {
+            background:
+                radial-gradient(ellipse 120% 80% at 10% -10%, rgba(91, 143, 255, 0.28) 0%, transparent 55%),
+                radial-gradient(ellipse 80% 60% at 90% 20%, rgba(167, 139, 250, 0.2) 0%, transparent 50%),
+                radial-gradient(ellipse 60% 80% at 50% 100%, rgba(56, 232, 232, 0.12) 0%, transparent 55%),
+                linear-gradient(160deg, #060c1a 0%, #0a0e20 40%, #060a18 100%) !important;
+            background-attachment: fixed !important;
+        }
+
+        [data-theme="light"] body {
+            background:
+                radial-gradient(ellipse 100% 70% at 15% 0%, rgba(120, 160, 255, 0.4) 0%, transparent 55%),
+                radial-gradient(ellipse 70% 55% at 88% 15%, rgba(180, 140, 255, 0.3) 0%, transparent 50%),
+                radial-gradient(ellipse 55% 70% at 48% 100%, rgba(56, 200, 220, 0.22) 0%, transparent 55%),
+                linear-gradient(150deg, #b8c8f0 0%, #c8d8f8 40%, #b0c0e8 100%) !important;
+            background-attachment: fixed !important;
+        }
+
+        /* ── SIDEBAR GLASS ── */
+        #sidebar {
+            background: var(--bg-sidebar) !important;
+            backdrop-filter: blur(24px) saturate(1.8) !important;
+            -webkit-backdrop-filter: blur(24px) saturate(1.8) !important;
+            border-right: 1px solid var(--glass-border) !important;
+        }
+
+        [data-theme="dark"] #sidebar {
+            background: rgba(6, 10, 24, 0.75) !important;
+        }
+
+        /* ── LOGIN OVERLAY ── */
+        #loginOverlay {
+            background: none !important;
+        }
+
+        [data-theme="dark"] #loginOverlay {
+            background:
+                radial-gradient(ellipse 120% 80% at 15% -5%, rgba(91, 143, 255, 0.32) 0%, transparent 52%),
+                radial-gradient(ellipse 80% 70% at 88% 25%, rgba(167, 139, 250, 0.24) 0%, transparent 50%),
+                linear-gradient(160deg, #06091a 0%, #0a0d20 100%) !important;
+        }
+
+        [data-theme="light"] #loginOverlay {
+            background:
+                radial-gradient(ellipse 120% 80% at 15% -5%, rgba(120, 160, 255, 0.45) 0%, transparent 52%),
+                radial-gradient(ellipse 80% 70% at 88% 25%, rgba(180, 140, 255, 0.35) 0%, transparent 50%),
+                linear-gradient(160deg, #b0c4f0 0%, #c4d4f8 100%) !important;
+        }
+
+        /* ── CARD GLASS SURFACES ── */
+        .chapter-card,
+        .lecture-card,
+        .inst-card,
+        .stat-card,
+        .panel,
+        .imp-q-card,
+        .imp-source-tab,
+        .ag-chapter-card,
+        .ag-subject-card,
+        .ag-topic-card,
+        .ag-lstep,
+        .ag-tpl-row,
+        .imp-upload-zone {
+            backdrop-filter: blur(24px) saturate(1.8) !important;
+            -webkit-backdrop-filter: blur(24px) saturate(1.8) !important;
+        }
+
+        /* ── MODAL GLASS ── */
+        .modal-box,
+        .inst-modal-box,
+        .confirm-box,
+        .imp-crop-modal {
+            background: rgba(255, 255, 255, 0.09) !important;
+            backdrop-filter: blur(40px) saturate(2.2) !important;
+            -webkit-backdrop-filter: blur(40px) saturate(2.2) !important;
+            border: 1px solid rgba(255, 255, 255, 0.22) !important;
+            border-top-color: rgba(255, 255, 255, 0.42) !important;
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+        }
+
+        [data-theme="light"] .modal-box,
+        [data-theme="light"] .inst-modal-box,
+        [data-theme="light"] .confirm-box {
+            background: rgba(255, 255, 255, 0.72) !important;
+            border-color: rgba(120, 160, 255, 0.38) !important;
+            border-top-color: rgba(255, 255, 255, 0.95) !important;
+        }
+
+        /* ── MODAL OVERLAY BLUR ── */
+        .modal-overlay {
+            background: rgba(0, 0, 0, 0.5) !important;
+            backdrop-filter: blur(14px) saturate(1.6) !important;
+            -webkit-backdrop-filter: blur(14px) saturate(1.6) !important;
+        }
+
+        /* ── INPUT / SELECT GLASS ── */
+        .field input,
+        .field textarea,
+        .field select,
+        .table-search,
+        .login-field-input,
+        .login-input-wrap input,
+        .inst-form-row input,
+        .inst-form-row select,
+        .admin-select {
+            background: rgba(255, 255, 255, 0.06) !important;
+            backdrop-filter: blur(8px) !important;
+            -webkit-backdrop-filter: blur(8px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.18) !important;
+        }
+
+        [data-theme="light"] .field input,
+        [data-theme="light"] .field textarea,
+        [data-theme="light"] .field select,
+        [data-theme="light"] .table-search,
+        [data-theme="light"] .admin-select,
+        [data-theme="light"] .inst-form-row input,
+        [data-theme="light"] .inst-form-row select {
+            background: rgba(255, 255, 255, 0.55) !important;
+            border-color: rgba(100, 140, 255, 0.28) !important;
+        }
+
+        /* ── BUTTONS ── */
+        .btn-primary {
+            background: linear-gradient(135deg, #5b8fff, #a78bfa) !important;
+            border: 1px solid rgba(255, 255, 255, 0.22) !important;
+            border-top-color: rgba(255, 255, 255, 0.4) !important;
+            box-shadow: 0 4px 16px rgba(91, 143, 255, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            box-shadow: 0 8px 28px rgba(91, 143, 255, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+            transform: translateY(-1px) !important;
+        }
+
+        .btn-ghost {
+            background: rgba(255, 255, 255, 0.06) !important;
+            backdrop-filter: blur(8px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.18) !important;
+        }
+
+        [data-theme="light"] .btn-ghost {
+            background: rgba(255, 255, 255, 0.55) !important;
+            border-color: rgba(100, 140, 255, 0.3) !important;
+        }
+
+        /* ── LOGIN CARD ── */
+        .login-card {
+            background: rgba(255, 255, 255, 0.10) !important;
+            backdrop-filter: blur(40px) saturate(2.2) !important;
+            -webkit-backdrop-filter: blur(40px) saturate(2.2) !important;
+            border: 1px solid rgba(255, 255, 255, 0.22) !important;
+            border-top-color: rgba(255, 255, 255, 0.5) !important;
+            box-shadow: 0 32px 80px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.18) !important;
+            border-radius: 24px !important;
+        }
+
+        [data-theme="light"] .login-card {
+            background: rgba(255, 255, 255, 0.62) !important;
+            border-color: rgba(150, 180, 255, 0.45) !important;
+            border-top-color: rgba(255, 255, 255, 0.9) !important;
+        }
+
+        /* ── MOBILE DRAWER ── */
+        #mobileDrawer {
+            background: rgba(6, 10, 24, 0.88) !important;
+            backdrop-filter: blur(40px) saturate(2) !important;
+            -webkit-backdrop-filter: blur(40px) saturate(2) !important;
+            border-right: 1px solid rgba(255, 255, 255, 0.12) !important;
+        }
+
+        [data-theme="light"] #mobileDrawer {
+            background: rgba(200, 220, 255, 0.82) !important;
+        }
+
+        /* ── MOBILE DRAWER OVERLAY ── */
+        #mobileDrawerOverlay {
+            backdrop-filter: blur(4px) !important;
+            background: rgba(0, 0, 0, 0.4) !important;
+        }
+
+        /* ── LOGIN ATOM ACCENT BAR shimmer ── */
+        .login-accent-bar {
+            background: linear-gradient(90deg, transparent 0%, #5b8fff 20%, #38e8e8 45%, #a78bfa 70%, transparent 100%) !important;
+            background-size: 200% 100% !important;
+            animation: loginBarShimmer 3s linear infinite !important;
+            height: 2px !important;
+        }
+
+        /* ── NAV ITEM ACTIVE ── */
+        .nav-item.active {
+            background: rgba(91, 143, 255, 0.16) !important;
+            backdrop-filter: blur(8px) !important;
+            border-color: rgba(91, 143, 255, 0.4) !important;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 2px 12px rgba(91, 143, 255, 0.18) !important;
+        }
+
+        /* ── THEME TOGGLE ── */
+        .theme-toggle {
+            background: rgba(255, 255, 255, 0.05) !important;
+            backdrop-filter: blur(8px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.18) !important;
+        }
+
+        /* ── MOBILE MENU BUTTON ── */
+        #mobileMenuBtn {
+            background: rgba(255, 255, 255, 0.07) !important;
+            backdrop-filter: blur(12px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        }
+
+        /* ── STAT NUM GRADIENT ── */
+        .stat-num {
+            background: linear-gradient(135deg, #5b8fff, #38e8e8) !important;
+            -webkit-background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+            background-clip: text !important;
+        }
+
+        /* ── LECTURE CARD SINGLE/MULTI badges ── */
+        .lecture-card::before {
+            backdrop-filter: blur(4px) !important;
+            -webkit-backdrop-filter: blur(4px) !important;
+        }
+
+        /* ── IMPORT WIZARD STEPS ── */
+        .imp-step {
+            background: rgba(255, 255, 255, 0.04) !important;
+            backdrop-filter: blur(8px) !important;
+        }
+
+        .imp-step.active {
+            background: rgba(91, 143, 255, 0.16) !important;
+        }
+
+        .imp-step.done {
+            background: rgba(52, 211, 153, 0.1) !important;
+        }
+
+        /* ── CHAPTER CARD TOP SHIMMER ── */
+        .chapter-card::before,
+        .stat-card::before,
+        .panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+            pointer-events: none;
+        }
+
+        /* ── LOGIN ATOM ICON ── */
+        .login-atom-icon {
+            background: linear-gradient(135deg, #5b8fff 0%, #a78bfa 60%, #38e8e8 100%) !important;
+            box-shadow: 0 8px 28px rgba(91, 143, 255, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+        }
+
+        /* ── SIDEBAR LOGO ICON ── */
+        .sidebar-logo-icon {
+            background: linear-gradient(135deg, #5b8fff, #a78bfa) !important;
+            box-shadow: 0 4px 16px rgba(91, 143, 255, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+        }
+
+        /* ── MASS DELETE BAR ── */
+        .mass-delete-bar {
+            background: rgba(248, 113, 113, 0.08) !important;
+            backdrop-filter: blur(8px) !important;
+            border: 1px solid rgba(248, 113, 113, 0.28) !important;
+        }
+
+        /* ── IMP CROP HEADER / FOOTER ── */
+        .imp-crop-header,
+        .imp-crop-footer,
+        .imp-crop-toolbar {
+            background: rgba(255, 255, 255, 0.04) !important;
+            backdrop-filter: blur(8px) !important;
+        }
+
+        /* ── IMP CROP RAIL ── */
+        .imp-crop-rail {
+            background: rgba(255, 255, 255, 0.02) !important;
+        }
+
+        .imp-crop-thumb {
+            background: rgba(255, 255, 255, 0.04) !important;
+        }
+
+        .imp-crop-thumb:hover {
+            background: rgba(91, 143, 255, 0.08) !important;
+        }
+
+        .imp-crop-thumb.active {
+            background: rgba(91, 143, 255, 0.14) !important;
+        }
+
+        /* ── AG MODAL ── */
+        #auto-generate-modal .modal-box {
+            max-width: 680px !important;
+        }
+
+        /* ── LOGIN BRAND GRADIENT TEXT ── */
+        .login-brand-sub {
+            background: linear-gradient(90deg, #5b8fff, #38e8e8) !important;
+            -webkit-background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+            background-clip: text !important;
+        }
+
+        /* ── INST CODE PILL ── */
+        .inst-info .inst-code {
+            background: rgba(91, 143, 255, 0.12) !important;
+            border: 1px solid rgba(91, 143, 255, 0.25) !important;
+            color: #5b8fff !important;
+        }
+
+        /* ── BADGE pills ── */
+        .badge-pill.ok {
+            background: rgba(52, 211, 153, 0.12) !important;
+            border: 1px solid rgba(52, 211, 153, 0.3) !important;
+        }
+
+        .badge-pill.wrong {
+            background: rgba(248, 113, 113, 0.12) !important;
+            border: 1px solid rgba(248, 113, 113, 0.3) !important;
+        }
+
+        /* ── TABLE BORDERS ── */
+        th {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+        }
+
+        td {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.05) !important;
+        }
+
+        [data-theme="light"] th {
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+        }
+
+        [data-theme="light"] td {
+            border-bottom: 1px solid rgba(0, 0, 0, 0.04) !important;
+        }
+
+        [data-theme="light"] tr:hover td {
+            background: rgba(91, 143, 255, 0.05) !important;
+        }
+
+        /* ── SIDEBAR FOOTER DIVIDER ── */
+        .sidebar-footer {
+            border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+        }
+
+        [data-theme="light"] .sidebar-footer {
+            border-top: 1px solid rgba(100, 140, 255, 0.2) !important;
+        }
+
+        /* ── GLOBAL SCROLLBAR GLASS LOOK ── */
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(91, 143, 255, 0.4);
+        }
+
+        [data-theme="light"]::-webkit-scrollbar-thumb {
+            background: rgba(91, 143, 255, 0.25);
+        }
+
+        [data-theme="light"]::-webkit-scrollbar-thumb:hover {
+            background: rgba(59, 90, 245, 0.45);
+        }
+
+        /* ── SELECTION GLASS ── */
+        ::selection {
+            background: rgba(91, 143, 255, 0.28);
+            color: inherit;
+        }
+
+        [data-theme="light"] ::selection {
+            background: rgba(59, 90, 245, 0.2);
+        }
+
+        @keyframes loginBarShimmer {
+            0% {
+                background-position: 200% 0;
+            }
+
+            100% {
+                background-position: -200% 0;
+            }
+        }
+    </style>
+
 </head>
 
 <body>
@@ -1680,40 +2171,56 @@
             <div id="paper-header-fields" style="margin-bottom:4px">
                 <div class="modal-flex-row" style="display:flex;gap:10px;margin-bottom:12px">
                     <div style="flex:1;display:flex;flex-direction:column;gap:5px">
-                        <label for="paper-class-input" style="font-size:0.78rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em">Class <span style="color:var(--accent);font-size:0.85em">(e.g. XI)</span></label>
+                        <label for="paper-class-input"
+                            style="font-size:0.78rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em">Class
+                            <span style="color:var(--accent);font-size:0.85em">(e.g. XI)</span></label>
                         <input id="paper-class-input" type="text" placeholder="e.g. XI"
                             style="padding:9px 13px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-family:inherit;font-size:0.9rem;outline:none;transition:border-color 0.2s"
-                            onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                            onfocus="this.style.borderColor='var(--accent)'"
+                            onblur="this.style.borderColor='var(--border)'">
                     </div>
                     <div style="flex:2;display:flex;flex-direction:column;gap:5px">
-                        <label for="paper-subject-input" style="font-size:0.78rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em">Subject <span style="color:var(--accent);font-size:0.85em">(e.g. Physics)</span></label>
+                        <label for="paper-subject-input"
+                            style="font-size:0.78rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em">Subject
+                            <span style="color:var(--accent);font-size:0.85em">(e.g. Physics)</span></label>
                         <input id="paper-subject-input" type="text" placeholder="e.g. Physics"
                             style="padding:9px 13px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-family:inherit;font-size:0.9rem;outline:none;transition:border-color 0.2s"
-                            onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                            onfocus="this.style.borderColor='var(--accent)'"
+                            onblur="this.style.borderColor='var(--border)'">
                     </div>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px">
-                    <label for="paper-chapter-input" style="font-size:0.78rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em">Chapter / Topic <span style="color:var(--accent);font-size:0.85em">(e.g. Ray Optics)</span></label>
+                    <label for="paper-chapter-input"
+                        style="font-size:0.78rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em">Chapter
+                        / Topic <span style="color:var(--accent);font-size:0.85em">(e.g. Ray Optics)</span></label>
                     <input id="paper-chapter-input" type="text" placeholder="e.g. Ray Optics"
                         style="padding:9px 13px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-family:inherit;font-size:0.9rem;outline:none;transition:border-color 0.2s"
-                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                        onfocus="this.style.borderColor='var(--accent)'"
+                        onblur="this.style.borderColor='var(--border)'">
                 </div>
                 <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px">
-                    <label for="paper-test-type-input" style="font-size:0.78rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em">Test Type <span style="color:var(--accent);font-size:0.85em">(shown as heading)</span></label>
+                    <label for="paper-test-type-input"
+                        style="font-size:0.78rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em">Test
+                        Type <span style="color:var(--accent);font-size:0.85em">(shown as heading)</span></label>
                     <input id="paper-test-type-input" type="text" placeholder="e.g. Chapter Test" value="Chapter Test"
                         style="padding:9px 13px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-family:inherit;font-size:0.9rem;outline:none;transition:border-color 0.2s"
-                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                        onfocus="this.style.borderColor='var(--accent)'"
+                        onblur="this.style.borderColor='var(--border)'">
                 </div>
                 <div style="margin:2px 0 14px;border-top:1px solid var(--border)"></div>
             </div>
 
             <div style="margin-bottom:14px">
-                <label style="font-size:0.78rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">
-                    Paper Title <span style="color:var(--text-muted);font-size:0.85em;text-transform:none;letter-spacing:0">(used as document filename)</span>
+                <label
+                    style="font-size:0.78rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">
+                    Paper Title <span
+                        style="color:var(--text-muted);font-size:0.85em;text-transform:none;letter-spacing:0">(used as
+                        document filename)</span>
                 </label>
                 <input id="paper-title-input" type="text" placeholder="e.g. Physics Unit Test – Chapter 5"
                     style="width:100%;background:var(--bg-input);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;color:var(--text);font-size:0.9rem;outline:none;font-family:inherit"
-                    onfocus="this.style.borderColor='var(--border-focus)'" onblur="this.style.borderColor='var(--border)'">
+                    onfocus="this.style.borderColor='var(--border-focus)'"
+                    onblur="this.style.borderColor='var(--border)'">
             </div>
 
             <div id="paper-generate-info" style="font-size:0.82rem;color:var(--text-muted);margin-bottom:16px">
@@ -2501,34 +3008,50 @@
                         </div>
 
                         <!-- Paper Header Fields -->
-                        <div style="background:var(--bg-input);border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:16px">
-                            <div style="font-size:0.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:12px">📄 Paper Header Info</div>
+                        <div
+                            style="background:var(--bg-input);border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:16px">
+                            <div
+                                style="font-size:0.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:12px">
+                                📄 Paper Header Info</div>
                             <div class="ag-grid-2col" style="margin-bottom:10px">
                                 <div>
-                                    <label style="font-size:0.78rem;color:var(--text-dim);font-weight:600;display:block;margin-bottom:5px">🎓 Class</label>
+                                    <label
+                                        style="font-size:0.78rem;color:var(--text-dim);font-weight:600;display:block;margin-bottom:5px">🎓
+                                        Class</label>
                                     <input id="ag-class-input" type="text" placeholder="e.g. XI"
                                         style="width:100%;padding:8px 12px;background:var(--bg);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-size:0.88rem;outline:none;font-family:inherit;transition:border .15s"
-                                        onfocus="this.style.borderColor='var(--border-focus)'" onblur="this.style.borderColor='var(--border)'">
+                                        onfocus="this.style.borderColor='var(--border-focus)'"
+                                        onblur="this.style.borderColor='var(--border)'">
                                 </div>
                                 <div>
-                                    <label style="font-size:0.78rem;color:var(--text-dim);font-weight:600;display:block;margin-bottom:5px">📚 Subject</label>
+                                    <label
+                                        style="font-size:0.78rem;color:var(--text-dim);font-weight:600;display:block;margin-bottom:5px">📚
+                                        Subject</label>
                                     <input id="ag-subject-input" type="text" placeholder="e.g. Physics"
                                         style="width:100%;padding:8px 12px;background:var(--bg);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-size:0.88rem;outline:none;font-family:inherit;transition:border .15s"
-                                        onfocus="this.style.borderColor='var(--border-focus)'" onblur="this.style.borderColor='var(--border)'">
+                                        onfocus="this.style.borderColor='var(--border-focus)'"
+                                        onblur="this.style.borderColor='var(--border)'">
                                 </div>
                             </div>
                             <div class="ag-grid-2col">
                                 <div>
-                                    <label style="font-size:0.78rem;color:var(--text-dim);font-weight:600;display:block;margin-bottom:5px">📖 Chapter / Topic</label>
+                                    <label
+                                        style="font-size:0.78rem;color:var(--text-dim);font-weight:600;display:block;margin-bottom:5px">📖
+                                        Chapter / Topic</label>
                                     <input id="ag-chapter-input" type="text" placeholder="e.g. Ray Optics"
                                         style="width:100%;padding:8px 12px;background:var(--bg);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-size:0.88rem;outline:none;font-family:inherit;transition:border .15s"
-                                        onfocus="this.style.borderColor='var(--border-focus)'" onblur="this.style.borderColor='var(--border)'">
+                                        onfocus="this.style.borderColor='var(--border-focus)'"
+                                        onblur="this.style.borderColor='var(--border)'">
                                 </div>
                                 <div>
-                                    <label style="font-size:0.78rem;color:var(--text-dim);font-weight:600;display:block;margin-bottom:5px">📋 Test Type</label>
-                                    <input id="ag-test-type-input" type="text" placeholder="e.g. Chapter Test" value="Chapter Test"
+                                    <label
+                                        style="font-size:0.78rem;color:var(--text-dim);font-weight:600;display:block;margin-bottom:5px">📋
+                                        Test Type</label>
+                                    <input id="ag-test-type-input" type="text" placeholder="e.g. Chapter Test"
+                                        value="Chapter Test"
                                         style="width:100%;padding:8px 12px;background:var(--bg);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-size:0.88rem;outline:none;font-family:inherit;transition:border .15s"
-                                        onfocus="this.style.borderColor='var(--border-focus)'" onblur="this.style.borderColor='var(--border)'">
+                                        onfocus="this.style.borderColor='var(--border-focus)'"
+                                        onblur="this.style.borderColor='var(--border)'">
                                 </div>
                             </div>
                         </div>
