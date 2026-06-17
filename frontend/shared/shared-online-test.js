@@ -355,8 +355,8 @@ async function assignOnlineTest() {
         return;
     }
 
-    const marksCorrect = parseInt(document.getElementById('ot-marks-correct')?.value, 10) || 4;
-    const marksWrong = parseInt(document.getElementById('ot-marks-wrong')?.value, 10) || -1;
+    const marksCorrect = parseFloat(document.getElementById('ot-marks-correct')?.value) || 4;
+    const marksWrong = parseFloat(document.getElementById('ot-marks-wrong')?.value) || -1;
     const liveAtVal = document.getElementById('ot-live-at')?.value;
     const endsAtVal = document.getElementById('ot-ends-at')?.value;
     const durationMinutes = parseInt(document.getElementById('ot-duration')?.value, 10) || 90;
@@ -428,13 +428,7 @@ async function assignOnlineTest() {
             clearPaperBasket();
         }
 
-        if (typeof showToast === 'function') {
-            showToast(`✅ Online test assigned to ${_otSelectedRolls.length} student${_otSelectedRolls.length !== 1 ? 's' : ''}!`, 'success');
-        } else if (typeof showSuccessModal === 'function') {
-            showSuccessModal('Success', `Online test assigned to ${_otSelectedRolls.length} students.`);
-        } else {
-            alert('Online test assigned successfully.');
-        }
+        showOtSuccessToast(`Online test assigned to ${_otSelectedRolls.length} student${_otSelectedRolls.length !== 1 ? 's' : ''}!`);
     } catch (err) {
         showOtError(err.message || 'Failed to assign online test');
     } finally {
@@ -443,6 +437,19 @@ async function assignOnlineTest() {
             assignBtn.textContent = '🚀 Assign Test';
         }
     }
+}
+
+function showOtSuccessToast(msg) {
+    var old = document.getElementById('ot-success-toast');
+    if (old) old.remove();
+    var el = document.createElement('div');
+    el.id = 'ot-success-toast';
+    el.innerHTML = '<span style="font-size:1.4rem">✅</span> ' + msg;
+    document.body.appendChild(el);
+    setTimeout(function () {
+        el.classList.add('fade-out');
+        setTimeout(function () { el.remove(); }, 400);
+    }, 3500);
 }
 
 function showOtError(msg) {
