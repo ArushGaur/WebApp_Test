@@ -39,6 +39,10 @@ var _dtSelMin = null;
 
 function openDtPicker(field) {
     _dtField = field;
+    // Ensure _dtConfirm is the original (not patched by agOpenDatePicker)
+    if (typeof _dtConfirmOriginal !== 'undefined') {
+        _dtConfirm = _dtConfirmOriginal;
+    }
     // Pre-fill from existing hidden value if any
     const existing = document.getElementById(`ot-${field}-at`)?.value;
     const base = existing ? new Date(existing) : new Date();
@@ -66,6 +70,10 @@ function _dtClose() {
     overlay.style.opacity = '0';
     setTimeout(() => { overlay.style.display = 'none'; }, 200);
     _dtField = null;
+    // Restore original _dtConfirm if it was patched (e.g. by agOpenDatePicker)
+    if (typeof _dtConfirmOriginal !== 'undefined') {
+        _dtConfirm = _dtConfirmOriginal;
+    }
 }
 
 function _dtRender() {
@@ -291,7 +299,7 @@ function toggleStrictMode() {
    STUDENT PICKER MODAL ROUTINES
    ═══════════════════════════════════════════════════════════ */
 function openStudentPicker(initialRolls = []) {
-    _spAllStudents = Array.isArray(window.allStudents) ? window.allStudents : (Array.isArray(allStudents) ? allStudents : []);
+    _spAllStudents = Array.isArray(allStudents) ? allStudents : [];
     _spSelectedRolls = new Set(initialRolls);
     _spDrillClass = null;
     _spDrillSection = null;
@@ -375,13 +383,12 @@ async function assignOnlineTest() {
         return;
     }
 
-    if (typeof paperBasket === 'undefined' || !(window.paperBasket || paperBasket) || !(window.paperBasket || paperBasket).size) {
+    if (typeof paperBasket === 'undefined' || !paperBasket || !paperBasket.size) {
         showOtError('Your question basket is empty.');
         return;
     }
 
-    const _basket = window.paperBasket || paperBasket;
-    const questionKeys = [..._basket.values()].map(item => ({
+    const questionKeys = [...paperBasket.values()].map(item => ({
         chapter: item.chapter === '(No Chapter)' ? '' : (item.chapter || ''),
         lecture: item.lecture,
         questionIndex: item.questionIndex
@@ -396,7 +403,7 @@ async function assignOnlineTest() {
     showOtError(''); // Clear any previous error
 
     try {
-        const resp = await fetch(`${window.API_BASE || API_BASE || ''}/api/admin/online-tests`, {
+        const resp = await fetch(`${API_BASE}/api/admin/online-tests`, {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
@@ -614,7 +621,7 @@ document.addEventListener('DOMContentLoaded', function() {
        (including shared-student.js) have fully executed.
        The previous top-level IIFE ran at parse time and missed _spRender. ── */
     openStudentPicker = function(initialRolls) {
-        _spAllStudents = Array.isArray(window.allStudents) ? window.allStudents : [];
+        _spAllStudents = Array.isArray(allStudents) ? allStudents : [];
         _spSelectedRolls = new Set(initialRolls || []);
         _spDrillClass = null;
         _spDrillSection = null;
