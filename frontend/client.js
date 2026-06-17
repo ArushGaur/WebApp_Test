@@ -795,3 +795,76 @@
             }
             results.style.display = "block";
         }
+
+        /* ══════════════════════════════════════════════════════════════════
+           MOBILE DRAWER — defined here so confirmLogout() never throws
+           even when shared-manager.js hasn't loaded yet.
+        ══════════════════════════════════════════════════════════════════ */
+        function openMobileDrawer() {
+            const drawer  = document.getElementById('mobileDrawer');
+            const overlay = document.getElementById('mobileDrawerOverlay');
+            if (drawer)  drawer.classList.add('open');
+            if (overlay) overlay.classList.add('open');
+        }
+
+        function closeMobileDrawer() {
+            const drawer  = document.getElementById('mobileDrawer');
+            const overlay = document.getElementById('mobileDrawerOverlay');
+            if (drawer)  drawer.classList.remove('open');
+            if (overlay) overlay.classList.remove('open');
+        }
+
+        /* ══════════════════════════════════════════════════════════════════
+           SAFE STUBS — prevent ReferenceErrors when shared-manager.js
+           functions are called before (or if) that script has loaded.
+           Each stub defers to the real implementation if it exists, or
+           no-ops gracefully so the page doesn't crash.
+        ══════════════════════════════════════════════════════════════════ */
+
+        // selectedLectures is read by shared-manager.js:520 showChaptersForSubject.
+        // Declare it as a global Set so it's always defined.
+        if (typeof selectedLectures === 'undefined') {
+            var selectedLectures = new Set();
+        }
+
+        // Guard wrappers for shared-manager functions called from client.js or HTML.
+        // If shared-manager.js has already defined them these are never reached;
+        // if it hasn't, the stub prevents a crash.
+        function _guardShared(name, ...args) {
+            if (typeof window[name] === 'function') return window[name](...args);
+            console.warn('[client] ' + name + ' not yet available from shared-manager.js');
+        }
+
+        // Functions invoked from HTML onclick attributes or client.js that live in shared-manager.js
+        if (typeof loadQuestionsAdmin  === 'undefined') window.loadQuestionsAdmin  = function() { return _guardShared('loadQuestionsAdmin'); };
+        if (typeof loadChaptersAdmin   === 'undefined') window.loadChaptersAdmin   = function() { return _guardShared('loadChaptersAdmin'); };
+        if (typeof renderSubjectCards  === 'undefined') window.renderSubjectCards  = function(q) { return _guardShared('renderSubjectCards', q); };
+        if (typeof showSubjectView     === 'undefined') window.showSubjectView     = function() { return _guardShared('showSubjectView'); };
+        if (typeof showChapterView     === 'undefined') window.showChapterView     = function() { return _guardShared('showChapterView'); };
+        if (typeof showLectureViewForChapter === 'undefined') window.showLectureViewForChapter = function(ch) { return _guardShared('showLectureViewForChapter', ch); };
+        if (typeof showQuestionView    === 'undefined') window.showQuestionView    = function(i, s) { return _guardShared('showQuestionView', i, s); };
+        if (typeof filterChapterCards  === 'undefined') window.filterChapterCards  = function(v) { return _guardShared('filterChapterCards', v); };
+        if (typeof filterLectureCards  === 'undefined') window.filterLectureCards  = function() { return _guardShared('filterLectureCards'); };
+        if (typeof goBackMQ            === 'undefined') window.goBackMQ            = function() { return _guardShared('goBackMQ'); };
+        if (typeof toggleSelectMode    === 'undefined') window.toggleSelectMode    = function() { return _guardShared('toggleSelectMode'); };
+        if (typeof clearSelection      === 'undefined') window.clearSelection      = function() { return _guardShared('clearSelection'); };
+        if (typeof massDelete          === 'undefined') window.massDelete          = function() { return _guardShared('massDelete'); };
+        if (typeof toggleQuestionSelectMode === 'undefined') window.toggleQuestionSelectMode = function() { return _guardShared('toggleQuestionSelectMode'); };
+        if (typeof clearQuestionSelection === 'undefined') window.clearQuestionSelection = function() { return _guardShared('clearQuestionSelection'); };
+        if (typeof massDeleteQuestions === 'undefined') window.massDeleteQuestions = function() { return _guardShared('massDeleteQuestions'); };
+        if (typeof refreshTemplates    === 'undefined') window.refreshTemplates    = function() { return Promise.resolve(); };
+
+        // openModal / closeModal — used by confirmLogout and other places.
+        // Simple show/hide by setting display on .modal-overlay elements.
+        if (typeof openModal === 'undefined') {
+            window.openModal = function(id) {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'flex';
+            };
+        }
+        if (typeof closeModal === 'undefined') {
+            window.closeModal = function(id) {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            };
+        }
