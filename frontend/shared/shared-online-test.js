@@ -196,14 +196,6 @@ document.addEventListener('click', function(e) {
     }
 });
 
-// Prevent clicks inside the picker box from bubbling up to the backdrop handler
-// or being swallowed by a parent modal's stacking context.
-document.addEventListener('click', function(e) {
-    var box = document.getElementById('dt-picker-box');
-    if (box && box.contains(e.target)) {
-        e.stopPropagation();
-    }
-}, true); // capture phase — fires before any modal overlay handler
 
 function _otFmtDt(val) {
     if (!val) return '';
@@ -297,21 +289,23 @@ function toggleStrictMode() {
    STUDENT PICKER MODAL ROUTINES
    ═══════════════════════════════════════════════════════════ */
 function openStudentPicker(initialRolls = []) {
-    // Open popup immediately
-    _spAllStudents = Array.isArray(_allRegisteredStudents) ? _allRegisteredStudents : [];
     _spSelectedRolls = new Set(initialRolls);
     _spDrillClass = null;
     _spDrillSection = null;
     var modal = document.getElementById('student-picker-modal');
     if (modal) modal.style.display = 'flex';
-    if (typeof _spRender === 'function') _spRender();
-    // If data not loaded, fetch asynchronously and re-render
+    // If data not yet cached, show loading and fetch
     if (!_allRegisteredStudents || !_allRegisteredStudents.length) {
+        var content = document.getElementById('sp-content');
+        if (content) content.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:0.85rem">⏳ Loading students…</div>';
         var apiBase = typeof API_BASE !== 'undefined' ? API_BASE : '';
         fetch(apiBase + '/api/admin/registered-students', { credentials: 'include', cache: 'no-store' })
             .then(function(r) { if (r.ok) return r.json(); })
             .then(function(data) { if (data) { _allRegisteredStudents = data; _spAllStudents = data; if (typeof _spRender === 'function') _spRender(); } })
             .catch(function() {});
+    } else {
+        _spAllStudents = _allRegisteredStudents;
+        if (typeof _spRender === 'function') _spRender();
     }
 }
 
@@ -623,21 +617,22 @@ document.addEventListener('DOMContentLoaded', function() {
        (including shared-student.js) have fully executed.
        The previous top-level IIFE ran at parse time and missed _spRender. ── */
     openStudentPicker = function(initialRolls) {
-        // Open popup immediately
-        _spAllStudents = Array.isArray(_allRegisteredStudents) ? _allRegisteredStudents : [];
         _spSelectedRolls = new Set(initialRolls || []);
         _spDrillClass = null;
         _spDrillSection = null;
         var modal = document.getElementById('student-picker-modal');
         if (modal) modal.style.display = 'flex';
-        if (typeof _spRender === 'function') _spRender();
-        // If data not loaded, fetch asynchronously and re-render
         if (!_allRegisteredStudents || !_allRegisteredStudents.length) {
+            var content = document.getElementById('sp-content');
+            if (content) content.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:0.85rem">⏳ Loading students…</div>';
             var apiBase = typeof API_BASE !== 'undefined' ? API_BASE : '';
             fetch(apiBase + '/api/admin/registered-students', { credentials: 'include', cache: 'no-store' })
                 .then(function(r) { if (r.ok) return r.json(); })
                 .then(function(data) { if (data) { _allRegisteredStudents = data; _spAllStudents = data; if (typeof _spRender === 'function') _spRender(); } })
                 .catch(function() {});
+        } else {
+            _spAllStudents = _allRegisteredStudents;
+            if (typeof _spRender === 'function') _spRender();
         }
     };
 
