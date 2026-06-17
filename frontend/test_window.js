@@ -1,5 +1,4 @@
-
-                /* ══ Bootstrap: declare shared globals FIRST so all subsequent scripts can use them ══ */
+/* ══ Bootstrap: declare shared globals FIRST so all subsequent scripts can use them ══ */
                 const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
                     ? 'http://' + location.host : '';
                 let _token = localStorage.getItem('gp_student_token') || '';
@@ -571,7 +570,9 @@
                         const ansArr = Array.isArray(ans) ? ans : (ans !== null && ans >= 0 ? [ans] : []);
 
                         let status = 'skipped';
-                        if (ansArr.length > 0) {
+                        if (q.isNoneCorrect === true) {
+                            status = 'correct';
+                        } else if (ansArr.length > 0) {
                             const ansSort = [...ansArr].sort().join(',');
                             const ciSort = [...ci].sort().join(',');
                             status = ansSort === ciSort ? 'correct' : 'wrong';
@@ -3083,5 +3084,3 @@
             }
             return out.join('\n');
         }
-
-    
