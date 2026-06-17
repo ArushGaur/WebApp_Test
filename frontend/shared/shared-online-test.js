@@ -6,8 +6,6 @@ var _spDrillSection = null;
 var _spOnConfirm = null;
 
 var _otSelectedRolls = [];
-var _otStrictEnabled = false;
-
 // Fallback helper functions
 var _otEscapeHtml = window.escapeHtml || function(str) {
     if (!str) return '';
@@ -466,7 +464,6 @@ function showOtError(msg) {
    ═══════════════════════════════════════════════════════════ */
 
 var _agOtSelectedRolls = [];
-var _agOtStrictEnabled = false;
 var _agDtField = null;   // 'live' | 'ends'  (for ag date picker)
 
 /* --- Duration preview for ag panel --- */
