@@ -66,10 +66,37 @@ async function findQuestion(chapter, lecture) {
 	return n;
 }
 
+async function resolveQuestionKeys(keys) {
+	if (!Array.isArray(keys) || !keys.length) return [];
+	const groups = {};
+	for (let i = 0; i < keys.length; i++) {
+		const k = keys[i];
+		const gk = `${k.chapter || ""}::${k.lecture}`;
+		if (!groups[gk]) groups[gk] = [];
+		groups[gk].push(i);
+	}
+	const result = new Array(keys.length);
+	for (const gk of Object.keys(groups)) {
+		const sep = gk.indexOf("::");
+		const chapter = sep > 0 ? gk.slice(0, sep) : "";
+		const lecture = gk.slice(sep + 2);
+		const qSet = await findQuestion(chapter, lecture);
+		if (!qSet || !Array.isArray(qSet.questions)) continue;
+		for (const idx of groups[gk]) {
+			const qIdx = keys[idx].questionIndex;
+			if (Number.isInteger(qIdx) && qIdx >= 0 && qIdx < qSet.questions.length) {
+				result[idx] = qSet.questions[qIdx];
+			}
+		}
+	}
+	return result.filter(Boolean);
+}
+
 module.exports = {
 	loadQuestions,
 	refreshCache,
 	rebuildYearIndex,
 	findQuestion,
+	resolveQuestionKeys,
 	getQuestionCache: () => questionCache
 };
