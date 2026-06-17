@@ -1,4 +1,4 @@
-        /* ══════════════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════════
            GLOBALS
         ══════════════════════════════════════════════════════════════════ */
         const API_BASE = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") ? `http://${window.location.host}` : "";
@@ -844,4 +844,17 @@
             if (typeof _pendingCancelAction === "function") { const fn = _pendingCancelAction; _pendingConfirmAction = null; _pendingCancelAction = null; fn(); }
             else if (typeof _pendingConfirmResolver === "function") { _pendingConfirmResolver(false); _pendingConfirmResolver = null; closeModal("confirmModal"); }
             else { _pendingConfirmAction = null; closeModal("confirmModal"); }
+        }
+
+        function showOtSuccessToast(msg) {
+            var old = document.getElementById('ot-success-toast');
+            if (old) old.remove();
+            var el = document.createElement('div');
+            el.id = 'ot-success-toast';
+            el.innerHTML = '<span style="font-size:1.4rem">✅</span> ' + msg;
+            document.body.appendChild(el);
+            setTimeout(function () {
+                el.classList.add('fade-out');
+                setTimeout(function () { el.remove(); }, 400);
+            }, 3500);
         }
