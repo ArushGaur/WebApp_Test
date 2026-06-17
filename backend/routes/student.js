@@ -3,7 +3,7 @@ const router = express.Router();
 const { db } = require("../config/db");
 const helpers = require("../utils/helpers");
 const { rateLimit, resolveStudentInstituteId, sessionInstituteId, getDefaultInstituteId } = require("../middleware/auth");
-const { loadQuestions, refreshCache, rebuildYearIndex, findQuestion } = require("../utils/questions");
+const { loadQuestions, refreshCache, rebuildYearIndex, findQuestion, resolveQuestionKeys } = require("../utils/questions");
 const { isCorrect, normalizeQuestionRow } = helpers;
 const crypto = require("crypto");
 function genToken() {
