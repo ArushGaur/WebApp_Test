@@ -297,16 +297,24 @@ function toggleStrictMode() {
    STUDENT PICKER MODAL ROUTINES
    ═══════════════════════════════════════════════════════════ */
 function openStudentPicker(initialRolls = []) {
-    _spAllStudents = Array.isArray(allStudents) ? allStudents : [];
-    _spSelectedRolls = new Set(initialRolls);
-    _spDrillClass = null;
-    _spDrillSection = null;
-
-    const modal = document.getElementById('student-picker-modal');
-    if (modal) modal.style.display = 'flex';
-
-    if (typeof _spRender === 'function') {
-        _spRender();
+    var doOpen = function() {
+        _spAllStudents = Array.isArray(_allRegisteredStudents) ? _allRegisteredStudents : [];
+        _spSelectedRolls = new Set(initialRolls);
+        _spDrillClass = null;
+        _spDrillSection = null;
+        var modal = document.getElementById('student-picker-modal');
+        if (modal) modal.style.display = 'flex';
+        if (typeof _spRender === 'function') _spRender();
+    };
+    if (!_allRegisteredStudents || !_allRegisteredStudents.length) {
+        var apiBase = typeof API_BASE !== 'undefined' ? API_BASE : '';
+        fetch(apiBase + '/api/admin/registered-students', { credentials: 'include', cache: 'no-store' })
+            .then(function(r) { if (r.ok) return r.json(); })
+            .then(function(data) { if (data) _allRegisteredStudents = data; })
+            .catch(function() {})
+            .finally(function() { doOpen(); });
+    } else {
+        doOpen();
     }
 }
 
@@ -618,13 +626,25 @@ document.addEventListener('DOMContentLoaded', function() {
        (including shared-student.js) have fully executed.
        The previous top-level IIFE ran at parse time and missed _spRender. ── */
     openStudentPicker = function(initialRolls) {
-        _spAllStudents = Array.isArray(allStudents) ? allStudents : [];
-        _spSelectedRolls = new Set(initialRolls || []);
-        _spDrillClass = null;
-        _spDrillSection = null;
-        var modal = document.getElementById('student-picker-modal');
-        if (modal) modal.style.display = 'flex';
-        if (typeof _spRender === 'function') _spRender();
+        var doOpen = function() {
+            _spAllStudents = Array.isArray(_allRegisteredStudents) ? _allRegisteredStudents : [];
+            _spSelectedRolls = new Set(initialRolls || []);
+            _spDrillClass = null;
+            _spDrillSection = null;
+            var modal = document.getElementById('student-picker-modal');
+            if (modal) modal.style.display = 'flex';
+            if (typeof _spRender === 'function') _spRender();
+        };
+        if (!_allRegisteredStudents || !_allRegisteredStudents.length) {
+            var apiBase = typeof API_BASE !== 'undefined' ? API_BASE : '';
+            fetch(apiBase + '/api/admin/registered-students', { credentials: 'include', cache: 'no-store' })
+                .then(function(r) { if (r.ok) return r.json(); })
+                .then(function(data) { if (data) _allRegisteredStudents = data; })
+                .catch(function() {})
+                .finally(function() { doOpen(); });
+        } else {
+            doOpen();
+        }
     };
 
     /* ── FIX 1: choosePaperType — open online-test-details-modal with
