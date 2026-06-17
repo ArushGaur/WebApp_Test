@@ -462,7 +462,6 @@ function showOtError(msg) {
    ag-sub-online panel which has its own set of element IDs.
    ═══════════════════════════════════════════════════════════ */
 
-var _agOtSelectedRolls = [];
 var _agDtField = null;   // 'live' | 'ends'  (for ag date picker)
 
 /* --- Duration preview for ag panel --- */
@@ -479,23 +478,23 @@ function agOtUpdateDurPreview() {
 /* --- Student picker for ag panel --- */
 function agOpenStudentPicker() {
     _spOnConfirm = function (rolls) {
-        _agOtSelectedRolls = rolls;
+        _agOtAssignedRolls = rolls;
         _agOtUpdateAssignedSummary();
     };
-    openStudentPicker(_agOtSelectedRolls);
+    openStudentPicker(_agOtAssignedRolls || []);
 }
 
 function _agOtUpdateAssignedSummary() {
     var el = document.getElementById('ag-ot-assigned-summary');
     if (!el) return;
-    if (!_agOtSelectedRolls.length) {
+    if (!_agOtAssignedRolls.length) {
         el.innerHTML = 'No students selected yet.';
         return;
     }
-    el.innerHTML = '<span style="color:var(--success);font-weight:700">' + _agOtSelectedRolls.length + ' student' + (_agOtSelectedRolls.length !== 1 ? 's' : '') + ' selected</span>'
+    el.innerHTML = '<span style="color:var(--success);font-weight:700">' + _agOtAssignedRolls.length + ' student' + (_agOtAssignedRolls.length !== 1 ? 's' : '') + ' selected</span>'
         + '<span style="color:var(--text-muted);margin-left:6px;font-size:0.78rem">'
-        + _agOtSelectedRolls.slice(0, 8).join(', ')
-        + (_agOtSelectedRolls.length > 8 ? ' …+' + (_agOtSelectedRolls.length - 8) + ' more' : '')
+        + _agOtAssignedRolls.slice(0, 8).join(', ')
+        + (_agOtAssignedRolls.length > 8 ? ' …+' + (_agOtAssignedRolls.length - 8) + ' more' : '')
         + '</span>';
 }
 
