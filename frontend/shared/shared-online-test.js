@@ -439,19 +439,6 @@ async function assignOnlineTest() {
     }
 }
 
-function showOtSuccessToast(msg) {
-    var old = document.getElementById('ot-success-toast');
-    if (old) old.remove();
-    var el = document.createElement('div');
-    el.id = 'ot-success-toast';
-    el.innerHTML = '<span style="font-size:1.4rem">✅</span> ' + msg;
-    document.body.appendChild(el);
-    setTimeout(function () {
-        el.classList.add('fade-out');
-        setTimeout(function () { el.remove(); }, 400);
-    }, 3500);
-}
-
 function showOtError(msg) {
     const errEl = document.getElementById('ot-error');
     if (!errEl) return;
