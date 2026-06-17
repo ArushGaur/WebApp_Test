@@ -121,7 +121,7 @@ function _dtRender() {
     }
 
     const canConfirm = (_dtSelY !== null && _dtSelD !== null && _dtSelH !== null && _dtSelMin !== null);
-    const fieldLabel = _dtField === 'live' ? '🟢 Goes Live At' : '🔴 Last Attempt By';
+    const fieldLabel = _dtField.endsWith('live') ? '🟢 Goes Live At' : '🔴 Last Attempt By';
 
     box.innerHTML = `
       <div style="padding:16px 18px 10px;border-bottom:1px solid var(--border)">
@@ -297,24 +297,21 @@ function toggleStrictMode() {
    STUDENT PICKER MODAL ROUTINES
    ═══════════════════════════════════════════════════════════ */
 function openStudentPicker(initialRolls = []) {
-    var doOpen = function() {
-        _spAllStudents = Array.isArray(_allRegisteredStudents) ? _allRegisteredStudents : [];
-        _spSelectedRolls = new Set(initialRolls);
-        _spDrillClass = null;
-        _spDrillSection = null;
-        var modal = document.getElementById('student-picker-modal');
-        if (modal) modal.style.display = 'flex';
-        if (typeof _spRender === 'function') _spRender();
-    };
+    // Open popup immediately
+    _spAllStudents = Array.isArray(_allRegisteredStudents) ? _allRegisteredStudents : [];
+    _spSelectedRolls = new Set(initialRolls);
+    _spDrillClass = null;
+    _spDrillSection = null;
+    var modal = document.getElementById('student-picker-modal');
+    if (modal) modal.style.display = 'flex';
+    if (typeof _spRender === 'function') _spRender();
+    // If data not loaded, fetch asynchronously and re-render
     if (!_allRegisteredStudents || !_allRegisteredStudents.length) {
         var apiBase = typeof API_BASE !== 'undefined' ? API_BASE : '';
         fetch(apiBase + '/api/admin/registered-students', { credentials: 'include', cache: 'no-store' })
             .then(function(r) { if (r.ok) return r.json(); })
-            .then(function(data) { if (data) _allRegisteredStudents = data; })
-            .catch(function() {})
-            .finally(function() { doOpen(); });
-    } else {
-        doOpen();
+            .then(function(data) { if (data) { _allRegisteredStudents = data; if (typeof _spRender === 'function') _spRender(); } })
+            .catch(function() {});
     }
 }
 
@@ -626,24 +623,21 @@ document.addEventListener('DOMContentLoaded', function() {
        (including shared-student.js) have fully executed.
        The previous top-level IIFE ran at parse time and missed _spRender. ── */
     openStudentPicker = function(initialRolls) {
-        var doOpen = function() {
-            _spAllStudents = Array.isArray(_allRegisteredStudents) ? _allRegisteredStudents : [];
-            _spSelectedRolls = new Set(initialRolls || []);
-            _spDrillClass = null;
-            _spDrillSection = null;
-            var modal = document.getElementById('student-picker-modal');
-            if (modal) modal.style.display = 'flex';
-            if (typeof _spRender === 'function') _spRender();
-        };
+        // Open popup immediately
+        _spAllStudents = Array.isArray(_allRegisteredStudents) ? _allRegisteredStudents : [];
+        _spSelectedRolls = new Set(initialRolls || []);
+        _spDrillClass = null;
+        _spDrillSection = null;
+        var modal = document.getElementById('student-picker-modal');
+        if (modal) modal.style.display = 'flex';
+        if (typeof _spRender === 'function') _spRender();
+        // If data not loaded, fetch asynchronously and re-render
         if (!_allRegisteredStudents || !_allRegisteredStudents.length) {
             var apiBase = typeof API_BASE !== 'undefined' ? API_BASE : '';
             fetch(apiBase + '/api/admin/registered-students', { credentials: 'include', cache: 'no-store' })
                 .then(function(r) { if (r.ok) return r.json(); })
-                .then(function(data) { if (data) _allRegisteredStudents = data; })
-                .catch(function() {})
-                .finally(function() { doOpen(); });
-        } else {
-            doOpen();
+                .then(function(data) { if (data) { _allRegisteredStudents = data; if (typeof _spRender === 'function') _spRender(); } })
+                .catch(function() {});
         }
     };
 
