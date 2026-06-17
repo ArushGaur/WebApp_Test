@@ -853,8 +853,15 @@
             el.id = 'ot-success-toast';
             el.innerHTML = '<span style="font-size:1.4rem">✅</span> ' + msg;
             document.body.appendChild(el);
+            // Trigger show after append so the transition plays
+            requestAnimationFrame(function () {
+                requestAnimationFrame(function () {
+                    el.classList.add('show');
+                });
+            });
             setTimeout(function () {
+                el.classList.remove('show');
                 el.classList.add('fade-out');
-                setTimeout(function () { el.remove(); }, 400);
+                setTimeout(function () { el.remove(); }, 500);
             }, 3500);
         }
