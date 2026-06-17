@@ -180,17 +180,7 @@ function _dtConfirm() {
 }
 
 // Close picker when clicking on the overlay backdrop (not the box).
-// Bubble phase (capture:false) so inline onclick handlers inside the box
-// fire first. We ONLY close when the click landed directly on the backdrop
-// overlay element itself, so clicks inside the box never close the picker.
-//
-// NOTE: A previous version added a SECOND capture-phase listener that called
-// e.stopPropagation() for clicks inside #dt-picker-box. That was a critical
-// bug: calling stopPropagation() during the CAPTURE phase stops the event
-// before it ever reaches the target element, so the inline onclick handlers
-// on the calendar day cells, month arrows, time selects, Confirm and ✕
-// buttons NEVER fired. That listener has been removed — the single backdrop
-// check below is sufficient and does not interfere with inner clicks.
+// We use capture:false so inline onclick handlers inside the box fire first.
 document.addEventListener('click', function(e) {
     var overlay = document.getElementById('dt-picker-overlay');
     if (!overlay || overlay.style.display !== 'flex') return;
@@ -199,6 +189,15 @@ document.addEventListener('click', function(e) {
         _dtClose();
     }
 });
+
+// Prevent clicks inside the picker box from bubbling up to the backdrop handler
+// or being swallowed by a parent modal's stacking context.
+document.addEventListener('click', function(e) {
+    var box = document.getElementById('dt-picker-box');
+    if (box && box.contains(e.target)) {
+        e.stopPropagation();
+    }
+}, true); // capture phase — fires before any modal overlay handler
 
 function _otFmtDt(val) {
     if (!val) return '';
@@ -292,7 +291,7 @@ function toggleStrictMode() {
    STUDENT PICKER MODAL ROUTINES
    ═══════════════════════════════════════════════════════════ */
 function openStudentPicker(initialRolls = []) {
-    _spAllStudents = Array.isArray(allStudents) ? allStudents : [];
+    _spAllStudents = Array.isArray(window.allStudents) ? window.allStudents : (Array.isArray(allStudents) ? allStudents : []);
     _spSelectedRolls = new Set(initialRolls);
     _spDrillClass = null;
     _spDrillSection = null;
@@ -376,12 +375,13 @@ async function assignOnlineTest() {
         return;
     }
 
-    if (typeof paperBasket === 'undefined' || !paperBasket || !paperBasket.size) {
+    if (typeof paperBasket === 'undefined' || !(window.paperBasket || paperBasket) || !(window.paperBasket || paperBasket).size) {
         showOtError('Your question basket is empty.');
         return;
     }
 
-    const questionKeys = [...paperBasket.values()].map(item => ({
+    const _basket = window.paperBasket || paperBasket;
+    const questionKeys = [..._basket.values()].map(item => ({
         chapter: item.chapter === '(No Chapter)' ? '' : (item.chapter || ''),
         lecture: item.lecture,
         questionIndex: item.questionIndex
@@ -396,7 +396,7 @@ async function assignOnlineTest() {
     showOtError(''); // Clear any previous error
 
     try {
-        const resp = await fetch(`${API_BASE}/api/admin/online-tests`, {
+        const resp = await fetch(`${window.API_BASE || API_BASE || ''}/api/admin/online-tests`, {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
