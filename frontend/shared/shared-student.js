@@ -3119,8 +3119,8 @@ function _agClearLoaderTimers() {
 async function agAssignOnlineTest() {
     const testName = (document.getElementById('ag-paper-title')?.value || 'Online Test').trim();
     const requestedCount = parseInt(document.getElementById('ag-ot-qcount')?.value || '0', 10);
-    const marksCorrect = parseInt(document.getElementById('ag-ot-marks-correct')?.value || '4', 10) || 4;
-    const marksWrong = parseInt(document.getElementById('ag-ot-marks-wrong')?.value || '-1', 10);
+    const marksCorrect = parseFloat(document.getElementById('ag-ot-marks-correct')?.value || '4') || 4;
+    const marksWrong = parseFloat(document.getElementById('ag-ot-marks-wrong')?.value || '-1');
     const liveAtVal = document.getElementById('ag-ot-live-at')?.value;
     const endsAtVal = document.getElementById('ag-ot-ends-at')?.value;
     const durationMinutes = parseInt(document.getElementById('ag-ot-duration')?.value || '90', 10) || 90;
@@ -3203,10 +3203,8 @@ async function agAssignOnlineTest() {
             nextBtn.disabled = false;
         }
         closeAutoGenerateModal();
-        if (typeof showToast === 'function') {
-            showToast(`✅ Online test assigned to ${_agOtAssignedRolls.length} student${_agOtAssignedRolls.length !== 1 ? 's' : ''}!`, 'success');
-        } else {
-            alert('Online test assigned successfully.');
+        if (typeof showOtSuccessToast === 'function') {
+            showOtSuccessToast(`Online test assigned to ${_agOtAssignedRolls.length} student${_agOtAssignedRolls.length !== 1 ? 's' : ''}!`);
         }
     } catch (err) {
         _agClearLoaderTimers();
