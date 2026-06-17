@@ -310,7 +310,7 @@ function openStudentPicker(initialRolls = []) {
         var apiBase = typeof API_BASE !== 'undefined' ? API_BASE : '';
         fetch(apiBase + '/api/admin/registered-students', { credentials: 'include', cache: 'no-store' })
             .then(function(r) { if (r.ok) return r.json(); })
-            .then(function(data) { if (data) { _allRegisteredStudents = data; if (typeof _spRender === 'function') _spRender(); } })
+            .then(function(data) { if (data) { _allRegisteredStudents = data; _spAllStudents = data; if (typeof _spRender === 'function') _spRender(); } })
             .catch(function() {});
     }
 }
@@ -636,7 +636,7 @@ document.addEventListener('DOMContentLoaded', function() {
             var apiBase = typeof API_BASE !== 'undefined' ? API_BASE : '';
             fetch(apiBase + '/api/admin/registered-students', { credentials: 'include', cache: 'no-store' })
                 .then(function(r) { if (r.ok) return r.json(); })
-                .then(function(data) { if (data) { _allRegisteredStudents = data; if (typeof _spRender === 'function') _spRender(); } })
+                .then(function(data) { if (data) { _allRegisteredStudents = data; _spAllStudents = data; if (typeof _spRender === 'function') _spRender(); } })
                 .catch(function() {});
         }
     };
