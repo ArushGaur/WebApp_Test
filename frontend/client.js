@@ -1,4 +1,4 @@
-        /* ══════════════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════════
            SESSION / AUTH
            NEW FLOW:
              1. Page loads → check institute session.
@@ -11,6 +11,14 @@
              4. The role chooser also has a "Sign in as a different institute"
                 button that logs out and returns to step 1.
         ══════════════════════════════════════════════════════════════════ */
+
+        // ── Global state shared with shared-online-test.js / shared-student.js ──
+        // Declared with var so they are true globals accessible across all defer
+        // scripts regardless of load order.
+        var API_BASE = window.API_BASE || '';   // Set by server or stays '' (same origin)
+        var allStudents = window.allStudents || [];
+        // Expose on window so shared scripts can read & write the same reference.
+        window.allStudents = allStudents;
 
         // Cache the active institute (set after login or session-restore).
         let __activeInstitute = null;
@@ -46,7 +54,7 @@
                                 // Pre-fetch students in parallel
                                 try {
                                     const sr = await fetch(`${API_BASE}/api/admin/students`, { credentials: "include", cache: "no-store" });
-                                    if (sr.ok) { allStudents = await sr.json(); }
+                                    if (sr.ok) { allStudents = await sr.json(); window.allStudents = allStudents; }
                                 } catch (_) { }
                                 if (roleOverlay) roleOverlay.style.display = "none";
                                 document.getElementById("sidebar").classList.remove("hidden");
@@ -234,7 +242,7 @@
             if (!skipStudents) {
                 try {
                     const r = await fetch(`${API_BASE}/api/admin/students`, { credentials: "include", cache: "no-store" });
-                    if (r.ok) { allStudents = await r.json(); }
+                    if (r.ok) { allStudents = await r.json(); window.allStudents = allStudents; }
                 } catch (e) { console.warn("students fetch failed:", e.message); }
             }
             renderDashboardData();
@@ -661,6 +669,7 @@
                 const data = await r.json();
                 console.log("Raw API response:", data);
                 allStudents = data;
+                window.allStudents = allStudents;
                 console.log("Students loaded:", allStudents.length);
                 renderDashboardData();
             } catch (e) { console.error("Dashboard error:", e); }
