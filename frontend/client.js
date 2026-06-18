@@ -603,9 +603,33 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
         /* ══════════════════════════════════════════════════════════════════
            NAVIGATION
         ══════════════════════════════════════════════════════════════════ */
+        // Override drawerNav for attendance since shared showSection is intercepted
+        const _origDrawerNav = typeof drawerNav === "function" ? drawerNav : null;
+        function drawerNav(name) {
+            console.log("[nav] drawerNav called with:", name);
+            if (name === "attendance") {
+                navAttendance();
+                return;
+            }
+            if (_origDrawerNav) _origDrawerNav(name);
+            else if (typeof showSection === "function") { closeMobileDrawer(); showSection(name); }
+        }
+
         function navAttendance() {
-            console.log("[nav] navAttendance() called");
-            showSection("attendance");
+            console.log("[nav] navAttendance() called — forcing attendance section directly");
+            // Force attendance section active directly (shared showSection may be overridden)
+            document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+            document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+            const sec = document.getElementById("section-attendance");
+            const nav = document.getElementById("nav-attendance");
+            if (sec) sec.classList.add("active");
+            if (nav) nav.classList.add("active");
+            // Close mobile drawer if open
+            if (typeof closeMobileDrawer === "function") closeMobileDrawer();
+            const dateInput = document.getElementById("att-date");
+            if (dateInput && !dateInput.value) dateInput.value = getTodayStr();
+            history.pushState({ type: "section", name: "attendance" }, "", "");
+            attLoadAndRenderStudents();
         }
 
         function showSection(name, push = true) {
@@ -623,6 +647,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                 if (dateInput && !dateInput.value) dateInput.value = getTodayStr();
                 attLoadAndRenderStudents();
             }
+            // drawerNav('attendance') also lands here — handled above
             if (name === "students") {
                 loadRegisteredStudents();
                 // Refresh request badge count
