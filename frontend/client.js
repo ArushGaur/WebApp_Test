@@ -605,8 +605,15 @@
         function showSection(name, push = true) {
             document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
             document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
-            document.getElementById(`section-${name}`).classList.add("active");
-            document.getElementById(`nav-${name}`).classList.add("active");
+            const sec = document.getElementById(`section-${name}`);
+            const nav = document.getElementById(`nav-${name}`);
+            if (sec) sec.classList.add("active");
+            if (nav) nav.classList.add("active");
+            if (name === "attendance") {
+                const dateInput = document.getElementById("att-date");
+                if (dateInput && !dateInput.value) dateInput.value = getTodayStr();
+                loadAttendanceClasses();
+            }
             if (name === "students") {
                 loadRegisteredStudents();
                 // Refresh request badge count
@@ -1101,33 +1108,4 @@
             } catch (_) {}
         }
 
-        // Override showSection to also handle attendance
-        const _origShowSection = showSection;
-        showSection = function(name, push = true) {
-            document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
-            document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
-            const sec = document.getElementById(`section-${name}`);
-            const nav = document.getElementById(`nav-${name}`);
-            if (sec) sec.classList.add("active");
-            if (nav) nav.classList.add("active");
-            if (name === "attendance") {
-                const dateInput = document.getElementById("att-date");
-                if (dateInput && !dateInput.value) dateInput.value = getTodayStr();
-                loadAttendanceClasses();
-                // Auto-select class and batch from stored state
-            }
-            if (name === "students") {
-                loadRegisteredStudents();
-                fetch(`${API_BASE}/api/admin/student-requests`, { credentials: 'include', cache: 'no-store' })
-                    .then(r => r.json()).then(data => updateRequestsBadge(data.length)).catch(() => { });
-            }
-            if (name === "applications") {
-                populateStudentChapterFilter();
-                filterStudents('');
-                setStudentView(studentViewMode);
-            }
-            if (name === "manageQuestions") { showSubjectView(); renderSubjectCards(allQuestions); }
-            if (name === "starQuiz" && push) { sqShowChapterView(false); loadStarQuizData().then(() => { if (document.getElementById("sq-chapter-view").style.display !== "none") sqRenderChapters(_sqAllQuestions); }); }
-            else if (name === "starQuiz" && !push) { loadStarQuizData().then(() => sqRenderChapters(_sqAllQuestions)); }
-            if (push) history.pushState({ type: "section", name }, "", "");
-        }
+        // Attendance section is handled inside showSection() above
