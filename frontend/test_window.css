@@ -1,5 +1,4 @@
-
-        /* ══════════ DESIGN TOKENS ══════════ */
+/* ══════════ DESIGN TOKENS ══════════ */
         :root {
             --bg: #060810;
             --bg-card: #0d1020;
@@ -3930,4 +3929,149 @@
                 border-color: rgba(220, 38, 38, 0.25);
                 color: #dc2626;
             }
-        
+
+        /* ══ ATTENDANCE CALENDAR ══ */
+        .att-calendar-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        .att-calendar-month-label {
+            font-family: var(--font-head);
+            font-size: 1.1rem;
+            font-weight: 700;
+            min-width: 160px;
+            text-align: center;
+        }
+        .att-calendar-legend {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 18px;
+            font-size: 0.82rem;
+            color: var(--text-mid);
+        }
+        .att-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+            vertical-align: middle;
+        }
+        .att-dot-present { background: #34d399; }
+        .att-dot-absent { background: #f87171; }
+        .att-dot-late { background: #fbbf24; }
+        .att-dot-leave { background: #60a5fa; }
+        .att-calendar-grid {
+            max-width: 480px;
+            margin: 0 auto 20px;
+        }
+        .att-cal-row {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 3px;
+            margin-bottom: 3px;
+        }
+        .att-cal-cell {
+            aspect-ratio: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            font-size: 0.82rem;
+            min-height: 50px;
+            position: relative;
+        }
+        .att-cal-day-name {
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: var(--text-dim);
+            background: transparent;
+            border: none;
+            aspect-ratio: auto;
+            min-height: auto;
+            padding: 4px 0;
+        }
+        .att-cal-empty {
+            background: transparent;
+            border: none;
+        }
+        .att-cal-day-num {
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+        .att-cal-status-icon {
+            font-size: 0.7rem;
+            line-height: 1;
+        }
+        .att-cal-today .att-cal-day-num {
+            color: var(--cyan);
+            font-weight: 800;
+        }
+        .att-cal-today {
+            border-color: var(--cyan);
+            box-shadow: 0 0 0 1px var(--cyan);
+        }
+        .att-cal-present {
+            background: rgba(52, 211, 153, 0.12);
+        }
+        .att-cal-absent {
+            background: rgba(248, 113, 113, 0.12);
+        }
+        .att-cal-late {
+            background: rgba(251, 191, 36, 0.12);
+        }
+        .att-cal-leave {
+            background: rgba(96, 165, 250, 0.12);
+        }
+        .att-summary {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        .att-summary-stat {
+            padding: 6px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            font-size: 0.82rem;
+            color: var(--text-mid);
+        }
+        .att-summary-num {
+            font-weight: 700;
+            font-size: 1rem;
+        }
+        .att-hide-mobile {
+            display: inline;
+        }
+        @media (max-width: 480px) {
+            .att-hide-mobile { display: none; }
+            .att-cal-cell { min-height: 42px; font-size: 0.75rem; }
+            .att-calendar-legend { gap: 10px; font-size: 0.75rem; }
+        }
+
+        [data-theme="light"] .att-cal-cell {
+            background: #ffffff;
+            border-color: rgba(15, 23, 41, 0.1);
+        }
+        [data-theme="light"] .att-cal-present {
+            background: rgba(52, 211, 153, 0.08);
+        }
+        [data-theme="light"] .att-cal-absent {
+            background: rgba(248, 113, 113, 0.08);
+        }
+        [data-theme="light"] .att-cal-late {
+            background: rgba(251, 191, 36, 0.08);
+        }
+        [data-theme="light"] .att-cal-leave {
+            background: rgba(96, 165, 250, 0.08);
+        }
