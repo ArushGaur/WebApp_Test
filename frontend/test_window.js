@@ -1143,8 +1143,21 @@
         // navigates within the SPA instead of leaving it.
         let _historyNavBlocked = false;
 
+        let _attCalendarMonth = new Date().getMonth();
+        let _attCalendarYear = new Date().getFullYear();
+        let _attRecords = [];
+
+        function navAttendance() {
+            if (!_student) return;
+            showScreen('attendance');
+            setActiveNav('attendance');
+            _attCalendarMonth = new Date().getMonth();
+            _attCalendarYear = new Date().getFullYear();
+            attRenderCalendar();
+        }
+
         function showScreen(name, pushHistory = true) {
-            ['login', 'profile', 'dashboard', 'test-analysis', 'test-summary', 'test-detail', 'edit', 'pending'].forEach(s => {
+            ['login', 'profile', 'dashboard', 'attendance', 'test-analysis', 'test-summary', 'test-detail', 'edit', 'pending'].forEach(s => {
                 const el = document.getElementById(`screen-${s}`);
                 if (el) el.classList.add('hidden');
             });
@@ -1154,10 +1167,10 @@
             el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
 
             // update topbar title + sidebar state
-            const titles = { login: 'Sign In', profile: 'Create Profile', dashboard: 'Dashboard', 'test-analysis': 'Test Analysis', 'test-summary': 'Test Analysis', 'test-detail': 'Test Details', edit: 'Edit Profile', pending: 'Request Sent' };
+            const titles = { login: 'Sign In', profile: 'Create Profile', dashboard: 'Dashboard', attendance: 'Attendance', 'test-analysis': 'Test Analysis', 'test-summary': 'Test Analysis', 'test-detail': 'Test Details', edit: 'Edit Profile', pending: 'Request Sent' };
             document.getElementById('topbarTitle').textContent = titles[name] || 'Portal';
 
-            const isLoggedIn = (name === 'dashboard' || name === 'test-analysis' || name === 'test-summary' || name === 'test-detail' || name === 'edit');
+            const isLoggedIn = (name === 'dashboard' || name === 'attendance' || name === 'test-analysis' || name === 'test-summary' || name === 'test-detail' || name === 'edit');
             document.getElementById('sidebarUser').classList.toggle('visible', isLoggedIn);
             document.getElementById('navEdit').style.display = isLoggedIn ? '' : 'none';
             document.getElementById('logoutSidebarBtn').style.display = isLoggedIn ? '' : 'none';
@@ -1375,13 +1388,104 @@
             if (tb) tb.textContent = icon;
         })();
 
+        function attCalendarPrevMonth() {
+            _attCalendarMonth--;
+            if (_attCalendarMonth < 0) { _attCalendarMonth = 11; _attCalendarYear--; }
+            attRenderCalendar();
+        }
+        function attCalendarNextMonth() {
+            _attCalendarMonth++;
+            if (_attCalendarMonth > 11) { _attCalendarMonth = 0; _attCalendarYear++; }
+            attRenderCalendar();
+        }
+
+        async function attRenderCalendar() {
+            const grid = document.getElementById('attCalendarGrid');
+            const label = document.getElementById('attCalendarLabel');
+            const loading = document.getElementById('attCalendarLoading');
+            const empty = document.getElementById('attCalendarEmpty');
+            if (!grid || !label) return;
+
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+            label.textContent = `${monthNames[_attCalendarMonth]} ${_attCalendarYear}`;
+
+            loading.style.display = 'block';
+            grid.innerHTML = '';
+            empty.style.display = 'none';
+
+            const roll = _student?.rollNumber;
+            if (!roll) { loading.style.display = 'none'; return; }
+
+            try {
+                const r = await fetch(`${API_BASE}/api/admin/attendance/student/${encodeURIComponent(roll)}?month=${_attCalendarMonth + 1}&year=${_attCalendarYear}`);
+                if (!r.ok) { loading.style.display = 'none'; return; }
+                _attRecords = await r.json();
+            } catch (_) { _attRecords = []; }
+            loading.style.display = 'none';
+
+            // Build status map: { "2026-01-15": "present", ... }
+            const statusMap = {};
+            _attRecords.forEach(rec => { statusMap[rec.date] = rec.status; });
+
+            // Count summary
+            let counts = { present: 0, absent: 0, late: 0, leave: 0 };
+            _attRecords.forEach(rec => { if (counts[rec.status] !== undefined) counts[rec.status]++; });
+            document.getElementById('attSumPresent').textContent = counts.present;
+            document.getElementById('attSumAbsent').textContent = counts.absent;
+            document.getElementById('attSumLate').textContent = counts.late;
+            document.getElementById('attSumLeave').textContent = counts.leave;
+
+            // Build calendar days
+            const year = _attCalendarYear;
+            const month = _attCalendarMonth;
+            const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const today = new Date();
+            const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            let html = '<div class="att-cal-row att-cal-header">' + dayNames.map(d => `<div class="att-cal-cell att-cal-day-name">${d}</div>`).join('') + '</div>';
+
+            let dayCells = '';
+            // Empty cells before first day
+            for (let i = 0; i < firstDay; i++) {
+                dayCells += '<div class="att-cal-cell att-cal-empty"></div>';
+            }
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                const status = statusMap[dateStr] || '';
+                const isToday = dateStr === todayStr ? ' att-cal-today' : '';
+                let statusClass = '';
+                let statusIcon = '';
+                if (status === 'present') { statusClass = ' att-cal-present'; statusIcon = '✅'; }
+                else if (status === 'absent') { statusClass = ' att-cal-absent'; statusIcon = '❌'; }
+                else if (status === 'late') { statusClass = ' att-cal-late'; statusIcon = '⏰'; }
+                else if (status === 'leave') { statusClass = ' att-cal-leave'; statusIcon = '📋'; }
+                dayCells += `<div class="att-cal-cell${statusClass}${isToday}">
+                    <span class="att-cal-day-num">${d}</span>
+                    ${statusIcon ? `<span class="att-cal-status-icon">${statusIcon}</span>` : ''}
+                </div>`;
+            }
+            html += '<div class="att-cal-row">' + dayCells + '</div>';
+
+            grid.innerHTML = html;
+
+            // Check if any records
+            if (!_attRecords.length) {
+                empty.style.display = 'block';
+            } else {
+                empty.style.display = 'none';
+            }
+        }
+
         function navDash() { if (_student) { showScreen('dashboard'); loadDashboard(); setActiveNav('dashboard'); } }
 
         function setActiveNav(key) {
-            // keys: 'dashboard', 'tests', 'edit'
+            // keys: 'dashboard', 'tests', 'attendance', 'edit'
             document.querySelectorAll('.sidebar-nav-item').forEach(el => el.classList.remove('active'));
             if (key === 'dashboard') document.querySelector('.sidebar-nav-item')?.classList.add('active');
             if (key === 'tests') document.getElementById('navTests')?.classList.add('active');
+            if (key === 'attendance') document.getElementById('navAttendance')?.classList.add('active');
             if (key === 'edit') document.getElementById('navEdit')?.classList.add('active');
         }
 
@@ -1758,6 +1862,48 @@
                     if (streakEl) streakEl.textContent = stats.day_streak || 0;
                 } else if (typeof updateDashboardStats === 'function') await updateDashboardStats();
             })();
+            // Fetch and display notifications
+            loadStudentNotifications();
+        }
+
+        async function loadStudentNotifications() {
+            if (!_student || !_student.rollNumber) return;
+            try {
+                const r = await fetch(`${API_BASE}/api/admin/notifications/${encodeURIComponent(_student.rollNumber)}`);
+                if (!r.ok) return;
+                const notifications = await r.json();
+                if (!notifications.length) return;
+                const ids = notifications.map(n => n.id);
+                // Show notifications in a banner
+                const container = document.getElementById('notificationBanner');
+                if (!container) return;
+                container.innerHTML = notifications.map(n => `
+                    <div class="att-notification" data-id="${n.id}" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(86,169,255,0.1);border:1px solid rgba(86,169,255,0.25);border-radius:var(--radius-sm);margin-bottom:8px">
+                        <span style="font-size:1.2rem">📢</span>
+                        <div style="flex:1;font-size:0.84rem">${n.message}</div>
+                        <button onclick="dismissNotification(${n.id})" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.8rem;padding:4px">✕</button>
+                    </div>
+                `).join('');
+                container.style.display = 'block';
+                // Mark as read after showing
+                setTimeout(() => {
+                    fetch(`${API_BASE}/api/admin/notifications/read`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ids }),
+                    }).catch(() => {});
+                }, 3000);
+            } catch (_) {}
+        }
+
+        function dismissNotification(id) {
+            const el = document.querySelector(`.att-notification[data-id="${id}"]`);
+            if (el) el.style.display = 'none';
+            fetch(`${API_BASE}/api/admin/notifications/read`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: [id] }),
+            }).catch(() => {});
         }
 
         async function loadTests() {
