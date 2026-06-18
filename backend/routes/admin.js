@@ -1,3 +1,27 @@
+Currently, the flow works based on the logged-in session:
+
+Institute admin/teacher: Log in to your institute → elevate to teacher → open Templates panel → upload the .docx — it's automatically saved to that institute only. Other institutes won't see it.
+Owner/Superadmin: When logged in on the owner page, templates uploaded go to global (institute_id = NULL), visible to all institutes.
+There's no UI yet for the owner to upload a template for a specific institute. Would you like me to add a dropdown in the owner's template manager to choose which institute to upload/assign a template to?
+
+yes add a dropdown in the owner's template manager to choose which institute to upload/assign a template to
+Server restarted successfully on port 3000. Here's everything that was done:
+
+Backend:
+
+config/db.js — Safe migration to add institute_id column to paper_templates
+routes/admin.js — GET returns instituteId/instituteName for each template, supports ?instituteId=X query param for owner filtering. POST accepts instituteId from body to allow owner to upload for a specific institute. DELETE/PATCH scoped by institute.
+Frontend:
+
+owner.html — Added "Institute:" dropdown (#tplInstituteFilter) in the template manager panel
+shared-paper.js —
+loadTplInstitutes() fetches institutes from /api/owner/institutes and populates the dropdown
+onTplInstituteChange() re-fetches templates filtered by selected institute
+toggleTemplateManager() now loads institutes on open
+uploadPaperTemplate() sends instituteId in FormData based on dropdown selection
+_renderTemplateList() shows an institute name badge next to each template
+The owner can now open Templates → pick an institute from the dropdown → see only that institute's templates with a color badge, and upload new templates assigned directly to that institute.
+
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
@@ -797,18 +821,25 @@ function parseLLMJSON(raw) {
 router.get("/api/admin/paper-templates", requireAdmin, async (req, res) => {
 	try {
 		const instId = sessionInstituteId(req);
+		const queryInstId = req.query.instituteId ? Number(req.query.instituteId) : null;
 		let rows;
-		if (instId) {
+		if (queryInstId) {
 			const result = await db.execute({
-				sql: "SELECT id, name, created_at FROM paper_templates WHERE institute_id = ? ORDER BY created_at DESC",
+				sql: "SELECT pt.id, pt.name, pt.created_at, pt.institute_id, i.name AS institute_name FROM paper_templates pt LEFT JOIN institutes i ON pt.institute_id = i.id WHERE pt.institute_id = ? ORDER BY pt.created_at DESC",
+				args: [queryInstId]
+			});
+			rows = result.rows;
+		} else if (instId) {
+			const result = await db.execute({
+				sql: "SELECT pt.id, pt.name, pt.created_at, pt.institute_id, i.name AS institute_name FROM paper_templates pt LEFT JOIN institutes i ON pt.institute_id = i.id WHERE pt.institute_id = ? ORDER BY pt.created_at DESC",
 				args: [instId]
 			});
 			rows = result.rows;
 		} else {
-			const result = await db.execute("SELECT id, name, created_at FROM paper_templates ORDER BY created_at DESC");
+			const result = await db.execute("SELECT pt.id, pt.name, pt.created_at, pt.institute_id, i.name AS institute_name FROM paper_templates pt LEFT JOIN institutes i ON pt.institute_id = i.id ORDER BY pt.created_at DESC");
 			rows = result.rows;
 		}
-		res.json(rows.map(r => ({ id: r.id, name: r.name, createdAt: r.created_at })));
+		res.json(rows.map(r => ({ id: r.id, name: r.name, createdAt: r.created_at, instituteId: r.institute_id, instituteName: r.institute_name || null })));
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
@@ -821,12 +852,13 @@ router.post("/api/admin/paper-templates", requireAdmin, upload.single("template"
 		if (!req.file.originalname.endsWith(".docx")) return res.status(400).json({ error: "Only .docx templates are supported" });
 		const name = req.body.name || req.file.originalname.replace(/\.docx$/i, "");
 		const base64 = req.file.buffer.toString("base64");
-		const instId = sessionInstituteId(req) || null;
+		const sessionInstId = sessionInstituteId(req);
+		const instId = req.body.instituteId ? Number(req.body.instituteId) : (sessionInstId || null);
 		const result = await db.execute({
 			sql: "INSERT INTO paper_templates (name, docx_base64, created_at, institute_id) VALUES (?, ?, ?, ?)",
 			args: [name, base64, Date.now(), instId]
 		});
-		res.json({ success: true, id: Number(result.lastInsertRowid), name });
+		res.json({ success: true, id: Number(result.lastInsertRowid), name, instituteId: instId });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed to upload template" });
 	}
