@@ -612,6 +612,7 @@
             const dateInput = document.getElementById("att-date");
             if (dateInput && !dateInput.value) dateInput.value = getTodayStr();
             loadAttendanceClasses();
+            loadAttendanceStudents();
             history.pushState({ type: "section", name: "attendance" }, "", "");
         }
 
@@ -826,7 +827,7 @@
                 _attClasses = await r.json();
                 const sel = document.getElementById("att-class-select");
                 if (!sel) return;
-                sel.innerHTML = '<option value="">— Select Class —</option>' + _attClasses.map(c =>
+                sel.innerHTML = '<option value="">👥 All Students</option>' + _attClasses.map(c =>
                     `<option value="${c.id}">${c.name}</option>`
                 ).join("");
             } catch (_) {}
@@ -836,8 +837,14 @@
             const classId = document.getElementById("att-class-select")?.value;
             const batchSel = document.getElementById("att-batch-select");
             if (!batchSel) return;
+            if (!classId) {
+                batchSel.innerHTML = '<option value="">— All Batches —</option>';
+                batchSel.disabled = true;
+                await loadAttendanceStudents();
+                return;
+            }
+            batchSel.disabled = false;
             batchSel.innerHTML = '<option value="">— All Batches —</option>';
-            if (!classId) return;
             try {
                 const r = await fetch(`${API_BASE}/api/admin/classes/${classId}/batches`, { credentials: "include", cache: "no-store" });
                 if (!r.ok) return;
@@ -846,13 +853,15 @@
                     `<option value="${b.id}">${b.name}</option>`
                 ).join("");
             } catch (_) {}
+            await loadAttendanceStudents();
         }
 
-        function onAttBatchChange() {}
+        async function onAttBatchChange() {
+            await loadAttendanceStudents();
+        }
 
         async function loadAttendanceStudents() {
             const classId = document.getElementById("att-class-select")?.value;
-            if (!classId) { showErrorModal("Please select a class first."); return; }
             const batchId = document.getElementById("att-batch-select")?.value || "";
             const dateInput = document.getElementById("att-date");
             if (!dateInput.value) {
@@ -864,7 +873,8 @@
             document.getElementById("att-student-section").style.display = "none";
 
             try {
-                const params = new URLSearchParams({ class_id: classId });
+                const params = new URLSearchParams();
+                if (classId) params.set("class_id", classId);
                 if (batchId) params.set("batch_id", batchId);
                 const r = await fetch(`${API_BASE}/api/admin/attendance/students?${params}`, { credentials: "include", cache: "no-store" });
                 if (!r.ok) throw new Error("Failed to load students");
@@ -873,7 +883,10 @@
                 // Also load today's attendance records to show existing status
                 let records = {};
                 try {
-                    const rr = await fetch(`${API_BASE}/api/admin/attendance/records?class_id=${classId}${batchId ? '&batch_id=' + batchId : ''}&date=${date}`, { credentials: "include", cache: "no-store" });
+                    let recUrl = `${API_BASE}/api/admin/attendance/records?date=${date}`;
+                    if (classId) recUrl += `&class_id=${classId}`;
+                    if (batchId) recUrl += `&batch_id=${batchId}`;
+                    const rr = await fetch(recUrl, { credentials: "include", cache: "no-store" });
                     if (rr.ok) {
                         const recs = await rr.json();
                         recs.forEach(rec => { records[rec.roll_number] = rec.status; });
