@@ -111,6 +111,10 @@ async function initDB(TEACHER_PASSCODE, hashPasscode) {
 			created_at INTEGER DEFAULT 0
 		)`);
 	} catch (_) { /* already exists */ }
+	// Add institute_id column for per-institute template isolation
+	try {
+		await db.execute("ALTER TABLE paper_templates ADD COLUMN institute_id INTEGER DEFAULT NULL");
+	} catch (_) { /* column already exists */ }
 	// Create registered_students table — admin adds roll numbers, students fill details
 	try {
 		await db.execute(`CREATE TABLE IF NOT EXISTS registered_students (
