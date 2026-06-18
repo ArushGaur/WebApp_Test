@@ -1212,4 +1212,221 @@ router.get("/api/admin/gemini-models", requireAdmin, async (req, res) => {
 	}
 });
 
+// ── ATTENDANCE: Classes ──────────────────────────────────────────────
+router.get("/api/admin/classes", requireAdmin, async (req, res) => {
+	try {
+		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
+		const result = await db.execute({
+			sql: "SELECT * FROM classes WHERE institute_id = ? ORDER BY name",
+			args: [instId],
+		});
+		res.json(result.rows);
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+router.post("/api/admin/classes", requireAdmin, async (req, res) => {
+	try {
+		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
+		const { name } = req.body || {};
+		if (!name || !name.trim()) return res.status(400).json({ error: "Class name required" });
+		const result = await db.execute({
+			sql: "INSERT INTO classes (name, institute_id, created_at) VALUES (?, ?, ?)",
+			args: [name.trim(), instId, Date.now()],
+		});
+		res.json({ success: true, id: Number(result.lastInsertRowid) });
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+router.delete("/api/admin/classes/:id", requireAdmin, async (req, res) => {
+	try {
+		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
+		const classId = Number(req.params.id);
+		await db.execute({ sql: "DELETE FROM batches WHERE class_id = ? AND institute_id = ?", args: [classId, instId] });
+		await db.execute({ sql: "DELETE FROM classes WHERE id = ? AND institute_id = ?", args: [classId, instId] });
+		res.json({ success: true });
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+// ── ATTENDANCE: Batches ──────────────────────────────────────────────
+router.get("/api/admin/classes/:id/batches", requireAdmin, async (req, res) => {
+	try {
+		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
+		const classId = Number(req.params.id);
+		const result = await db.execute({
+			sql: "SELECT * FROM batches WHERE class_id = ? AND institute_id = ? ORDER BY name",
+			args: [classId, instId],
+		});
+		res.json(result.rows);
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+router.post("/api/admin/classes/:id/batches", requireAdmin, async (req, res) => {
+	try {
+		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
+		const classId = Number(req.params.id);
+		const { name } = req.body || {};
+		if (!name || !name.trim()) return res.status(400).json({ error: "Batch name required" });
+		const result = await db.execute({
+			sql: "INSERT INTO batches (name, class_id, institute_id, created_at) VALUES (?, ?, ?, ?)",
+			args: [name.trim(), classId, instId, Date.now()],
+		});
+		res.json({ success: true, id: Number(result.lastInsertRowid) });
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+router.delete("/api/admin/batches/:id", requireAdmin, async (req, res) => {
+	try {
+		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
+		await db.execute({
+			sql: "DELETE FROM batches WHERE id = ? AND institute_id = ?",
+			args: [Number(req.params.id), instId],
+		});
+		res.json({ success: true });
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+// ── ATTENDANCE: Students by class/batch ──────────────────────────────
+router.get("/api/admin/attendance/students", requireAdmin, async (req, res) => {
+	try {
+		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
+		const { class_id, batch_id } = req.query;
+		let sql = "SELECT roll_number, name, class_name, batch_id FROM registered_students WHERE institute_id = ? AND profile_complete = 1";
+		const args = [instId];
+		if (class_id) {
+			sql += " AND class_name = (SELECT name FROM classes WHERE id = ?)";
+			args.push(Number(class_id));
+		}
+		if (batch_id) {
+			sql += " AND batch_id = ?";
+			args.push(Number(batch_id));
+		}
+		sql += " ORDER BY name";
+		const result = await db.execute({ sql, args });
+		res.json(result.rows);
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+// ── ATTENDANCE: Mark attendance ──────────────────────────────────────
+router.post("/api/admin/attendance/mark", requireAdmin, async (req, res) => {
+	try {
+		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
+		const { class_id, batch_id, date, roll_numbers, status } = req.body || {};
+		if (!class_id || !date || !Array.isArray(roll_numbers) || !roll_numbers.length) {
+			return res.status(400).json({ error: "class_id, date, and roll_numbers required" });
+		}
+		const attStatus = status || "present";
+		const now = Date.now();
+		let marked = 0;
+		for (const roll of roll_numbers) {
+			await db.execute({
+				sql: `INSERT INTO attendance (class_id, batch_id, roll_number, date, status, institute_id, marked_by, marked_at)
+				      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+				      ON CONFLICT(roll_number, date) DO UPDATE SET status = ?, marked_at = ?`,
+				args: [Number(class_id), batch_id ? Number(batch_id) : null, roll, date, attStatus, instId, "", now, attStatus, now],
+			});
+			// Create in-app notification for each student
+			await db.execute({
+				sql: "INSERT INTO notifications (roll_number, message, type, institute_id, created_at) VALUES (?, ?, ?, ?, ?)",
+				args: [roll, `Your attendance has been marked as ${attStatus} for ${date}.`, "attendance", instId, now],
+			});
+			marked++;
+		}
+		res.json({ success: true, marked });
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+// ── ATTENDANCE: Get records for a date ───────────────────────────────
+router.get("/api/admin/attendance/records", requireAdmin, async (req, res) => {
+	try {
+		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
+		const { class_id, batch_id, date } = req.query;
+		let sql = "SELECT a.*, rs.name as student_name FROM attendance a LEFT JOIN registered_students rs ON a.roll_number = rs.roll_number AND rs.institute_id = ? WHERE a.institute_id = ?";
+		const args = [instId, instId];
+		if (class_id) {
+			sql += " AND a.class_id = ?";
+			args.push(Number(class_id));
+		}
+		if (batch_id) {
+			sql += " AND a.batch_id = ?";
+			args.push(Number(batch_id));
+		}
+		if (date) {
+			sql += " AND a.date = ?";
+			args.push(date);
+		}
+		sql += " ORDER BY a.roll_number";
+		const result = await db.execute({ sql, args });
+		res.json(result.rows);
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+// ── ATTENDANCE: Get records for a student (for calendar view) ────────
+router.get("/api/admin/attendance/student/:roll", async (req, res) => {
+	try {
+		const roll = req.params.roll;
+		const { month, year } = req.query;
+		let sql = "SELECT date, status FROM attendance WHERE roll_number = ?";
+		const args = [roll];
+		if (month && year) {
+			const m = String(month).padStart(2, "0");
+			sql += " AND date LIKE ?";
+			args.push(`${year}-${m}-%`);
+		} else if (year) {
+			sql += " AND date LIKE ?";
+			args.push(`${year}-%`);
+		}
+		sql += " ORDER BY date DESC";
+		const result = await db.execute({ sql, args });
+		res.json(result.rows);
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+// ── NOTIFICATIONS: Get unread for a student ──────────────────────────
+router.get("/api/admin/notifications/:roll", async (req, res) => {
+	try {
+		const roll = req.params.roll;
+		const result = await db.execute({
+			sql: "SELECT * FROM notifications WHERE roll_number = ? AND is_read = 0 ORDER BY created_at DESC LIMIT 50",
+			args: [roll],
+		});
+		res.json(result.rows);
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+router.post("/api/admin/notifications/read", async (req, res) => {
+	try {
+		const { ids } = req.body || {};
+		if (!Array.isArray(ids) || !ids.length) return res.json({ success: true });
+		await db.execute({
+			sql: `UPDATE notifications SET is_read = 1 WHERE id IN (${ids.map(() => "?").join(",")})`,
+			args: ids,
+		});
+		res.json({ success: true });
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
 module.exports = router;
