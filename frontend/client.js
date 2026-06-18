@@ -786,3 +786,348 @@
             }
             results.style.display = "block";
         }
+
+        /* ══════════════════════════════════════════════════════════════════
+           ATTENDANCE
+        ══════════════════════════════════════════════════════════════════ */
+        let _attClasses = [];
+        let _attBatches = [];
+        let _attStudents = [];
+
+        function getTodayStr() {
+            const d = new Date();
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+
+        async function loadAttendanceClasses() {
+            try {
+                const r = await fetch(`${API_BASE}/api/admin/classes`, { credentials: "include", cache: "no-store" });
+                if (!r.ok) return;
+                _attClasses = await r.json();
+                const sel = document.getElementById("att-class-select");
+                if (!sel) return;
+                sel.innerHTML = '<option value="">— Select Class —</option>' + _attClasses.map(c =>
+                    `<option value="${c.id}">${c.name}</option>`
+                ).join("");
+            } catch (_) {}
+        }
+
+        async function onAttClassChange() {
+            const classId = document.getElementById("att-class-select")?.value;
+            const batchSel = document.getElementById("att-batch-select");
+            if (!batchSel) return;
+            batchSel.innerHTML = '<option value="">— All Batches —</option>';
+            if (!classId) return;
+            try {
+                const r = await fetch(`${API_BASE}/api/admin/classes/${classId}/batches`, { credentials: "include", cache: "no-store" });
+                if (!r.ok) return;
+                _attBatches = await r.json();
+                batchSel.innerHTML = '<option value="">— All Batches —</option>' + _attBatches.map(b =>
+                    `<option value="${b.id}">${b.name}</option>`
+                ).join("");
+            } catch (_) {}
+        }
+
+        function onAttBatchChange() {}
+
+        async function loadAttendanceStudents() {
+            const classId = document.getElementById("att-class-select")?.value;
+            if (!classId) { showErrorModal("Please select a class first."); return; }
+            const batchId = document.getElementById("att-batch-select")?.value || "";
+            const dateInput = document.getElementById("att-date");
+            if (!dateInput.value) {
+                dateInput.value = getTodayStr();
+            }
+            const date = dateInput.value;
+
+            document.getElementById("att-loading").style.display = "block";
+            document.getElementById("att-student-section").style.display = "none";
+
+            try {
+                const params = new URLSearchParams({ class_id: classId });
+                if (batchId) params.set("batch_id", batchId);
+                const r = await fetch(`${API_BASE}/api/admin/attendance/students?${params}`, { credentials: "include", cache: "no-store" });
+                if (!r.ok) throw new Error("Failed to load students");
+                _attStudents = await r.json();
+
+                // Also load today's attendance records to show existing status
+                let records = {};
+                try {
+                    const rr = await fetch(`${API_BASE}/api/admin/attendance/records?class_id=${classId}${batchId ? '&batch_id=' + batchId : ''}&date=${date}`, { credentials: "include", cache: "no-store" });
+                    if (rr.ok) {
+                        const recs = await rr.json();
+                        recs.forEach(rec => { records[rec.roll_number] = rec.status; });
+                    }
+                } catch (_) {}
+
+                renderAttendanceStudents(records);
+            } catch (e) {
+                showErrorModal(e.message || "Failed to load students");
+            } finally {
+                document.getElementById("att-loading").style.display = "none";
+            }
+        }
+
+        function renderAttendanceStudents(existingRecords) {
+            const tbody = document.getElementById("att-student-tbody");
+            const section = document.getElementById("att-student-section");
+            const empty = document.getElementById("att-empty");
+            if (!tbody) return;
+
+            if (!_attStudents.length) {
+                section.style.display = "none";
+                empty.style.display = "block";
+                return;
+            }
+
+            empty.style.display = "none";
+            section.style.display = "block";
+
+            tbody.innerHTML = _attStudents.map(s => {
+                const existingStatus = existingRecords[s.roll_number] || "";
+                const statusBadge = existingStatus
+                    ? `<span class="badge-pill ${existingStatus === 'present' ? 'ok' : existingStatus === 'late' ? 'warn' : 'wrong'}">${existingStatus.charAt(0).toUpperCase() + existingStatus.slice(1)}</span>`
+                    : '<span style="color:var(--text-muted);font-size:0.78rem">Not marked</span>';
+                return `<tr>
+                    <td><input type="checkbox" class="att-student-cb" data-roll="${s.roll_number}" ${existingStatus ? 'checked' : ''}></td>
+                    <td style="font-family:'JetBrains Mono',monospace;font-size:0.8rem">${s.roll_number}</td>
+                    <td>${s.name || '—'}</td>
+                    <td>${statusBadge}</td>
+                </tr>`;
+            }).join("");
+
+            document.getElementById("att-stat-total").textContent = _attStudents.length;
+            updateAttCounts();
+            loadAttendanceHistory();
+        }
+
+        function updateAttCounts() {
+            const cbs = document.querySelectorAll(".att-student-cb:checked");
+            document.getElementById("att-stat-selected").textContent = cbs.length;
+            const presentCount = _attStudents.filter(s => {
+                const cb = document.querySelector(`.att-student-cb[data-roll="${s.roll_number}"]`);
+                return cb && cb.checked;
+            }).length;
+            document.getElementById("att-stat-present").textContent = presentCount;
+        }
+
+        function attToggleSelectAll() {
+            const allCb = document.getElementById("att-select-all");
+            document.querySelectorAll(".att-student-cb").forEach(cb => cb.checked = allCb.checked);
+            updateAttCounts();
+        }
+
+        async function markAttendance() {
+            const classId = document.getElementById("att-class-select")?.value;
+            const batchId = document.getElementById("att-batch-select")?.value || "";
+            const date = document.getElementById("att-date")?.value || getTodayStr();
+            const status = document.getElementById("att-mark-status")?.value || "present";
+
+            const selected = [];
+            document.querySelectorAll(".att-student-cb:checked").forEach(cb => selected.push(cb.dataset.roll));
+
+            if (!selected.length) { showErrorModal("Please select at least one student."); return; }
+
+            try {
+                const r = await fetch(`${API_BASE}/api/admin/attendance/mark`, {
+                    method: "POST",
+                    credentials: "include",
+                    cache: "no-store",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        class_id: Number(classId),
+                        batch_id: batchId ? Number(batchId) : null,
+                        date,
+                        roll_numbers: selected,
+                        status,
+                    }),
+                });
+                const data = await r.json();
+                if (!r.ok) throw new Error(data.error || "Failed");
+                // Reload to show updated status
+                await loadAttendanceStudents();
+            } catch (e) {
+                showErrorModal(e.message || "Failed to mark attendance");
+            }
+        }
+
+        async function loadAttendanceHistory() {
+            const classId = document.getElementById("att-class-select")?.value;
+            const batchId = document.getElementById("att-batch-select")?.value || "";
+            const date = document.getElementById("att-date")?.value || getTodayStr();
+            const section = document.getElementById("att-history-section");
+            if (!section) return;
+
+            try {
+                const params = new URLSearchParams({ class_id: classId, date });
+                if (batchId) params.set("batch_id", batchId);
+                const r = await fetch(`${API_BASE}/api/admin/attendance/records?${params}`, { credentials: "include", cache: "no-store" });
+                if (!r.ok) return;
+                const records = await r.json();
+                if (!records.length) { section.style.display = "none"; return; }
+
+                section.style.display = "block";
+                const list = document.getElementById("att-history-list");
+                const present = records.filter(r => r.status === "present").length;
+                const absent = records.filter(r => r.status === "absent").length;
+                const late = records.filter(r => r.status === "late").length;
+                const leave = records.filter(r => r.status === "leave").length;
+
+                list.innerHTML = `
+                    <div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap">
+                        <span style="font-size:0.82rem">✅ Present: <strong>${present}</strong></span>
+                        <span style="font-size:0.82rem">❌ Absent: <strong>${absent}</strong></span>
+                        <span style="font-size:0.82rem">⏰ Late: <strong>${late}</strong></span>
+                        <span style="font-size:0.82rem">📋 Leave: <strong>${leave}</strong></span>
+                        <span style="font-size:0.82rem">👥 Total: <strong>${records.length}</strong></span>
+                    </div>
+                    <div style="max-height:200px;overflow-y:auto;font-size:0.82rem">
+                        ${records.map(r => `
+                            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
+                                <span>${r.roll_number} — ${r.student_name || ''}</span>
+                                <span class="badge-pill ${r.status === 'present' ? 'ok' : r.status === 'late' ? 'warn' : 'wrong'}">${r.status}</span>
+                            </div>
+                        `).join("")}
+                    </div>
+                `;
+            } catch (_) { section.style.display = "none"; }
+        }
+
+        // ── Manage Classes Modal ───────────────────────────────────────
+        async function openManageClassesModal() {
+            openModal("manageClassesModal");
+            await renderManageClasses();
+        }
+
+        async function renderManageClasses() {
+            const container = document.getElementById("mc-class-list");
+            if (!container) return;
+            try {
+                const r = await fetch(`${API_BASE}/api/admin/classes`, { credentials: "include", cache: "no-store" });
+                if (!r.ok) return;
+                const classes = await r.json();
+                if (!classes.length) {
+                    container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:0.84rem">No classes yet. Add one below.</div>';
+                    return;
+                }
+                let html = "";
+                for (const cls of classes) {
+                    let batches = [];
+                    try {
+                        const br = await fetch(`${API_BASE}/api/admin/classes/${cls.id}/batches`, { credentials: "include", cache: "no-store" });
+                        if (br.ok) batches = await br.json();
+                    } catch (_) {}
+                    html += `<div class="mc-class-item">
+                        <div class="mc-class-header" style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
+                            <strong style="font-size:0.88rem">${cls.name}</strong>
+                            <div style="display:flex;gap:6px">
+                                <button class="btn btn-ghost" onclick="openAddBatchModal(${cls.id}, '${cls.name}')" style="padding:5px 10px;font-size:0.78rem">➕ Batch</button>
+                                <button class="btn btn-danger" onclick="deleteClass(${cls.id})" style="padding:5px 10px;font-size:0.78rem">🗑</button>
+                            </div>
+                        </div>
+                        <div style="padding:4px 0 4px 12px;font-size:0.8rem">
+                            ${batches.length ? batches.map(b =>
+                                `<span style="display:inline-flex;align-items:center;gap:4px;margin:3px 4px;padding:3px 10px;background:var(--bg-input);border-radius:20px;font-size:0.76rem">
+                                    ${b.name}
+                                    <span onclick="deleteBatch(${b.id})" style="cursor:pointer;opacity:0.6;margin-left:2px">✕</span>
+                                </span>`
+                            ).join("") : '<span style="color:var(--text-muted)">No batches</span>'}
+                        </div>
+                    </div>`;
+                }
+                container.innerHTML = html;
+            } catch (_) { container.innerHTML = '<div style="color:var(--error)">Failed to load classes</div>'; }
+        }
+
+        async function addNewClass() {
+            const input = document.getElementById("mc-new-class-name");
+            const name = input?.value.trim();
+            if (!name) return;
+            try {
+                const r = await fetch(`${API_BASE}/api/admin/classes`, {
+                    method: "POST",
+                    credentials: "include",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name }),
+                });
+                const data = await r.json();
+                if (!r.ok) throw new Error(data.error || "Failed");
+                input.value = "";
+                await renderManageClasses();
+                await loadAttendanceClasses();
+            } catch (e) { showErrorModal(e.message); }
+        }
+
+        async function deleteClass(id) {
+            if (!confirm("Delete this class and all its batches?")) return;
+            try {
+                await fetch(`${API_BASE}/api/admin/classes/${id}`, { method: "DELETE", credentials: "include" });
+                await renderManageClasses();
+                await loadAttendanceClasses();
+            } catch (_) {}
+        }
+
+        let _addBatchClassId = null;
+
+        function openAddBatchModal(classId, className) {
+            _addBatchClassId = classId;
+            document.getElementById("addBatchModalTitle").textContent = `➕ Add Batch to ${className}`;
+            document.getElementById("ab-new-batch-name").value = "";
+            openModal("addBatchModal");
+        }
+
+        async function addNewBatch() {
+            const name = document.getElementById("ab-new-batch-name")?.value.trim();
+            if (!name || !_addBatchClassId) return;
+            try {
+                const r = await fetch(`${API_BASE}/api/admin/classes/${_addBatchClassId}/batches`, {
+                    method: "POST",
+                    credentials: "include",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name }),
+                });
+                const data = await r.json();
+                if (!r.ok) throw new Error(data.error || "Failed");
+                closeModal("addBatchModal");
+                await renderManageClasses();
+            } catch (e) { showErrorModal(e.message); }
+        }
+
+        async function deleteBatch(id) {
+            if (!confirm("Delete this batch?")) return;
+            try {
+                await fetch(`${API_BASE}/api/admin/batches/${id}`, { method: "DELETE", credentials: "include" });
+                await renderManageClasses();
+            } catch (_) {}
+        }
+
+        // Override showSection to also handle attendance
+        const _origShowSection = showSection;
+        showSection = function(name, push = true) {
+            document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+            document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+            const sec = document.getElementById(`section-${name}`);
+            const nav = document.getElementById(`nav-${name}`);
+            if (sec) sec.classList.add("active");
+            if (nav) nav.classList.add("active");
+            if (name === "attendance") {
+                const dateInput = document.getElementById("att-date");
+                if (dateInput && !dateInput.value) dateInput.value = getTodayStr();
+                loadAttendanceClasses();
+                // Auto-select class and batch from stored state
+            }
+            if (name === "students") {
+                loadRegisteredStudents();
+                fetch(`${API_BASE}/api/admin/student-requests`, { credentials: 'include', cache: 'no-store' })
+                    .then(r => r.json()).then(data => updateRequestsBadge(data.length)).catch(() => { });
+            }
+            if (name === "applications") {
+                populateStudentChapterFilter();
+                filterStudents('');
+                setStudentView(studentViewMode);
+            }
+            if (name === "manageQuestions") { showSubjectView(); renderSubjectCards(allQuestions); }
+            if (name === "starQuiz" && push) { sqShowChapterView(false); loadStarQuizData().then(() => { if (document.getElementById("sq-chapter-view").style.display !== "none") sqRenderChapters(_sqAllQuestions); }); }
+            else if (name === "starQuiz" && !push) { loadStarQuizData().then(() => sqRenderChapters(_sqAllQuestions)); }
+            if (push) history.pushState({ type: "section", name }, "", "");
+        }
