@@ -496,12 +496,41 @@
             if (!panel) return;
             const isOpen = panel.style.display !== 'none';
             panel.style.display = isOpen ? 'none' : 'block';
-            if (!isOpen) refreshTemplates();
+            if (!isOpen) {
+                loadTplInstitutes();
+                refreshTemplates();
+            }
+        }
+
+        async function loadTplInstitutes() {
+            const sel = document.getElementById('tplInstituteFilter');
+            if (!sel) return;
+            try {
+                const resp = await fetch(`${API_BASE}/api/owner/institutes`, { credentials: 'include' });
+                const data = await resp.json();
+                const institutes = Array.isArray(data) ? data : (data.institutes || []);
+                sel.innerHTML = '<option value="">All Institutes</option>';
+                institutes.forEach(inst => {
+                    const opt = document.createElement('option');
+                    opt.value = inst.id;
+                    opt.textContent = inst.name + ' (' + inst.code + ')';
+                    sel.appendChild(opt);
+                });
+            } catch (e) { /* owner may not be loaded yet */ }
+        }
+
+        function onTplInstituteChange() {
+            refreshTemplates();
         }
 
         async function refreshTemplates() {
             try {
-                const resp = await fetch(`${API_BASE}/api/admin/paper-templates`, { credentials: 'include' });
+                let url = `${API_BASE}/api/admin/paper-templates`;
+                const filterEl = document.getElementById('tplInstituteFilter');
+                if (filterEl && filterEl.value) {
+                    url += '?instituteId=' + encodeURIComponent(filterEl.value);
+                }
+                const resp = await fetch(url, { credentials: 'include' });
                 _templates = await resp.json();
                 _renderTemplateList();
                 _renderModalTemplateList();
@@ -520,16 +549,20 @@
         function _renderTemplateList() {
             const container = document.getElementById('templateListContainer');
             if (!container) return;
+            const showInstitute = _templates.some(t => t.instituteName);
             if (_templates.length === 0) {
                 container.innerHTML = '<div style="padding:12px 16px;font-size:0.8rem;color:var(--text-muted)">No templates uploaded yet</div>';
             } else {
                 container.innerHTML = _templates.map(t => {
                     const date = new Date(t.createdAt).toLocaleDateString();
+                    const instBadge = t.instituteName
+                        ? `<span style="font-size:0.65rem;background:rgba(99,102,241,0.12);color:#818cf8;padding:1px 6px;border-radius:4px;font-weight:500">${escapeHtml(t.instituteName)}</span>`
+                        : '';
                     return `<div style="display:flex;align-items:center;gap:8px;padding:8px 14px;transition:background 0.12s"
                     onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">
                     <span style="font-size:0.88rem">📄</span>
                     <div style="flex:1;min-width:0">
-                        <div style="font-size:0.83rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(t.name)}</div>
+                        <div style="font-size:0.83rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(t.name)} ${instBadge}</div>
                         <div style="font-size:0.72rem;color:var(--text-muted)">${date}</div>
                     </div>
                     <button onclick="deleteTemplate(${t.id}, event)" title="Delete"
@@ -593,6 +626,10 @@
 
             const fd = new FormData();
             fd.append('template', file);
+            const filterEl = document.getElementById('tplInstituteFilter');
+            if (filterEl && filterEl.value) {
+                fd.append('instituteId', filterEl.value);
+            }
 
             const xhr = new XMLHttpRequest();
             xhr.open('POST', `${API_BASE}/api/admin/paper-templates`);
