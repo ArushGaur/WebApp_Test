@@ -1,27 +1,3 @@
-Currently, the flow works based on the logged-in session:
-
-Institute admin/teacher: Log in to your institute → elevate to teacher → open Templates panel → upload the .docx — it's automatically saved to that institute only. Other institutes won't see it.
-Owner/Superadmin: When logged in on the owner page, templates uploaded go to global (institute_id = NULL), visible to all institutes.
-There's no UI yet for the owner to upload a template for a specific institute. Would you like me to add a dropdown in the owner's template manager to choose which institute to upload/assign a template to?
-
-yes add a dropdown in the owner's template manager to choose which institute to upload/assign a template to
-Server restarted successfully on port 3000. Here's everything that was done:
-
-Backend:
-
-config/db.js — Safe migration to add institute_id column to paper_templates
-routes/admin.js — GET returns instituteId/instituteName for each template, supports ?instituteId=X query param for owner filtering. POST accepts instituteId from body to allow owner to upload for a specific institute. DELETE/PATCH scoped by institute.
-Frontend:
-
-owner.html — Added "Institute:" dropdown (#tplInstituteFilter) in the template manager panel
-shared-paper.js —
-loadTplInstitutes() fetches institutes from /api/owner/institutes and populates the dropdown
-onTplInstituteChange() re-fetches templates filtered by selected institute
-toggleTemplateManager() now loads institutes on open
-uploadPaperTemplate() sends instituteId in FormData based on dropdown selection
-_renderTemplateList() shows an institute name badge next to each template
-The owner can now open Templates → pick an institute from the dropdown → see only that institute's templates with a color badge, and upload new templates assigned directly to that institute.
-
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
