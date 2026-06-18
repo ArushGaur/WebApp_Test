@@ -4851,6 +4851,69 @@
         #att-student-table tr:hover {
             background: var(--bg-hover);
         }
+        .att-cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 14px;
+            margin-bottom: 24px;
+        }
+        .att-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: var(--shadow-card);
+        }
+        .att-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--accent);
+            box-shadow: 0 8px 25px rgba(86, 169, 255, 0.15);
+        }
+        .att-card-icon { font-size: 2rem; margin-bottom: 8px; }
+        .att-card-name { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
+        .att-card-sub { font-size: 0.78rem; color: var(--text-dim); }
+        .att-back-btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 8px 16px; background: var(--bg-input);
+            border: 1px solid var(--border); border-radius: var(--radius-sm);
+            color: var(--text); font-size: 0.84rem; font-weight: 600;
+            cursor: pointer; margin-bottom: 18px; font-family: 'Outfit', sans-serif;
+            transition: all 0.15s;
+        }
+        .att-back-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .att-section-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 16px; }
+        .att-marking-toolbar {
+            display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+            margin-bottom: 16px; padding: 14px 18px;
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+        .att-marking-date { display: flex; align-items: center; gap: 8px; }
+        .att-marking-date label { font-size: 0.78rem; font-weight: 600; color: var(--text-dim); }
+        .att-marking-date input {
+            padding: 8px 12px; background: var(--bg-input);
+            border: 1px solid var(--border); border-radius: var(--radius-sm);
+            color: var(--text); font-size: 0.84rem; outline: none;
+            font-family: 'Outfit', sans-serif;
+        }
+        .att-marking-date input:focus { border-color: var(--accent); }
+        .att-marking-actions {
+            display: flex; align-items: center; gap: 10px;
+            margin-left: auto; flex-wrap: wrap;
+        }
+        .att-marking-actions select {
+            padding: 8px 12px; background: var(--bg-input);
+            border: 1px solid var(--border); border-radius: var(--radius-sm);
+            color: var(--text); font-size: 0.84rem; outline: none;
+            font-family: 'Outfit', sans-serif;
+        }
+        .att-stu-stats-bar {
+            display: flex; gap: 20px; margin-bottom: 14px; padding: 10px 0;
+        }
+        .att-stat { font-size: 0.85rem; color: var(--text-dim); }
+        .att-stat strong { color: var(--text); font-size: 1.05rem; }
         #att-student-table input[type="checkbox"] {
             width: 17px;
             height: 17px;
