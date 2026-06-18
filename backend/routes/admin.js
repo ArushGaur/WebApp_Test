@@ -796,8 +796,19 @@ function parseLLMJSON(raw) {
 
 router.get("/api/admin/paper-templates", requireAdmin, async (req, res) => {
 	try {
-		const result = await db.execute("SELECT id, name, created_at FROM paper_templates ORDER BY created_at DESC");
-		res.json(result.rows.map(r => ({ id: r.id, name: r.name, createdAt: r.created_at })));
+		const instId = sessionInstituteId(req);
+		let rows;
+		if (instId) {
+			const result = await db.execute({
+				sql: "SELECT id, name, created_at FROM paper_templates WHERE institute_id = ? ORDER BY created_at DESC",
+				args: [instId]
+			});
+			rows = result.rows;
+		} else {
+			const result = await db.execute("SELECT id, name, created_at FROM paper_templates ORDER BY created_at DESC");
+			rows = result.rows;
+		}
+		res.json(rows.map(r => ({ id: r.id, name: r.name, createdAt: r.created_at })));
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
@@ -810,9 +821,10 @@ router.post("/api/admin/paper-templates", requireAdmin, upload.single("template"
 		if (!req.file.originalname.endsWith(".docx")) return res.status(400).json({ error: "Only .docx templates are supported" });
 		const name = req.body.name || req.file.originalname.replace(/\.docx$/i, "");
 		const base64 = req.file.buffer.toString("base64");
+		const instId = sessionInstituteId(req) || null;
 		const result = await db.execute({
-			sql: "INSERT INTO paper_templates (name, docx_base64, created_at) VALUES (?, ?, ?)",
-			args: [name, base64, Date.now()]
+			sql: "INSERT INTO paper_templates (name, docx_base64, created_at, institute_id) VALUES (?, ?, ?, ?)",
+			args: [name, base64, Date.now(), instId]
 		});
 		res.json({ success: true, id: Number(result.lastInsertRowid), name });
 	} catch (e) {
@@ -824,7 +836,12 @@ router.post("/api/admin/paper-templates", requireAdmin, upload.single("template"
 
 router.delete("/api/admin/paper-templates/:id", requireAdmin, async (req, res) => {
 	try {
-		await db.execute({ sql: "DELETE FROM paper_templates WHERE id = ?", args: [Number(req.params.id)] });
+		const instId = sessionInstituteId(req);
+		if (instId) {
+			await db.execute({ sql: "DELETE FROM paper_templates WHERE id = ? AND institute_id = ?", args: [Number(req.params.id), instId] });
+		} else {
+			await db.execute({ sql: "DELETE FROM paper_templates WHERE id = ?", args: [Number(req.params.id)] });
+		}
 		res.json({ success: true });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
@@ -836,7 +853,12 @@ router.patch("/api/admin/paper-templates/:id", requireAdmin, async (req, res) =>
 	try {
 		const { name } = req.body || {};
 		if (!name) return res.status(400).json({ error: "name required" });
-		await db.execute({ sql: "UPDATE paper_templates SET name = ? WHERE id = ?", args: [name, Number(req.params.id)] });
+		const instId = sessionInstituteId(req);
+		if (instId) {
+			await db.execute({ sql: "UPDATE paper_templates SET name = ? WHERE id = ? AND institute_id = ?", args: [name, Number(req.params.id), instId] });
+		} else {
+			await db.execute({ sql: "UPDATE paper_templates SET name = ? WHERE id = ?", args: [name, Number(req.params.id)] });
+		}
 		res.json({ success: true });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
