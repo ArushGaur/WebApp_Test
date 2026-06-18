@@ -1,4 +1,4 @@
-        /* ══════════════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════════
            CHAPTERS
         ══════════════════════════════════════════════════════════════════ */
         async function loadChaptersAdmin() {
@@ -1397,6 +1397,7 @@
             <div id="iqe-questions-container">
                 ${subsToRender.map(([sub, si]) => {
                 const isNoneCorrect = !!sub.isNoneCorrect;
+                const isNumerical = (sub.question_type || "").toUpperCase() === "INTEGER";
                 const ci = isNoneCorrect ? [] : (sub.correctIndexes || [sub.correctIndex || 0]);
                 const questionImages = getQuestionImages(sub);
                 const imgHtml = questionImages.length ? `<div style="margin-bottom:14px;display:flex;flex-direction:column;gap:10px">${questionImages.map((imgData, imgIdx) => {
@@ -1407,16 +1408,21 @@
                 const isMulti = sub.isMultiCorrect || ci.length > 1;
                 return `<div style="background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-                            <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px">Question ${si + 1}${questionImages.length ? ' <span style="color:var(--accent)">📷 Has Image</span>' : ""}${isMulti ? ' <span style="color:var(--accent-4)">✦ Multi-correct</span>' : ""}${isNoneCorrect ? ' <span style="color:#f59e0b">⊘ None correct</span>' : ""}</div>
+                            <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px">Question ${si + 1}${questionImages.length ? ' <span style="color:var(--accent)">📷 Has Image</span>' : ""}${isMulti && !isNumerical ? ' <span style="color:var(--accent-4)">✦ Multi-correct</span>' : ""}${isNoneCorrect ? ' <span style="color:#f59e0b">⊘ None correct</span>' : ""}${isNumerical ? ' <span style="color:#a78bfa">🔢 Numerical</span>' : ""}</div>
                         </div>
                         ${imgHtml}
                         <div class="q-render-preview" id="iqe_preview_${si}"></div>
                         <div id="iqe_tables_intro_${si}"></div>
-                        <div style="margin-bottom:14px">
+                        ${isNumerical
+                            ? `<div style="padding:8px 12px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;font-size:0.82rem">
+                                <span style="font-weight:700;color:#a78bfa">Numerical Answer: </span>
+                                <span style="color:var(--text);font-weight:600;font-size:1rem">${String(sub.numericalAnswer ?? sub.correct_answer ?? 'N/A')}</span>
+                               </div>`
+                            : `<div style="margin-bottom:14px">
                             <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px">Options</div>
                             ${LETTERS.map((l, oi) => `<div class="opt-render-row ${ci.includes(oi) ? "is-correct" : ""}"><span class="opt-letter">${l}</span><div id="iqe_opt_render_${si}_${oi}"></div>${ci.includes(oi) ? '<span style="margin-left:auto;font-size:0.7rem;color:var(--success);font-weight:700">✓ Correct</span>' : ""}</div>`).join("")}
                             ${isNoneCorrect ? '<div style="margin-top:10px;padding:8px 12px;background:rgba(245,158,11,0.1);border:1px dashed rgba(245,158,11,0.45);border-radius:6px;font-size:0.76rem;color:#f59e0b;font-weight:600">⊘ None of the options is correct — every student gets full marks for this question.</div>' : ""}
-                        </div>
+                        </div>`}
                         <div id="iqe_tables_options_${si}"></div>
                         <div id="mqSolBlock_${si}"></div>
                     </div>`;
@@ -1426,6 +1432,7 @@
             // Render math after DOM is fully inserted
             setTimeout(() => {
                 subsToRender.forEach(([sub, si]) => {
+                    const isNumerical = (sub.question_type || "").toUpperCase() === "INTEGER";
                     const prev = document.getElementById(`iqe_preview_${si}`);
                     // Render any tables/matrices attached to this question.
                     const _subTables = _normalizeTablesField(sub.tables);
@@ -1442,27 +1449,29 @@
                     // by KaTeX. Without this, the "not equal" sign (and similar) showed
                     // up as literal text in the Manage section.
                     if (prev) { prev.textContent = clientRepairLatex(sub.question || ""); renderMath(prev); }
-                    const optionImages = mqGetOptionImages(sub);
-                    const optionTables = mqGetOptionTables(sub);
-                    LETTERS.forEach((l, oi) => {
-                        const optRender = document.getElementById(`iqe_opt_render_${si}_${oi}`);
-                        if (optRender) {
-                            const optImg = optionImages[oi];
-                            const optTbl = optionTables[oi];
-                            if (optTbl) {
-                                // Option is itself a table (e.g. NEET match-the-following rows).
-                                optRender.innerHTML = renderSingleTableHtml(optTbl);
-                                renderMath(optRender);
-                            } else if (optImg) {
-                                const optMime = optImg.startsWith('http') ? null : (optImg.startsWith('/9j/') ? 'image/jpeg' : optImg.startsWith('iVBOR') ? 'image/png' : optImg.startsWith('R0lGOD') ? 'image/gif' : 'image/jpeg');
-                                const imgSrc = optImg.startsWith('http') ? optImg : `data:${optMime};base64,${optImg}`;
-                                optRender.innerHTML = `<img src="${imgSrc}" alt="Option ${l}" style="max-height:90px;max-width:100%;border-radius:4px;border:1px solid var(--border);object-fit:contain;display:block;margin-top:2px">`;
-                            } else {
-                                optRender.textContent = clientRepairLatex((sub.options && sub.options[oi]) || "");
-                                renderMath(optRender);
+                    if (!isNumerical) {
+                        const optionImages = mqGetOptionImages(sub);
+                        const optionTables = mqGetOptionTables(sub);
+                        LETTERS.forEach((l, oi) => {
+                            const optRender = document.getElementById(`iqe_opt_render_${si}_${oi}`);
+                            if (optRender) {
+                                const optImg = optionImages[oi];
+                                const optTbl = optionTables[oi];
+                                if (optTbl) {
+                                    // Option is itself a table (e.g. NEET match-the-following rows).
+                                    optRender.innerHTML = renderSingleTableHtml(optTbl);
+                                    renderMath(optRender);
+                                } else if (optImg) {
+                                    const optMime = optImg.startsWith('http') ? null : (optImg.startsWith('/9j/') ? 'image/jpeg' : optImg.startsWith('iVBOR') ? 'image/png' : optImg.startsWith('R0lGOD') ? 'image/gif' : 'image/jpeg');
+                                    const imgSrc = optImg.startsWith('http') ? optImg : `data:${optMime};base64,${optImg}`;
+                                    optRender.innerHTML = `<img src="${imgSrc}" alt="Option ${l}" style="max-height:90px;max-width:100%;border-radius:4px;border:1px solid var(--border);object-fit:contain;display:block;margin-top:2px">`;
+                                } else {
+                                    optRender.textContent = clientRepairLatex((sub.options && sub.options[oi]) || "");
+                                    renderMath(optRender);
+                                }
                             }
-                        }
-                    });
+                        });
+                    }
                     // Inject solution for this sub-question
                     const solBlock = document.getElementById(`mqSolBlock_${si}`);
                     if (solBlock && sub.solutions && sub.solutions.length > 0) {
@@ -1578,23 +1587,29 @@
                 const questionImages = getQuestionImages(sub);
                 const isMulti = sub.isMultiCorrect || ci.length > 1;
                 const isNoneCorrect = !!sub.isNoneCorrect;
+                const isNumerical = (sub.question_type || "").toUpperCase() === "INTEGER";
                 return `<div data-orig-idx="${si}" style="background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-                            <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px">Question ${si + 1}${questionImages.length ? ' <span style="color:var(--accent)">📷 Has Image</span>' : ""}</div>
-                            <label class="multi-toggle-label">
+                            <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px">Question ${si + 1}${questionImages.length ? ' <span style="color:var(--accent)">📷 Has Image</span>' : ""}${isNumerical ? ' <span style="color:#a78bfa">🔢 Numerical</span>' : ""}</div>
+                            ${isNumerical ? '' : `<label class="multi-toggle-label">
                                 <input type="checkbox" id="iqe_multi_${si}" ${isMulti ? "checked" : ""} onchange="toggleMultiCorrect(${si})">
                                 <span class="multi-toggle-text">${isMulti ? "✦ Multi-correct" : "○ Single-correct"}</span>
-                            </label>
+                            </label>`}
                         </div>
-                        <div style="margin-bottom:14px">
+                        ${isNumerical ? '' : `<div style="margin-bottom:14px">
                             <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px">Question Image(s)</div>
                             <div id="mqQImgZone_${si}">${mqBuildQImgEditZone(si)}</div>
-                        </div>
+                        </div>`}
                         <div class="q-render-preview" id="iqe_preview_${si}"></div>
                         <div class="field"><label>Edit Raw Text ($math$ for equations)</label>
                             <textarea id="iqe_qt_${si}" rows="2" oninput="updatePreview(${si})" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:0.85rem;resize:vertical;outline:none">${sub.question}</textarea>
                         </div>
-                        <div style="margin-bottom:14px">
+                        ${isNumerical
+                            ? `<div style="padding:8px 12px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;font-size:0.82rem">
+                                <span style="font-weight:700;color:#a78bfa">Numerical Answer: </span>
+                                <span style="color:var(--text);font-weight:600;font-size:1rem">${String(sub.numericalAnswer ?? sub.correct_answer ?? 'N/A')}</span>
+                               </div>`
+                            : `<div style="margin-bottom:14px">
                             <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px">Options (rendered)</div>
                             ${LETTERS.map((l, oi) => `<div class="opt-render-row ${ci.includes(oi) ? "is-correct" : ""}"><span class="opt-letter">${l}</span><div id="iqe_opt_render_${si}_${oi}"></div></div>`).join("")}
                         </div>
@@ -1607,7 +1622,7 @@
                                 <button type="button" class="correct-btn correct-btn-none ${isNoneCorrect ? "selected" : ""}" id="iqe_none_btn_${si}" data-si="${si}" title="No option is correct — students get full marks" onclick="toggleNoneCorrect(${si})" style="${isNoneCorrect ? "background:rgba(245,158,11,0.18);border-color:#f59e0b;color:#f59e0b" : ""}">⊘ None</button>
                             </div>
                             <div id="iqe_none_note_${si}" style="display:${isNoneCorrect ? 'block' : 'none'};margin-top:6px;font-size:0.72rem;color:#f59e0b;font-weight:600">⊘ "None correct" — every student gets full marks for this question.</div>
-                        </div>
+                        </div>`}
                         <div id="mqSolBlock_${si}"></div>
                     </div>`;
             }).join("")}
@@ -1616,10 +1631,12 @@
             // Render math after DOM is fully inserted
             setTimeout(() => {
                 subsToRender.forEach(([sub, si]) => {
+                    const isNumerical = (sub.question_type || "").toUpperCase() === "INTEGER";
                     const prev = document.getElementById(`iqe_preview_${si}`);
                     // FIX: repair LaTeX (wrap bare \neq, neq, !=, \le, \ge … in $...$)
                     // before rendering so the "not equal" sign renders in edit mode too.
                     if (prev) { prev.textContent = clientRepairLatex(sub.question || ""); renderMath(prev); }
+                    if (!isNumerical) {
                     const _editOptTables = mqGetOptionTables(sub);
                     LETTERS.forEach((l, oi) => {
                         const optRender = document.getElementById(`iqe_opt_render_${si}_${oi}`);
@@ -1647,6 +1664,7 @@
                             }
                         }
                     });
+                    } // !isNumerical
                     // Inject solution for this sub-question
                     const solBlock = document.getElementById(`mqSolBlock_${si}`);
                     if (solBlock && sub.solutions && sub.solutions.length > 0) {
