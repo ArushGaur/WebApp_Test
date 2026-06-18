@@ -1,4 +1,5 @@
-/* ══════════════════════════════════════════════════════════════════
+console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
+        /* ══════════════════════════════════════════════════════════════════
            SESSION / AUTH
            NEW FLOW:
              1. Page loads → check institute session.
