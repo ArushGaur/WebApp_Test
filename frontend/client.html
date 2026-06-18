@@ -1311,7 +1311,7 @@
             <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
                 <div>
                     <h1>Attendance</h1>
-                    <p>Mark and manage student attendance by class and batch</p>
+                    <p>Mark and manage student attendance</p>
                 </div>
                 <button onclick="openManageClassesModal()"
                     style="padding:9px 18px;background:var(--bg-card);border:1.5px solid var(--border);border-radius:10px;color:var(--text);cursor:pointer;font-size:0.84rem;font-weight:600;font-family:inherit;display:flex;align-items:center;gap:8px;flex-shrink:0"
@@ -1321,76 +1321,65 @@
                 </button>
             </div>
 
+            <!-- Search + filter bar (like students section) -->
+            <div class="stu-toolbar" style="margin-bottom:12px">
+                <div class="stu-search-box">
+                    <span class="stu-search-icon">🔍</span>
+                    <input type="text" id="att-search" placeholder="Search student name…" oninput="attFilterStudents(this.value)">
+                </div>
+                <div class="stu-filters">
+                    <select id="att-filter" onchange="attFilterStudents(document.getElementById('att-search').value)">
+                        <option value="">All Students</option>
+                        <option value="present">Present</option>
+                        <option value="absent">Absent</option>
+                        <option value="late">Late</option>
+                        <option value="leave">Leave</option>
+                        <option value="unmarked">Not Marked</option>
+                    </select>
+                    <button class="btn btn-ghost" onclick="attLoadAndRenderStudents()" style="padding:8px 14px;font-size:0.83rem">↺ Refresh</button>
+                </div>
+            </div>
+
+            <!-- Stats + actions bar -->
+            <div class="stu-stats-bar" style="margin-bottom:16px">
+                <span class="att-stat"><strong id="att-stat-total">0</strong> Students</span>
+                <span class="att-stat"><strong id="att-stat-selected">0</strong> Selected</span>
+                <span class="att-stat"><strong id="att-stat-present">0</strong> Present Today</span>
+                <div style="display:flex;gap:8px;margin-left:auto;align-items:center;flex-wrap:wrap">
+                    <div class="att-marking-date">
+                        <label for="att-date" style="font-size:0.78rem;font-weight:600;color:var(--text-dim)">Date</label>
+                        <input type="date" id="att-date" onchange="attLoadAndRenderStudents()">
+                    </div>
+                    <select id="att-mark-status" style="padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.84rem;outline:none;font-family:'Outfit',sans-serif">
+                        <option value="present">Present</option>
+                        <option value="absent">Absent</option>
+                        <option value="late">Late</option>
+                        <option value="leave">Leave</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="attMarkAttendance()">✅ Mark Attendance</button>
+                </div>
+            </div>
+
+            <!-- Loading -->
             <div id="att-loading" style="display:none;text-align:center;padding:40px;color:var(--text-muted)">Loading...</div>
 
-            <!-- Classes View -->
-            <div id="att-classes-view">
-                <div class="att-section-title">Select a Class</div>
-                <div id="att-classes-grid" class="att-cards-grid"></div>
-                <div id="att-classes-empty" style="display:none;text-align:center;padding:60px 20px;color:var(--text-muted)">
-                    <div style="font-size:3rem;margin-bottom:12px">📚</div>
-                    <h3 style="margin:0 0 6px">No Classes Yet</h3>
-                    <p style="margin:0;font-size:0.88rem">Use ⚙️ Manage Classes to create your first class.</p>
-                </div>
+            <!-- Table -->
+            <div class="table-wrap">
+                <table id="att-student-table">
+                    <thead>
+                        <tr>
+                            <th style="width:40px"><input type="checkbox" id="att-select-all" onchange="attToggleSelectAll()"></th>
+                            <th>Name</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="att-student-tbody"></tbody>
+                </table>
             </div>
-
-            <!-- Batches View -->
-            <div id="att-batches-view" style="display:none">
-                <button class="att-back-btn" onclick="attShowClasses()">← Back to Classes</button>
-                <div class="att-section-title" id="att-batches-title">Batches</div>
-                <div id="att-batches-grid" class="att-cards-grid"></div>
-                <div id="att-batches-empty" style="display:none;text-align:center;padding:60px 20px;color:var(--text-muted)">
-                    <div style="font-size:3rem;margin-bottom:12px">📁</div>
-                    <h3 style="margin:0 0 6px">No Batches</h3>
-                    <p style="margin:0;font-size:0.88rem">Use ⚙️ Manage Classes to add batches.</p>
-                </div>
-            </div>
-
-            <!-- Marking View -->
-            <div id="att-marking-view" style="display:none">
-                <button class="att-back-btn" onclick="attGoBack()">← Back</button>
-                <div class="att-section-title" id="att-marking-title">Students</div>
-
-                <div class="att-marking-toolbar">
-                    <div class="att-marking-date">
-                        <label>Date</label>
-                        <input type="date" id="att-date">
-                    </div>
-                    <div class="att-marking-actions">
-                        <span id="att-selected-count" style="font-size:0.84rem;color:var(--text-dim)">0 selected</span>
-                        <select id="att-mark-status">
-                            <option value="present">Present</option>
-                            <option value="absent">Absent</option>
-                            <option value="late">Late</option>
-                            <option value="leave">Leave</option>
-                        </select>
-                        <button class="btn btn-primary" onclick="attMarkAttendance()">✅ Mark Attendance</button>
-                    </div>
-                </div>
-
-                <div class="att-stu-stats-bar">
-                    <span class="att-stat"><strong id="att-stat-total">0</strong> Students</span>
-                    <span class="att-stat"><strong id="att-stat-selected">0</strong> Selected</span>
-                    <span class="att-stat"><strong id="att-stat-present">0</strong> Present Today</span>
-                </div>
-
-                <div class="table-wrap">
-                    <table id="att-student-table">
-                        <thead>
-                            <tr>
-                                <th style="width:40px"><input type="checkbox" id="att-select-all" onchange="attToggleSelectAll()"></th>
-                                <th>Name</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="att-student-tbody"></tbody>
-                    </table>
-                </div>
-                <div id="att-empty" style="display:none;text-align:center;padding:60px 20px;color:var(--text-muted)">
-                    <div style="font-size:3rem;margin-bottom:12px">📋</div>
-                    <h3 style="margin:0 0 6px">No Students</h3>
-                    <p style="margin:0;font-size:0.88rem">No students found for this selection.</p>
-                </div>
+            <div id="att-empty" style="display:none;text-align:center;padding:60px 20px;color:var(--text-muted)">
+                <div style="font-size:3rem;margin-bottom:12px">📋</div>
+                <h3 style="margin:0 0 6px">No Students Found</h3>
+                <p style="margin:0;font-size:0.88rem">No students match your search or filter.</p>
             </div>
 
             <div id="att-history-section" style="margin-top:24px;display:none">
