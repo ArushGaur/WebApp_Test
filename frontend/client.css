@@ -1,5 +1,4 @@
-
-        /* THEME TOKENS */
+/* THEME TOKENS */
         :root {
             --bg: #0d1420;
             --bg-card: #141f2f;
@@ -4787,4 +4786,80 @@
         [onclick^="deleteTemplate"] {
             display: none !important;
         }
-    
+
+        /* ══════════════════════════════════════════════════════════════════
+           ATTENDANCE
+        ══════════════════════════════════════════════════════════════════ */
+        .att-toolbar {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 18px 20px;
+            margin-bottom: 18px;
+        }
+        .att-filter-group {
+            display: flex;
+            gap: 14px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+        .att-field {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            min-width: 160px;
+        }
+        .att-field label {
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-dim);
+        }
+        .att-field select,
+        .att-field input {
+            padding: 9px 12px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text);
+            font-size: 0.84rem;
+            outline: none;
+            font-family: 'Outfit', sans-serif;
+        }
+        .att-field select:focus,
+        .att-field input:focus {
+            border-color: var(--accent);
+        }
+        #att-student-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+        }
+        #att-student-table th {
+            text-align: left;
+            padding: 10px 12px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            border-bottom: 2px solid var(--border);
+        }
+        #att-student-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        #att-student-table tr:hover {
+            background: var(--bg-hover);
+        }
+        #att-student-table input[type="checkbox"] {
+            width: 17px;
+            height: 17px;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+        .mc-class-item {
+            padding: 4px 0;
+        }
+        .mc-class-item + .mc-class-item {
+            border-top: 1px solid var(--border);
+        }
