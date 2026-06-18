@@ -184,13 +184,15 @@ function normalizePaperQuestions(selectedQuestions) {
 	return (Array.isArray(selectedQuestions) ? selectedQuestions : []).map((item, index) => {
 		const source = item && typeof item === "object" ? item : {};
 		const questionSource = source.q && typeof source.q === "object" ? source.q : source;
+		const isInteger = String(questionSource.questionType || questionSource.question_type || "").toUpperCase() === "INTEGER"
+			|| (questionSource.numericalAnswer !== undefined && questionSource.numericalAnswer !== null);
 		const options = Array.isArray(questionSource.options)
 			? questionSource.options
-			: [questionSource.option_a, questionSource.option_b, questionSource.option_c, questionSource.option_d];
+			: (isInteger ? [] : [questionSource.option_a, questionSource.option_b, questionSource.option_c, questionSource.option_d]);
 		const normalizedOptions = options.map((opt) => decodeHtmlEntities(String(opt ?? "")));
 		const correctIndexes = Array.isArray(questionSource.correctIndexes) && questionSource.correctIndexes.length
 			? questionSource.correctIndexes
-			: [typeof questionSource.correctIndex === "number" ? questionSource.correctIndex : 0];
+			: (isInteger ? [] : [typeof questionSource.correctIndex === "number" ? questionSource.correctIndex : 0]);
 
 		return {
 			chapter: String(source.chapter ?? questionSource.chapter ?? "").trim(),
@@ -595,7 +597,15 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 	const tabPos = Math.round(optAvailDxa / 2);
 	const optionParas = [];
 
-	if (hasOptionTables) {
+	// For integer/numerical questions: show answer field instead of blank A/B/C/D options
+	if (isInteger) {
+		optionParas.push(new Paragraph({
+			spacing: { before: 120, after: 120 },
+			children: [
+				new TextRun({ text: 'Answer: ____________________', font: "Arial", size: 22, italics: true }),
+			],
+		}));
+	} else if (hasOptionTables) {
 		// ── Two-per-row layout for option tables ──────────────────────────────
 		// Each pair (A+B, then C+D) goes into a borderless 2-column outer table.
 		// halfDxa = width of each column (tight gap of 120 DXA between them).
