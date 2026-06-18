@@ -3366,6 +3366,13 @@ async function _agGeneratePaper() {
         const shuffled = [...pool].sort(() => Math.random() - 0.5);
         const picked = shuffled.slice(0, actualCount);
 
+        // Sort: MCQs first, numerical questions at the end
+        picked.sort((a, b) => {
+            const aIsNum = a.q && (a.q.question_type === 'INTEGER' || a.q.questionType === 'INTEGER' || (a.q.numericalAnswer !== undefined && a.q.numericalAnswer !== null));
+            const bIsNum = b.q && (b.q.question_type === 'INTEGER' || b.q.questionType === 'INTEGER' || (b.q.numericalAnswer !== undefined && b.q.numericalAnswer !== null));
+            return (aIsNum ? 1 : 0) - (bIsNum ? 1 : 0);
+        });
+
         // Build question objects
         let qNum = 1;
         const questions = picked.map(({ q, qi, row, chapter, topic, lecture }) => ({
