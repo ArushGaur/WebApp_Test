@@ -603,6 +603,237 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
         /* ══════════════════════════════════════════════════════════════════
            NAVIGATION
         ══════════════════════════════════════════════════════════════════ */
+        /* ══════════════════════════════════════════════════════════════════
+           STUDENTS — Class Cards → Section Cards → Student List drill-down
+        ══════════════════════════════════════════════════════════════════ */
+        let _regStudents = [];
+        let _regView = "classes"; // "classes" | "sections" | "list"
+        let _regCurrentClass = null;
+        let _regCurrentSection = null;
+
+        async function loadRegisteredStudents() {
+            try {
+                const r = await fetch(`${API_BASE}/api/admin/registered-students`, { credentials: "include", cache: "no-store" });
+                if (!r.ok) throw new Error(`Failed (${r.status})`);
+                _regStudents = await r.json();
+            } catch (e) {
+                console.warn("[students] loadRegisteredStudents error:", e.message);
+                _regStudents = [];
+            }
+            _regUpdateStats();
+            _regShowClassCards();
+        }
+
+        function _regUpdateStats() {
+            const total    = _regStudents.length;
+            const complete = _regStudents.filter(s => s.name && s.name.trim()).length;
+            const pending  = total - complete;
+            const showEl   = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+            showEl("reg-stat-total",    total);
+            showEl("reg-stat-complete", complete);
+            showEl("reg-stat-pending",  pending);
+            showEl("reg-stat-showing",  total);
+        }
+
+        function _regGroupByClass() {
+            const map = {};
+            _regStudents.forEach(s => {
+                const cls = (s.class_name || s.class || "Unspecified").trim() || "Unspecified";
+                if (!map[cls]) map[cls] = [];
+                map[cls].push(s);
+            });
+            return map;
+        }
+
+        function _regGroupBySection(students) {
+            const map = {};
+            students.forEach(s => {
+                const sec = (s.section || s.batch_name || "General").trim() || "General";
+                if (!map[sec]) map[sec] = [];
+                map[sec].push(s);
+            });
+            return map;
+        }
+
+        function _regShowClassCards() {
+            _regView = "classes";
+            _regCurrentClass = null;
+            _regCurrentSection = null;
+
+            const tableWrap   = document.getElementById("regStuTableWrap");
+            const groupedWrap = document.getElementById("regStuGroupedWrap");
+            const emptyEl     = document.getElementById("regStuEmpty");
+            const searchEl    = document.getElementById("regStuSearch");
+            const filterEl    = document.getElementById("regStuFilter");
+            if (tableWrap)   tableWrap.style.display   = "none";
+            if (emptyEl)     emptyEl.style.display     = "none";
+            if (searchEl)    searchEl.style.display    = "none";
+            if (filterEl && filterEl.parentElement) filterEl.parentElement.style.display = "none";
+
+            if (!groupedWrap) return;
+            groupedWrap.style.display = "block";
+
+            const byClass = _regGroupByClass();
+            const classes = Object.keys(byClass).sort();
+
+            if (!classes.length) {
+                groupedWrap.innerHTML = `<div style="text-align:center;padding:60px 20px;color:var(--text-muted)">
+                    <div style="font-size:3rem;margin-bottom:12px">👥</div>
+                    <h3 style="margin:0 0 6px">No Students Yet</h3>
+                    <p style="margin:0;font-size:0.88rem">Add roll numbers above to get started.</p>
+                </div>`;
+                return;
+            }
+
+            const colors = ["#6366f1","#0ea5e9","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6"];
+            groupedWrap.innerHTML = `
+                <div style="font-size:0.82rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:14px">Class Cards</div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px">
+                    ${classes.map((cls, i) => {
+                        const students = byClass[cls];
+                        const color = colors[i % colors.length];
+                        return `<div onclick="_regShowSectionCards('${cls.replace(/'/g,"\'")}' )"
+                            style="background:var(--bg-card);border:1.5px solid var(--border);border-top:3px solid ${color};border-radius:14px;padding:24px 18px;cursor:pointer;text-align:center;transition:all 0.18s;box-shadow:0 2px 8px rgba(0,0,0,0.06)"
+                            onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,0.12)'"
+                            onmouseout="this.style.transform='';this.style.boxShadow='0 2px 8px rgba(0,0,0,0.06)'">
+                            <div style="font-size:2.2rem;margin-bottom:10px">🎓</div>
+                            <div style="font-weight:800;font-size:1rem;color:var(--text);margin-bottom:4px">Class ${cls}</div>
+                            <div style="font-size:0.8rem;color:var(--text-muted)">${students.length} Student${students.length !== 1 ? "s" : ""}</div>
+                        </div>`;
+                    }).join("")}
+                </div>`;
+        }
+
+        function _regShowSectionCards(className) {
+            _regView = "sections";
+            _regCurrentClass = className;
+
+            const groupedWrap = document.getElementById("regStuGroupedWrap");
+            if (!groupedWrap) return;
+
+            const byClass    = _regGroupByClass();
+            const students   = byClass[className] || [];
+            const bySection  = _regGroupBySection(students);
+            const sections   = Object.keys(bySection).sort();
+
+            const colors = ["#6366f1","#0ea5e9","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6"];
+
+            groupedWrap.innerHTML = `
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+                    <button onclick="_regShowClassCards()"
+                        style="padding:7px 14px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);cursor:pointer;font-size:0.83rem;font-weight:600;font-family:inherit;transition:all 0.15s"
+                        onmouseover="this.style.borderColor='var(--accent)'"
+                        onmouseout="this.style.borderColor='var(--border)'">← Back To Classes</button>
+                    <span style="font-size:0.84rem;color:var(--text-muted);font-weight:600">Class ${className} · Section Cards</span>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px">
+                    ${sections.map((sec, i) => {
+                        const stuList = bySection[sec];
+                        const color   = colors[i % colors.length];
+                        return `<div onclick="_regShowStudentList('${className.replace(/'/g,"\'")}','${sec.replace(/'/g,"\'")}' )"
+                            style="background:var(--bg-card);border:1.5px solid var(--border);border-top:3px solid ${color};border-radius:14px;padding:24px 18px;cursor:pointer;text-align:center;transition:all 0.18s;box-shadow:0 2px 8px rgba(0,0,0,0.06)"
+                            onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,0.12)'"
+                            onmouseout="this.style.transform='';this.style.boxShadow='0 2px 8px rgba(0,0,0,0.06)'">
+                            <div style="font-size:2.2rem;margin-bottom:10px">📁</div>
+                            <div style="font-weight:800;font-size:1rem;color:var(--text);margin-bottom:4px">Section ${sec}</div>
+                            <div style="font-size:0.8rem;color:var(--text-muted)">${stuList.length} Student${stuList.length !== 1 ? "s" : ""}</div>
+                        </div>`;
+                    }).join("")}
+                </div>`;
+        }
+
+        function _regShowStudentList(className, section) {
+            _regView = "list";
+            _regCurrentClass   = className;
+            _regCurrentSection = section;
+
+            const groupedWrap = document.getElementById("regStuGroupedWrap");
+            const tableWrap   = document.getElementById("regStuTableWrap");
+            const emptyEl     = document.getElementById("regStuEmpty");
+            if (!groupedWrap) return;
+
+            const byClass   = _regGroupByClass();
+            const students  = byClass[className] || [];
+            const bySection = _regGroupBySection(students);
+            const list      = bySection[section] || [];
+
+            // Breadcrumb header
+            groupedWrap.innerHTML = `
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+                    <button onclick="_regShowClassCards()"
+                        style="padding:7px 14px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);cursor:pointer;font-size:0.83rem;font-weight:600;font-family:inherit"
+                        onmouseover="this.style.borderColor='var(--accent)'"
+                        onmouseout="this.style.borderColor='var(--border)'">← Classes</button>
+                    <button onclick="_regShowSectionCards('${className.replace(/'/g,"\'")}')"
+                        style="padding:7px 14px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);cursor:pointer;font-size:0.83rem;font-weight:600;font-family:inherit"
+                        onmouseover="this.style.borderColor='var(--accent)'"
+                        onmouseout="this.style.borderColor='var(--border)'">← Class ${className}</button>
+                    <span style="font-size:0.84rem;color:var(--text-muted);font-weight:600">Section ${section} · ${list.length} Students</span>
+                </div>`;
+
+            if (!list.length) {
+                groupedWrap.innerHTML += `<div style="text-align:center;padding:40px;color:var(--text-muted)">No students in this section.</div>`;
+                return;
+            }
+
+            // Render table inside groupedWrap
+            groupedWrap.innerHTML += `
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr>
+                            <th>Roll Number</th><th>Name</th><th>Class</th><th>Phone</th><th>Status</th><th>Action</th>
+                        </tr></thead>
+                        <tbody>
+                            ${list.map(s => {
+                                const hasProfile = s.name && s.name.trim();
+                                const badge = hasProfile
+                                    ? `<span class="badge-pill ok">Complete</span>`
+                                    : `<span class="badge-pill wrong">Pending</span>`;
+                                return `<tr>
+                                    <td style="font-family:'JetBrains Mono',monospace;font-size:0.82rem">${s.roll_number || "—"}</td>
+                                    <td>${s.name || '<span style="color:var(--text-muted);font-size:0.8rem">Not registered</span>'}</td>
+                                    <td>${s.class_name || s.class || "—"}</td>
+                                    <td>${s.phone || s.mobile || "—"}</td>
+                                    <td>${badge}</td>
+                                    <td><button onclick="openDelStuPopup('${(s.roll_number||"").replace(/'/g,"\'")}','${(s.name||"").replace(/'/g,"\'")}' )"
+                                        style="padding:5px 10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:7px;color:#ef4444;cursor:pointer;font-size:0.75rem;font-family:inherit">🗑</button></td>
+                                </tr>`;
+                            }).join("")}
+                        </tbody>
+                    </table>
+                </div>`;
+        }
+
+        function filterRegisteredStudents(query) {
+            // When in class/section view just reload; in list view filter the visible table
+            if (_regView !== "list") return;
+            const q = (query || "").toLowerCase().trim();
+            const filterVal = document.getElementById("regStuFilter")?.value || "";
+            const byClass   = _regGroupByClass();
+            const students  = byClass[_regCurrentClass] || [];
+            const bySection = _regGroupBySection(students);
+            let list        = bySection[_regCurrentSection] || [];
+            if (q) list = list.filter(s => (s.name || "").toLowerCase().includes(q) || (s.roll_number || "").toLowerCase().includes(q));
+            if (filterVal === "complete")   list = list.filter(s => s.name && s.name.trim());
+            if (filterVal === "incomplete") list = list.filter(s => !s.name || !s.name.trim());
+            // Re-render just the table body
+            const tbody = document.querySelector("#regStuGroupedWrap table tbody");
+            if (!tbody) return;
+            tbody.innerHTML = list.map(s => {
+                const hasProfile = s.name && s.name.trim();
+                const badge = hasProfile ? `<span class="badge-pill ok">Complete</span>` : `<span class="badge-pill wrong">Pending</span>`;
+                return `<tr>
+                    <td style="font-family:'JetBrains Mono',monospace;font-size:0.82rem">${s.roll_number || "—"}</td>
+                    <td>${s.name || '<span style="color:var(--text-muted);font-size:0.8rem">Not registered</span>'}</td>
+                    <td>${s.class_name || s.class || "—"}</td>
+                    <td>${s.phone || s.mobile || "—"}</td>
+                    <td>${badge}</td>
+                    <td><button onclick="openDelStuPopup('${(s.roll_number||"").replace(/'/g,"\'")}','${(s.name||"").replace(/'/g,"\'")}' )"
+                        style="padding:5px 10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:7px;color:#ef4444;cursor:pointer;font-size:0.75rem;font-family:inherit">🗑</button></td>
+                </tr>`;
+            }).join("");
+        }
+
         // Override drawerNav for attendance since shared showSection is intercepted
         const _origDrawerNav = typeof drawerNav === "function" ? drawerNav : null;
         function drawerNav(name) {
@@ -649,6 +880,11 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             }
             // drawerNav('attendance') also lands here — handled above
             if (name === "students") {
+                // Hide flat table, show grouped card view
+                const tw = document.getElementById("regStuTableWrap");
+                const gw = document.getElementById("regStuGroupedWrap");
+                if (tw) tw.style.display = "none";
+                if (gw) gw.style.display = "block";
                 loadRegisteredStudents();
                 // Refresh request badge count
                 fetch(`${API_BASE}/api/admin/student-requests`, { credentials: 'include', cache: 'no-store' })
