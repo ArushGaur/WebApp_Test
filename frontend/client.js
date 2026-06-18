@@ -604,17 +604,21 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
            NAVIGATION
         ══════════════════════════════════════════════════════════════════ */
         function navAttendance() {
+            console.log("[nav] navAttendance() called");
             showSection("attendance");
         }
 
         function showSection(name, push = true) {
+            console.log("[nav] showSection called with name:", name);
             document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
             document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
             const sec = document.getElementById(`section-${name}`);
             const nav = document.getElementById(`nav-${name}`);
+            console.log("[nav] section element found:", !!sec, "| nav element found:", !!nav);
             if (sec) sec.classList.add("active");
             if (nav) nav.classList.add("active");
             if (name === "attendance") {
+                console.log("[nav] attendance branch hit — calling attLoadAndRenderStudents()");
                 const dateInput = document.getElementById("att-date");
                 if (dateInput && !dateInput.value) dateInput.value = getTodayStr();
                 attLoadAndRenderStudents();
