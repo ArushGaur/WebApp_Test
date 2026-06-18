@@ -8,7 +8,7 @@ const PDFDocument = require("pdfkit");
 const JSZip = require("jszip");
 const { db } = require("../config/db");
 const helpers = require("../utils/helpers");
-const { requireAdmin } = require("../middleware/auth");
+const { requireAdmin, sessionInstituteId } = require("../middleware/auth");
 const { loadQuestions, refreshCache, rebuildYearIndex, findQuestion } = require("../utils/questions");
 
 const {
@@ -1801,10 +1801,19 @@ router.post("/api/admin/generate-paper", requireAdmin, async (req, res) => {
 			buildPaperDoc(normalizedQuestions, "solution", `${title} – Solutions`, headerMeta),
 		]);
 
-		// Fetch template if requested
+		// Fetch template if requested (scoped to institute)
 		let tplBase64 = null;
 		if (templateId) {
-			const tplRow = await db.execute({ sql: "SELECT docx_base64 FROM paper_templates WHERE id = ?", args: [Number(templateId)] });
+			const instId = sessionInstituteId(req);
+			let tplSql, tplArgs;
+			if (instId) {
+				tplSql = "SELECT docx_base64 FROM paper_templates WHERE id = ? AND (institute_id = ? OR institute_id IS NULL)";
+				tplArgs = [Number(templateId), instId];
+			} else {
+				tplSql = "SELECT docx_base64 FROM paper_templates WHERE id = ?";
+				tplArgs = [Number(templateId)];
+			}
+			const tplRow = await db.execute({ sql: tplSql, args: tplArgs });
 			if (tplRow.rows.length) tplBase64 = tplRow.rows[0].docx_base64;
 		}
 
@@ -2044,7 +2053,16 @@ router.post("/api/admin/generate-paper-pdf", requireAdmin, async (req, res) => {
 		// Step 2: Apply LaTeX→OMML conversion and template (same post-processing as Word)
 		let tplBase64 = null;
 		if (templateId) {
-			const tplRow = await db.execute({ sql: "SELECT docx_base64 FROM paper_templates WHERE id = ?", args: [Number(templateId)] });
+			const instId = sessionInstituteId(req);
+			let tplSql, tplArgs;
+			if (instId) {
+				tplSql = "SELECT docx_base64 FROM paper_templates WHERE id = ? AND (institute_id = ? OR institute_id IS NULL)";
+				tplArgs = [Number(templateId), instId];
+			} else {
+				tplSql = "SELECT docx_base64 FROM paper_templates WHERE id = ?";
+				tplArgs = [Number(templateId)];
+			}
+			const tplRow = await db.execute({ sql: tplSql, args: tplArgs });
 			if (tplRow.rows.length) tplBase64 = tplRow.rows[0].docx_base64;
 		}
 		// Include title in headerMeta so {{TITLE}} placeholder is also replaced.
