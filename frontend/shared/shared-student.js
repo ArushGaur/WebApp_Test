@@ -1207,12 +1207,15 @@ function sqRenderQuestionCards() {
         card.dataset.qidx = i;
         const hasImg = q.questionImage && q.questionImage.length > 0;
         const hasMulti = q.isMultiCorrect || (q.correctIndexes || []).length > 1;
+        const cardIsNumerical = (q.options || []).every(function(o) { return !o || String(o).trim() === ''; }) && (q.optionImages || []).every(function(im) { return !im; });
         card.innerHTML = `
                     ${_sqQSelectModeOn ? `<input type="checkbox" class="lec-checkbox" onclick="event.stopPropagation();sqToggleQuestionSelect(event,${i})" ${_sqSelectedQuestions.has(String(i)) ? "checked" : ""}>` : ""}
                     <div class="lecture-card-num" style="font-size:0.8rem;letter-spacing:0.3px">Q${i + 1}</div>
                     <div style="font-size:0.79rem;font-weight:600;color:var(--text);margin-bottom:4px;word-break:break-word;line-height:1.3;max-height:48px;overflow:hidden">${(q.question || "").substring(0, 60)}${(q.question || "").length > 60 ? "…" : ""}</div>
                     <div style="font-size:0.72rem;color:var(--text-muted);display:flex;gap:6px;flex-wrap:wrap;margin-top:2px">
-                        <span>${["A", "B", "C", "D"][(q.correctIndexes || [q.correctIndex || 0])[0]]} correct</span>
+                        ${cardIsNumerical
+                            ? `<span style="color:#a78bfa">🔢 ${escapeHtml(String(q.numericalAnswer ?? q.correct_answer ?? 'N/A'))}</span>`
+                            : `<span>${["A", "B", "C", "D"][(q.correctIndexes || [q.correctIndex || 0])[0]]} correct</span>`}
                     </div>`;
         card.onclick = (e) => {
             if (e.target.closest("input")) return;
@@ -1482,6 +1485,7 @@ function sqOpenQuestionView(chapter, lecture, qCardIdx) {
     questionsToRender.forEach(([q, i]) => {
         const ci = q.correctIndexes || [q.correctIndex || 0];
         const isMulti = q.isMultiCorrect || ci.length > 1;
+        const isNumerical = (q.options || []).every(function(o) { return !o || String(o).trim() === ''; }) && (q.optionImages || []).every(function(im) { return !im; });
         const hasImg = q.questionImage && q.questionImage.length > 0;
         const imgSrc = hasImg ? (q.questionImage.startsWith('http') ? q.questionImage : `data:image/jpeg;base64,${q.questionImage}`) : "";
         const imgHtml = hasImg ? `<div style="margin-bottom:14px;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border);text-align:center;background:rgba(0,0,0,0.1)"><img src="${imgSrc}" alt="Question diagram" style="max-width:100%;max-height:280px;display:inline-block;object-fit:contain;cursor:pointer;border-radius:var(--radius-sm)" onclick="this.style.maxHeight=this.style.maxHeight=='none'?'280px':'none'"></div>` : "";
@@ -1491,13 +1495,18 @@ function sqOpenQuestionView(chapter, lecture, qCardIdx) {
         qDiv.dataset.origIdx = i;
         qDiv.innerHTML = `
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-                        <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px">Question ${i + 1}${hasImg ? ' <span style="color:var(--accent)">📷 Has Image</span>' : ""}${isMulti ? ' <span style="color:var(--accent-4)">✦ Multi-correct</span>' : ""}</div>
+                        <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px">Question ${i + 1}${hasImg ? ' <span style="color:var(--accent)">📷 Has Image</span>' : ""}${isMulti ? ' <span style="color:var(--accent-4)">✦ Multi-correct</span>' : ""}${isNumerical ? ' <span style="color:#a78bfa">🔢 Numerical</span>' : ""}</div>
                     </div>
                     ${imgHtml}
                     <div class="q-render-preview" id="sq_iqe_preview_${i}"></div>
                     <div style="margin-bottom:14px">
-                        <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px">Options</div>
-                        ${LTRS.map((l, oi) => `<div class="opt-render-row ${ci.includes(oi) ? "is-correct" : ""}"><span class="opt-letter">${l}</span><div id="sq_iqe_opt_render_${i}_${oi}"></div>${ci.includes(oi) ? '<span style="margin-left:auto;font-size:0.7rem;color:var(--success);font-weight:700">✓ Correct</span>' : ""}</div>`).join("")}
+                        <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px">${isNumerical ? 'Answer' : 'Options'}</div>
+                        ${isNumerical
+                            ? `<div style="padding:8px 12px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;font-size:0.82rem">
+                                <span style="font-weight:700;color:#a78bfa">Numerical Answer: </span>
+                                <span style="color:var(--text);font-weight:600;font-size:1rem">${escapeHtml(String(q.numericalAnswer ?? q.correct_answer ?? 'N/A'))}</span>
+                               </div>`
+                            : LTRS.map((l, oi) => `<div class="opt-render-row ${ci.includes(oi) ? "is-correct" : ""}"><span class="opt-letter">${l}</span><div id="sq_iqe_opt_render_${i}_${oi}"></div>${ci.includes(oi) ? '<span style="margin-left:auto;font-size:0.7rem;color:var(--success);font-weight:700">✓ Correct</span>' : ""}</div>`).join("")}
                     </div>
                     <div id="sqSolBlock_${i}"></div>`;
         questionsDiv.appendChild(qDiv);
@@ -1509,21 +1518,24 @@ function sqOpenQuestionView(chapter, lecture, qCardIdx) {
 
     setTimeout(() => {
         questionsToRender.forEach(([q, i]) => {
+            const isNumerical = (q.options || []).every(function(o) { return !o || String(o).trim() === ''; }) && (q.optionImages || []).every(function(im) { return !im; });
             const prev = document.getElementById(`sq_iqe_preview_${i}`);
             if (prev) { prev.textContent = q.question; if (typeof renderMath === "function") renderMath(prev); }
-            ["A", "B", "C", "D"].forEach((l, oi) => {
-                const optRender = document.getElementById(`sq_iqe_opt_render_${i}_${oi}`);
-                if (optRender) {
-                    const optImg = Array.isArray(q.optionImages) ? (q.optionImages[oi] || null) : null;
-                    if (optImg) {
-                        const imgSrc = optImg.startsWith('http') ? optImg : `data:image/jpeg;base64,${optImg}`;
-                        optRender.innerHTML = `<img src="${imgSrc}" alt="Option ${l}" style="max-height:80px;max-width:100%;border-radius:4px;border:1px solid var(--border);object-fit:contain;display:block;margin-top:2px">`;
-                    } else {
-                        optRender.textContent = (q.options && q.options[oi]) || "";
-                        if (typeof renderMath === "function") renderMath(optRender);
+            if (!isNumerical) {
+                ["A", "B", "C", "D"].forEach((l, oi) => {
+                    const optRender = document.getElementById(`sq_iqe_opt_render_${i}_${oi}`);
+                    if (optRender) {
+                        const optImg = Array.isArray(q.optionImages) ? (q.optionImages[oi] || null) : null;
+                        if (optImg) {
+                            const imgSrc = optImg.startsWith('http') ? optImg : `data:image/jpeg;base64,${optImg}`;
+                            optRender.innerHTML = `<img src="${imgSrc}" alt="Option ${l}" style="max-height:80px;max-width:100%;border-radius:4px;border:1px solid var(--border);object-fit:contain;display:block;margin-top:2px">`;
+                        } else {
+                            optRender.textContent = (q.options && q.options[oi]) || "";
+                            if (typeof renderMath === "function") renderMath(optRender);
+                        }
                     }
-                }
-            });
+                });
+            }
             // Inject solution for this sub-question
             const solBlock = document.getElementById(`sqSolBlock_${i}`);
             if (solBlock && q.solutions && q.solutions.length > 0) {
@@ -1576,6 +1588,7 @@ function sqEnterEditMode() {
     questionsToRender.forEach(([q, i]) => {
         const ci = q.correctIndexes || [q.correctIndex || 0];
         const isMulti = q.isMultiCorrect || ci.length > 1;
+        const isNumerical = (q.options || []).every(function(o) { return !o || String(o).trim() === ''; }) && (q.optionImages || []).every(function(im) { return !im; });
         const hasImg = q.questionImage && q.questionImage.length > 0;
         const imgSrc = hasImg ? (q.questionImage.startsWith('http') ? q.questionImage : `data:image/jpeg;base64,${q.questionImage}`) : "";
         const imgHtml = hasImg ? `<div style="margin-bottom:14px;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border);text-align:center;background:rgba(0,0,0,0.1)"><img src="${imgSrc}" alt="Question diagram" style="max-width:100%;max-height:280px;display:inline-block;object-fit:contain;cursor:pointer;border-radius:var(--radius-sm)" onclick="this.style.maxHeight=this.style.maxHeight=='none'?'280px':'none'"></div>` : "";
@@ -1601,18 +1614,23 @@ function sqEnterEditMode() {
         _sqEditSolImages[i] = existingSolImgs;
         qDiv.innerHTML = `
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-                        <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px">Question ${i + 1}${hasImg ? ' <span style="color:var(--accent)">📷 Has Image</span>' : ""}</div>
-                        <label class="multi-toggle-label">
+                        <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px">Question ${i + 1}${hasImg ? ' <span style="color:var(--accent)">📷 Has Image</span>' : ""}${isNumerical ? ' <span style="color:#a78bfa">🔢 Numerical</span>' : ""}</div>
+                        ${isNumerical ? '' : `<label class="multi-toggle-label">
                             <input type="checkbox" id="sq_iqe_multi_${i}" ${isMulti ? "checked" : ""} onchange="sqToggleMultiCorrect(${i})">
                             <span class="multi-toggle-text">${isMulti ? "✦ Multi-correct" : "○ Single-correct"}</span>
-                        </label>
+                        </label>`}
                     </div>
                     ${imgHtml}
                     <div class="q-render-preview" id="sq_iqe_preview_${i}"></div>
                     <div class="field"><label>Edit Raw Text ($math$ for equations)</label>
                         <textarea id="sq_iqe_qt_${i}" rows="2" oninput="sqUpdatePreview(${i});_sqHasUnsavedEdits=true;" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:0.85rem;resize:vertical;outline:none">${escapeHtml(q.question || "")}</textarea>
                     </div>
-                    <div style="margin-bottom:14px">
+                    ${isNumerical
+                        ? `<div style="padding:8px 12px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;font-size:0.82rem">
+                            <span style="font-weight:700;color:#a78bfa">Numerical Answer: </span>
+                            <span style="color:var(--text);font-weight:600;font-size:1rem">${escapeHtml(String(q.numericalAnswer ?? q.correct_answer ?? 'N/A'))}</span>
+                           </div>`
+                        : `<div style="margin-bottom:14px">
                         <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px">Options (rendered)</div>
                         ${LTRS.map((l, oi) => `<div class="opt-render-row ${ci.includes(oi) ? "is-correct" : ""}"><span class="opt-letter">${l}</span><div id="sq_iqe_opt_render_${i}_${oi}"></div></div>`).join("")}
                     </div>
@@ -1623,7 +1641,7 @@ function sqEnterEditMode() {
                         <div style="display:flex;gap:10px;flex-wrap:wrap">
                             ${LTRS.map((l, oi) => `<button type="button" class="correct-btn ${ci.includes(oi) ? "selected" : ""}" data-si="${i}" data-oi="${oi}" data-multi="${isMulti}" onclick="sqToggleCorrectAnswer(${i},${oi});_sqHasUnsavedEdits=true;">${l}</button>`).join("")}
                         </div>
-                    </div>
+                    </div>`}
                     <div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(16,185,129,0.2)">
                         <label style="font-size:0.75rem;color:var(--text-dim);display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.4px">Edit Solution</label>
                         <textarea id="sqSolEditArea_${i}" rows="5" placeholder="Type the solution here..." style="width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:0.85rem;resize:vertical;outline:none;line-height:1.6;box-sizing:border-box">${escapeHtml(existingText)}</textarea>
@@ -1648,21 +1666,24 @@ function sqEnterEditMode() {
 
     setTimeout(() => {
         questionsToRender.forEach(([q, i]) => {
+            const isNumerical = (q.options || []).every(function(o) { return !o || String(o).trim() === ''; }) && (q.optionImages || []).every(function(im) { return !im; });
             const prev = document.getElementById(`sq_iqe_preview_${i}`);
             if (prev) { prev.textContent = q.question; if (typeof renderMath === "function") renderMath(prev); }
-            ["A", "B", "C", "D"].forEach((l, oi) => {
-                const optRender = document.getElementById(`sq_iqe_opt_render_${i}_${oi}`);
-                if (optRender) {
-                    const optImg = Array.isArray(q.optionImages) ? (q.optionImages[oi] || null) : null;
-                    if (optImg) {
-                        const imgSrc = optImg.startsWith('http') ? optImg : `data:image/jpeg;base64,${optImg}`;
-                        optRender.innerHTML = `<img src="${imgSrc}" alt="Option ${l}" style="max-height:80px;max-width:100%;border-radius:4px;border:1px solid var(--border);object-fit:contain;display:block;margin-top:2px">`;
-                    } else {
-                        optRender.textContent = (q.options && q.options[oi]) || "";
-                        if (typeof renderMath === "function") renderMath(optRender);
+            if (!isNumerical) {
+                ["A", "B", "C", "D"].forEach((l, oi) => {
+                    const optRender = document.getElementById(`sq_iqe_opt_render_${i}_${oi}`);
+                    if (optRender) {
+                        const optImg = Array.isArray(q.optionImages) ? (q.optionImages[oi] || null) : null;
+                        if (optImg) {
+                            const imgSrc = optImg.startsWith('http') ? optImg : `data:image/jpeg;base64,${optImg}`;
+                            optRender.innerHTML = `<img src="${imgSrc}" alt="Option ${l}" style="max-height:80px;max-width:100%;border-radius:4px;border:1px solid var(--border);object-fit:contain;display:block;margin-top:2px">`;
+                        } else {
+                            optRender.textContent = (q.options && q.options[oi]) || "";
+                            if (typeof renderMath === "function") renderMath(optRender);
+                        }
                     }
-                }
-            });
+                });
+            }
             // Render solution image edit zone
             const solImgZone = document.getElementById(`sqSolImgZone_${i}`);
             if (solImgZone) solImgZone.innerHTML = sqBuildSolImgEditZone(i);
