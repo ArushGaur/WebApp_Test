@@ -763,7 +763,17 @@
 
             // Assign sequential question numbers at generation time
             let qNum = 1;
-            const questions = [...paperBasket.values()].map(item => ({ ...item, qNum: qNum++ }));
+            function _pbIsNumerical(q) {
+                if (!q) return false;
+                if ((q.question_type || '').toUpperCase() === 'INTEGER' || (q.questionType || '').toUpperCase() === 'INTEGER') return true;
+                if (q.numericalAnswer !== undefined && q.numericalAnswer !== null) return true;
+                if (Array.isArray(q.options) && q.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function(im) { return !im; }))) return true;
+                return false;
+            }
+            const sortedItems = [...paperBasket.values()].sort(function(a, b) {
+                return (_pbIsNumerical(a.q) ? 1 : 0) - (_pbIsNumerical(b.q) ? 1 : 0);
+            });
+            const questions = sortedItems.map(item => ({ ...item, qNum: qNum++ }));
 
             // Show progress, hide controls
             _pgenReset();
