@@ -1321,61 +1321,64 @@
                 </button>
             </div>
 
-            <div class="att-toolbar">
-                <div class="att-filter-group">
-                    <div class="att-field">
-                        <label>Class</label>
-                        <select id="att-class-select" onchange="onAttClassChange()">
-                            <option value="">— Select Class —</option>
-                        </select>
-                    </div>
-                    <div class="att-field">
-                        <label>Batch</label>
-                        <select id="att-batch-select" onchange="onAttBatchChange()">
-                            <option value="">— All Batches —</option>
-                        </select>
-                    </div>
-                    <div class="att-field">
-                        <label>Date</label>
-                        <input type="date" id="att-date">
-                    </div>
-                    <div class="att-field" style="align-self:flex-end">
-                        <button class="btn btn-primary" onclick="loadAttendanceStudents()"
-                            style="padding:9px 20px;font-size:0.84rem">🔍 Load Students</button>
-                    </div>
+            <div id="att-loading" style="display:none;text-align:center;padding:40px;color:var(--text-muted)">Loading...</div>
+
+            <!-- Classes View -->
+            <div id="att-classes-view">
+                <div class="att-section-title">Select a Class</div>
+                <div id="att-classes-grid" class="att-cards-grid"></div>
+                <div id="att-classes-empty" style="display:none;text-align:center;padding:60px 20px;color:var(--text-muted)">
+                    <div style="font-size:3rem;margin-bottom:12px">📚</div>
+                    <h3 style="margin:0 0 6px">No Classes Yet</h3>
+                    <p style="margin:0;font-size:0.88rem">Use ⚙️ Manage Classes to create your first class.</p>
                 </div>
             </div>
 
-            <div id="att-loading" style="display:none;text-align:center;padding:40px;color:var(--text-muted)">Loading students...</div>
+            <!-- Batches View -->
+            <div id="att-batches-view" style="display:none">
+                <button class="att-back-btn" onclick="attShowClasses()">← Back to Classes</button>
+                <div class="att-section-title" id="att-batches-title">Batches</div>
+                <div id="att-batches-grid" class="att-cards-grid"></div>
+                <div id="att-batches-empty" style="display:none;text-align:center;padding:60px 20px;color:var(--text-muted)">
+                    <div style="font-size:3rem;margin-bottom:12px">📁</div>
+                    <h3 style="margin:0 0 6px">No Batches</h3>
+                    <p style="margin:0;font-size:0.88rem">Use ⚙️ Manage Classes to add batches.</p>
+                </div>
+            </div>
 
-            <div id="att-student-section" style="display:none">
-                <div class="stu-stats-bar" style="margin-bottom:16px">
-                    <div class="stu-stat"><span class="stu-stat-num" id="att-stat-total">0</span><span class="stu-stat-label">Students</span></div>
-                    <div class="stu-stat"><span class="stu-stat-num" id="att-stat-selected">0</span><span class="stu-stat-label">Selected</span></div>
-                    <div class="stu-stat"><span class="stu-stat-num" id="att-stat-present">0</span><span class="stu-stat-label">Present Today</span></div>
-                    <div style="display:flex;gap:8px;margin-left:auto;align-items:center;flex-wrap:wrap">
-                        <div class="att-field" style="margin:0;min-width:120px">
-                            <select id="att-mark-status" style="padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.84rem;outline:none">
-                                <option value="present">Present</option>
-                                <option value="absent">Absent</option>
-                                <option value="late">Late</option>
-                                <option value="leave">Leave</option>
-                            </select>
-                        </div>
-                        <button class="btn btn-primary" onclick="markAttendance()"
-                            style="padding:9px 22px;font-size:0.85rem;gap:7px;display:flex;align-items:center">
-                            ✅ Mark Attendance
-                        </button>
+            <!-- Marking View -->
+            <div id="att-marking-view" style="display:none">
+                <button class="att-back-btn" onclick="attGoBack()">← Back</button>
+                <div class="att-section-title" id="att-marking-title">Students</div>
+
+                <div class="att-marking-toolbar">
+                    <div class="att-marking-date">
+                        <label>Date</label>
+                        <input type="date" id="att-date">
+                    </div>
+                    <div class="att-marking-actions">
+                        <span id="att-selected-count" style="font-size:0.84rem;color:var(--text-dim)">0 selected</span>
+                        <select id="att-mark-status">
+                            <option value="present">Present</option>
+                            <option value="absent">Absent</option>
+                            <option value="late">Late</option>
+                            <option value="leave">Leave</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="attMarkAttendance()">✅ Mark Attendance</button>
                     </div>
                 </div>
+
+                <div class="att-stu-stats-bar">
+                    <span class="att-stat"><strong id="att-stat-total">0</strong> Students</span>
+                    <span class="att-stat"><strong id="att-stat-selected">0</strong> Selected</span>
+                    <span class="att-stat"><strong id="att-stat-present">0</strong> Present Today</span>
+                </div>
+
                 <div class="table-wrap">
                     <table id="att-student-table">
                         <thead>
                             <tr>
-                                <th style="width:40px">
-                                    <input type="checkbox" id="att-select-all" onchange="attToggleSelectAll()">
-                                </th>
-                                <th>Roll Number</th>
+                                <th style="width:40px"><input type="checkbox" id="att-select-all" onchange="attToggleSelectAll()"></th>
                                 <th>Name</th>
                                 <th>Status</th>
                             </tr>
@@ -1385,8 +1388,8 @@
                 </div>
                 <div id="att-empty" style="display:none;text-align:center;padding:60px 20px;color:var(--text-muted)">
                     <div style="font-size:3rem;margin-bottom:12px">📋</div>
-                    <h3 style="margin:0 0 6px">No Students Found</h3>
-                    <p style="margin:0;font-size:0.88rem">Select a class and batch, then click Load Students.</p>
+                    <h3 style="margin:0 0 6px">No Students</h3>
+                    <p style="margin:0;font-size:0.88rem">No students found for this selection.</p>
                 </div>
             </div>
 
