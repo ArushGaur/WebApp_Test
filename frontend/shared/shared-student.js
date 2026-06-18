@@ -3367,10 +3367,15 @@ async function _agGeneratePaper() {
         const picked = shuffled.slice(0, actualCount);
 
         // Sort: MCQs first, numerical questions at the end
-        picked.sort((a, b) => {
-            const aIsNum = a.q && (a.q.question_type === 'INTEGER' || a.q.questionType === 'INTEGER' || (a.q.numericalAnswer !== undefined && a.q.numericalAnswer !== null));
-            const bIsNum = b.q && (b.q.question_type === 'INTEGER' || b.q.questionType === 'INTEGER' || (b.q.numericalAnswer !== undefined && b.q.numericalAnswer !== null));
-            return (aIsNum ? 1 : 0) - (bIsNum ? 1 : 0);
+        const _agIsNumerical = function(q) {
+            if (!q) return false;
+            if ((q.question_type || '').toUpperCase() === 'INTEGER' || (q.questionType || '').toUpperCase() === 'INTEGER') return true;
+            if (q.numericalAnswer !== undefined && q.numericalAnswer !== null) return true;
+            if (Array.isArray(q.options) && q.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function(im) { return !im; }))) return true;
+            return false;
+        };
+        picked.sort(function(a, b) {
+            return (_agIsNumerical(a.q) ? 1 : 0) - (_agIsNumerical(b.q) ? 1 : 0);
         });
 
         // Build question objects
