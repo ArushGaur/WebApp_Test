@@ -34,6 +34,17 @@
                 let _jeeOnlineMarksWrong = -1;
                 let _jeeReviewItems = [];   // cached for filter
 
+                /* ── Numerical question detection (no text/images/tables in options) ── */
+                function _isNumericalQ(q) {
+                    if (!q) return false;
+                    var opts = q.options || [];
+                    var imgs = q.optionImages || [];
+                    var tbls = _twGetOptionTables(q);
+                    return opts.every(function (o) { return !o || String(o).trim() === ''; })
+                        && imgs.every(function (i) { return !i; })
+                        && tbls.every(function (t) { return !t; });
+                }
+
                 /* ── Marking scheme toggle ── */
                 function jeeToggleScheme() {
                     _jeeScheme = !_jeeScheme;
@@ -260,9 +271,14 @@
                 /* ── Render question ── */
                 function jeeRenderQ(idx) {
                     _jeeCurrentIdx = idx;
-                    if (_jeeAnswers[idx] === null) _jeeAnswers[idx] = -1;
 
                     const q = _jeeQuestions[idx];
+                    const isNumerical = _isNumericalQ(q);
+
+                    // For numerical, don't auto-set -1; keep null until answered.
+                    // For regular, keep existing behaviour.
+                    if (!isNumerical && _jeeAnswers[idx] === null) _jeeAnswers[idx] = -1;
+
                     const ci = q.correctIndexes || [q.correctIndex || 0];
                     const ans = _jeeAnswers[idx];
                     const isMulti = q.isMultiCorrect || ci.length > 1;
@@ -287,32 +303,51 @@
                     const qTextColor = isLight ? '#0f1729' : '#f1f5ff';
                     const subLblColor = isLight ? 'rgba(15,23,41,0.35)' : 'rgba(255,255,255,0.3)';
 
-                    const LTRS = ['A', 'B', 'C', 'D'];
-                    const optImgs = Array.isArray(q.optionImages) ? q.optionImages : [];
-                    const optTables = _twGetOptionTables(q);
-                    // When options are themselves tables, q.options may be empty —
-                    // fall back to a 4-slot array so every lettered option renders.
-                    const _optList = (q.options && q.options.length) ? q.options : (optTables.some(Boolean) ? [null, null, null, null] : (q.options || []));
-                    let optsHtml = _optList.map((opt, oi) => {
-                        const selected = markedArr.includes(oi);
-                        const optImg = optImgs[oi] || null;
-                        const optTbl = optTables[oi] || null;
-                        const optImgHtml = optImg
-                            ? `<img src="${optImg.startsWith('http') ? optImg : 'data:image/jpeg;base64,' + optImg}" style="display:block;max-width:100%;max-height:180px;object-fit:contain;border-radius:7px;margin-top:${opt ? '8px' : '2px'}">`
-                            : '';
-                        const optTblHtml = optTbl ? _twRenderSingleTable(optTbl) : '';
-                        const optBody = optTblHtml || `${mdTablesToHtml(opt || '')}${optImgHtml}`;
-                        return `<div onclick="jeeSelectOpt(${oi})" data-oi="${oi}" style="
-                    padding:13px 16px;margin-bottom:9px;border-radius:11px;cursor:pointer;
-                    border:1.5px solid ${optBorder(selected)};
-                    background:${optBg(selected)};
-                    display:flex;align-items:flex-start;gap:11px;transition:all .15s;
-                    color:${optColor(selected)}
-                ">
-                    <span style="width:27px;height:27px;border-radius:7px;background:${lblBg(selected)};display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:0.8rem;color:${lblColor(selected)};flex-shrink:0">${LTRS[oi]}</span>
-                    <span style="font-size:0.88rem;line-height:1.6;padding-top:3px;flex:1;min-width:0">${optBody}</span>
-                </div>`;
-                    }).join('');
+                    // ── Build input / options area ──
+                    var answerAreaHtml = '';
+                    if (isNumerical) {
+                        var numVal = (ans !== null && ans !== -1) ? String(ans).replace(/,/g, '') : '';
+                        var numAnswered = numVal !== '';
+                        answerAreaHtml = `<div style="margin-bottom:16px">
+                        <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:${subLblColor};margin-bottom:11px;font-weight:700">Enter your answer:</div>
+                        <div style="position:relative">
+                            <input id="jee-num-input" type="text" inputmode="decimal" value="${escHtml(numVal)}"
+                                placeholder="Type your answer…"
+                                style="width:100%;background:${isLight ? '#fff' : 'rgba(255,255,255,0.05)'};border:2px solid ${numAnswered ? 'var(--success)' : 'var(--border)'};border-radius:12px;padding:14px 18px;color:${qTextColor};font-size:1.2rem;font-weight:600;outline:none;font-family:'JetBrains Mono',monospace;text-align:center;transition:border .15s;box-sizing:border-box"
+                                onfocus="this.style.borderColor='var(--success)'"
+                                onblur="this.style.borderColor=this.value.trim()?'var(--success)':'var(--border)'"
+                                oninput="jeeHandleNumInput(this.value)">
+                            <div style="margin-top:8px;font-size:0.78rem;color:${subLblColor}">Enter the numeric value (decimals allowed)</div>
+                        </div>
+                    </div>`;
+                    } else {
+                        const LTRS = ['A', 'B', 'C', 'D'];
+                        const optImgs = Array.isArray(q.optionImages) ? q.optionImages : [];
+                        const optTables = _twGetOptionTables(q);
+                        const _optList = (q.options && q.options.length) ? q.options : (optTables.some(Boolean) ? [null, null, null, null] : (q.options || []));
+                        var optsHtml = _optList.map((opt, oi) => {
+                            const selected = markedArr.includes(oi);
+                            const optImg = optImgs[oi] || null;
+                            const optTbl = optTables[oi] || null;
+                            const optImgHtml = optImg
+                                ? `<img src="${optImg.startsWith('http') ? optImg : 'data:image/jpeg;base64,' + optImg}" style="display:block;max-width:100%;max-height:180px;object-fit:contain;border-radius:7px;margin-top:${opt ? '8px' : '2px'}">`
+                                : '';
+                            const optTblHtml = optTbl ? _twRenderSingleTable(optTbl) : '';
+                            const optBody = optTblHtml || `${mdTablesToHtml(opt || '')}${optImgHtml}`;
+                            return `<div onclick="jeeSelectOpt(${oi})" data-oi="${oi}" style="
+                        padding:13px 16px;margin-bottom:9px;border-radius:11px;cursor:pointer;
+                        border:1.5px solid ${optBorder(selected)};
+                        background:${optBg(selected)};
+                        display:flex;align-items:flex-start;gap:11px;transition:all .15s;
+                        color:${optColor(selected)}
+                    ">
+                        <span style="width:27px;height:27px;border-radius:7px;background:${lblBg(selected)};display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:0.8rem;color:${lblColor(selected)};flex-shrink:0">${LTRS[oi]}</span>
+                        <span style="font-size:0.88rem;line-height:1.6;padding-top:3px;flex:1;min-width:0">${optBody}</span>
+                    </div>`;
+                        }).join('');
+                        answerAreaHtml = `<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:${subLblColor};margin-bottom:11px;font-weight:700">${isMulti ? 'Select ALL correct options:' : 'Select the correct option:'}</div>
+                    ${optsHtml}`;
+                    }
 
                     const _qImgSrc = q.questionImage
                         ? (q.questionImage.startsWith('http') || q.questionImage.startsWith('data:')
@@ -337,14 +372,14 @@
                     <div style="background:linear-gradient(135deg,rgba(96,200,255,0.15),rgba(167,139,250,0.15));border:1px solid rgba(96,200,255,0.2);border-radius:9px;padding:5px 13px;font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:#60c8ff;font-weight:700">Q${idx + 1}</div>
                     ${q.subject ? `<div style="background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.2);border-radius:9px;padding:4px 10px;font-size:0.72rem;color:#fbbf24;font-weight:600">${escHtml(q.subject)}</div>` : ''}
                     ${_jeeMarked[idx] ? '<div style="background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.25);border-radius:9px;padding:4px 10px;font-size:0.72rem;color:#a78bfa;font-weight:600">🔖 Marked</div>' : ''}
-                    ${isMulti ? '<div style="background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.2);border-radius:9px;padding:4px 10px;font-size:0.72rem;color:#fbbf24;font-weight:600">Multi-Select</div>' : ''}
+                    ${isMulti && !isNumerical ? '<div style="background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.2);border-radius:9px;padding:4px 10px;font-size:0.72rem;color:#fbbf24;font-weight:600">Multi-Select</div>' : ''}
+                    ${isNumerical ? '<div style="background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.2);border-radius:9px;padding:4px 10px;font-size:0.72rem;color:#fbbf24;font-weight:600">Numerical</div>' : ''}
                     <div style="margin-left:auto">${marksBadge}</div>
                 </div>
                 <div style="font-size:0.97rem;line-height:1.8;color:${qTextColor};margin-bottom:22px;font-weight:500">${mdTablesToHtml(q.question || '')}</div>
                 ${tablesIntroHtml}
                 ${imgHtml}
-                <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:${subLblColor};margin-bottom:11px;font-weight:700">${isMulti ? 'Select ALL correct options:' : 'Select the correct option:'}</div>
-                ${optsHtml}
+                ${answerAreaHtml}
                 ${tablesOptionsHtml}
             `;
                     // Render LaTeX in the question area
@@ -364,6 +399,18 @@
                         markBtn.style.color = _jeeMarked[idx] ? '#c4b5fd' : '#a78bfa';
                     }
 
+                    jeeRenderPalette();
+                    jeeUpdateLiveTally();
+                }
+
+                function jeeHandleNumInput(val) {
+                    var idx = _jeeCurrentIdx;
+                    var trimmed = val.replace(/[^0-9.\-]/g, '');
+                    if (trimmed === '' || trimmed === '-' || trimmed === '.') {
+                        _jeeAnswers[idx] = null;
+                    } else {
+                        _jeeAnswers[idx] = trimmed;
+                    }
                     jeeRenderPalette();
                     jeeUpdateLiveTally();
                 }
@@ -399,7 +446,12 @@
                 }
 
                 function jeeClearResponse() {
-                    _jeeAnswers[_jeeCurrentIdx] = -1;
+                    var q = _jeeQuestions[_jeeCurrentIdx];
+                    if (q && _isNumericalQ(q)) {
+                        _jeeAnswers[_jeeCurrentIdx] = null;
+                    } else {
+                        _jeeAnswers[_jeeCurrentIdx] = -1;
+                    }
                     jeeRenderQ(_jeeCurrentIdx);
                 }
 
@@ -539,8 +591,8 @@
                         </div>
                         ${structuredTablesHtml}
                         <div style="font-size:0.75rem;color:var(--text-faint);display:flex;flex-wrap:wrap;gap:12px">
-                            <span>Your answer: <span style="color:${status === 'correct' ? '#22c55e' : status === 'wrong' ? '#ef4444' : 'var(--text-faint)'};font-weight:700">${ansArr.length ? ansArr.map(a => LTRS[a]).join(', ') : 'Not attempted'}</span></span>
-                            <span>Correct: <span style="color:#22c55e;font-weight:700">${ci.map(a => LTRS[a]).join(', ')}</span></span>
+                            <span>Your answer: <span style="color:${status === 'correct' ? '#22c55e' : status === 'wrong' ? '#ef4444' : 'var(--text-faint)'};font-weight:700">${_isNumericalQ(q) ? (ans !== null && ans !== -1 && String(ans).trim() !== '' ? escHtml(String(ans)) : 'Not attempted') : (ansArr.length ? ansArr.map(a => LTRS[a]).join(', ') : 'Not attempted')}</span></span>
+                            <span>Correct: <span style="color:#22c55e;font-weight:700">${_isNumericalQ(q) ? escHtml(String(q.numericalAnswer ?? q.correct_answer ?? 'N/A')) : ci.map(a => LTRS[a]).join(', ')}</span></span>
                         </div>
                         ${solnHtml}
                     </div>
@@ -567,11 +619,22 @@
                     _jeeQuestions.forEach((q, i) => {
                         const ans = _jeeAnswers[i];
                         const ci = q.correctIndexes || [q.correctIndex || 0];
+                        const isNumerical = _isNumericalQ(q);
                         const ansArr = Array.isArray(ans) ? ans : (ans !== null && ans >= 0 ? [ans] : []);
 
                         let status = 'skipped';
                         if (q.isNoneCorrect === true) {
                             status = 'correct';
+                        } else if (isNumerical) {
+                            if (ans !== null && ans !== -1 && String(ans).trim() !== '') {
+                                var numAnswer = parseFloat(String(ans).replace(/,/g, ''));
+                                var numCorrect = parseFloat(q.numericalAnswer);
+                                if (!isNaN(numAnswer) && !isNaN(numCorrect)) {
+                                    status = Math.abs(numAnswer - numCorrect) < 0.001 ? 'correct' : 'wrong';
+                                } else {
+                                    status = 'wrong';
+                                }
+                            }
                         } else if (ansArr.length > 0) {
                             const ansSort = [...ansArr].sort().join(',');
                             const ciSort = [...ci].sort().join(',');
@@ -2257,13 +2320,27 @@
 
                     window._tdQuestions = storedQuestions.map((q, qi) => {
                         const ans = answersByIndex.get(qi) || { status: 'skipped', answerIdxs: null };
+                        const isNum = _isNumericalQ(q);
                         const rawAnsIdxs = ans.answerIdxs || [];
                         const correctIdxs = Array.isArray(q.correctIndexes) ? q.correctIndexes : (typeof q.correctIndex === 'number' ? [q.correctIndex] : [0]);
+                        let answerIdxs, status;
+                        if (isNum) {
+                            const rawAns = ans.rawAnswer || '';
+                            const numAns = parseFloat(rawAns);
+                            if (rawAns !== '' && !isNaN(numAns)) {
+                                answerIdxs = [rawAns];
+                                const numCorrect = parseFloat(q.numericalAnswer);
+                                status = (!isNaN(numCorrect) && Math.abs(numAns - numCorrect) < 0.001) ? 'correct' : 'wrong';
+                            } else {
+                                answerIdxs = []; status = 'skipped';
+                            }
+                            return { q, qidx: qi, answerIdxs, correctIdxs: [String(q.numericalAnswer ?? q.correct_answer ?? 'N/A')], status };
+                        }
                         const normalizeList = arr => [...new Set((arr || []).map(v => parseInt(v, 10)).filter(v => !isNaN(v) && v >= 0))].sort((a, b) => a - b);
                         const ansNorm = normalizeList(rawAnsIdxs);
                         const corrNorm = normalizeList(correctIdxs);
                         const hasAttempt = ansNorm.length > 0;
-                        let status = ans.status;
+                        status = ans.status;
                         if (!hasAttempt) { status = 'skipped'; }
                         else if (status !== 'correct' && status !== 'wrong') {
                             const same = ansNorm.length === corrNorm.length && ansNorm.every((v, i) => v === corrNorm[i]);
@@ -2370,6 +2447,7 @@
 
                     let answerIdxs = null;
                     const raw = String(rawAnswer ?? '').trim();
+                    const rawForNum = raw;
                     if (raw !== '' && raw !== '-1' && raw !== 'null' && raw !== 'undefined') {
                         if (raw.includes(',')) {
                             answerIdxs = raw.split(',').map(v => parseInt(v.trim(), 10)).filter(n => !isNaN(n) && n >= 0);
@@ -2385,7 +2463,7 @@
                             : (Array.isArray(answerIdxs) && answerIdxs.length > 0 ? 'attempted' : 'skipped');
                     // Coerce stored idx to integer (handles BigInt/string)
                     const storedIdx = parseInt(String(qIdx), 10);
-                    return { storedIdx, fallbackIdx, answerIdxs, status };
+                    return { storedIdx, fallbackIdx, answerIdxs, status, rawAnswer: rawForNum };
                 }
 
                 // PRIMARY: map by array position (fallbackIdx). This is always reliable
@@ -2393,7 +2471,7 @@
                 rawAnswersList.forEach((item, fallbackIdx) => {
                     const parsed = parseOneAnswer(item, fallbackIdx);
                     if (!parsed) return;
-                    answersByIndex.set(fallbackIdx, { answerIdxs: parsed.answerIdxs, status: parsed.status });
+                    answersByIndex.set(fallbackIdx, { answerIdxs: parsed.answerIdxs, status: parsed.status, rawAnswer: parsed.rawAnswer });
                 });
 
                 // SECONDARY: if stored idx differs from position, also register by storedIdx
@@ -2403,7 +2481,7 @@
                     if (!parsed) return;
                     if (!isNaN(parsed.storedIdx) && parsed.storedIdx !== fallbackIdx) {
                         if (!answersByIndex.has(parsed.storedIdx)) {
-                            answersByIndex.set(parsed.storedIdx, { answerIdxs: parsed.answerIdxs, status: parsed.status });
+                            answersByIndex.set(parsed.storedIdx, { answerIdxs: parsed.answerIdxs, status: parsed.status, rawAnswer: parsed.rawAnswer });
                         }
                     }
                 });
@@ -2427,17 +2505,39 @@
                 // ══ BUILD QUESTION DATA ARRAY for split-panel viewer ══
                 window._tdQuestions = questions.map((q, qidx) => {
                     const stored = answersByIndex.get(qidx) || { answerIdxs: null, status: 'skipped' };
-                    const answerIdxs = stored.answerIdxs || [];
-                    const correctIdxs = q.correctIndexes || (q.correctIndex !== undefined ? [q.correctIndex] : [0]);
-                    const normalizeIndexList = (arr) => [...new Set((arr || []).map(v => parseInt(v, 10)).filter(v => !isNaN(v) && v >= 0))].sort((a, b) => a - b);
-                    const ansNorm = normalizeIndexList(answerIdxs);
-                    const corrNorm = normalizeIndexList(correctIdxs);
-                    const hasAttempt = ansNorm.length > 0;
+                    const isNum = _isNumericalQ(q);
+                    let answerIdxs = stored.answerIdxs || [];
+                    let correctIdxs = q.correctIndexes || (q.correctIndex !== undefined ? [q.correctIndex] : [0]);
                     let status = stored.status;
-                    if (!hasAttempt) { status = 'skipped'; }
-                    else if (status !== 'correct' && status !== 'wrong') {
-                        const same = ansNorm.length === corrNorm.length && ansNorm.every((v, i) => v === corrNorm[i]);
-                        status = same ? 'correct' : 'wrong';
+                    if (isNum) {
+                        // For numerical: answerIdxs holds the raw numeric string
+                        const rawAns = stored.rawAnswer || '';
+                        const numAns = parseFloat(rawAns);
+                        if (rawAns !== '' && !isNaN(numAns)) {
+                            answerIdxs = [rawAns]; // store raw string for display
+                            const numCorrect = parseFloat(q.numericalAnswer);
+                            if (!isNaN(numCorrect) && Math.abs(numAns - numCorrect) < 0.001) {
+                                status = 'correct';
+                            } else {
+                                status = 'wrong';
+                            }
+                        } else {
+                            answerIdxs = [];
+                            if (status !== 'correct' && status !== 'wrong') status = 'skipped';
+                        }
+                        correctIdxs = [String(q.numericalAnswer ?? q.correct_answer ?? 'N/A')];
+                    } else {
+                        const normalizeIndexList = (arr) => [...new Set((arr || []).map(v => parseInt(v, 10)).filter(v => !isNaN(v) && v >= 0))].sort((a, b) => a - b);
+                        const ansNorm = normalizeIndexList(answerIdxs);
+                        const corrNorm = normalizeIndexList(correctIdxs);
+                        const hasAttempt = ansNorm.length > 0;
+                        if (!hasAttempt) { status = 'skipped'; }
+                        else if (status !== 'correct' && status !== 'wrong') {
+                            const same = ansNorm.length === corrNorm.length && ansNorm.every((v, i) => v === corrNorm[i]);
+                            status = same ? 'correct' : 'wrong';
+                        }
+                        answerIdxs = ansNorm;
+                        correctIdxs = corrNorm;
                     }
                     return { q, qidx, answerIdxs, correctIdxs, status };
                 });
@@ -2576,10 +2676,10 @@
             const tdTablesIntroHtml = _tdTablesIntro.length ? renderTablesHtml(_tdTablesIntro) : '';
             const tdTablesOptionsHtml = _tdTablesOptions.length ? renderTablesHtml(_tdTablesOptions) : '';
 
-            // Options
+            const isTdNumerical = _isNumericalQ(q);
             const _tdOptTables = _twGetOptionTables(q);
             const opts = (q.options && q.options.length) ? q.options : (_tdOptTables.some(Boolean) ? [null, null, null, null] : (q.options || []));
-            const optsHtml = opts.map((opt, oi) => {
+            const optsHtml = isTdNumerical ? '' : opts.map((opt, oi) => {
                 const isPick = answerIdxs.includes(oi);
                 const isRight = correctIdxs.includes(oi);
                 let bg = 'var(--bg-input)', border = 'var(--border)', indicator = '', lblBg = 'var(--bg-input)', lblColor = 'var(--text-faint)';
@@ -2597,8 +2697,12 @@
                 </div>`;
             }).join('');
 
-            const yourAnsText = answerIdxs.length ? answerIdxs.map(i => LTRS[i] || i).join(', ') : 'Not Attempted';
-            const correctAnsText = correctIdxs.map(i => LTRS[i] || i).join(', ');
+            const yourAnsText = isTdNumerical
+                ? (answerIdxs.length ? escHtml(String(answerIdxs[0])) : 'Not Attempted')
+                : (answerIdxs.length ? answerIdxs.map(i => LTRS[i] || i).join(', ') : 'Not Attempted');
+            const correctAnsText = isTdNumerical
+                ? escHtml(String(q.numericalAnswer ?? q.correct_answer ?? 'N/A'))
+                : correctIdxs.map(i => LTRS[i] || i).join(', ');
             const yourAnsColor = isSkipped ? 'var(--text-faint)' : isCorrect ? '#22c55e' : '#ef4444';
 
             // Solution — always visible (no tap needed)
@@ -2628,7 +2732,7 @@
                 <div class="td-q-text">${mdTablesToHtml(q.question || 'N/A')}</div>
                 ${tdTablesIntroHtml}
                 ${qImgHtml}
-                <div style="margin:16px 0">${optsHtml}</div>
+                <div style="margin:16px 0">${optsHtml || (isTdNumerical ? '<div style="padding:20px;text-align:center;background:rgba(251,191,36,0.08);border:1.5px dashed rgba(251,191,36,0.3);border-radius:12px;color:var(--text-faint);font-size:0.9rem">🔢 Numerical answer question</div>' : '')}</div>
                 ${tdTablesOptionsHtml}
                 <div class="td-ans-grid">
                     <div class="td-ans-box" style="background:var(--bg-input);border:1px solid var(--border)">
