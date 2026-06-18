@@ -2313,13 +2313,13 @@
                             else { const n = parseInt(raw, 10); if (!isNaN(n) && n >= 0) answerIdxs = [n]; }
                         }
                         const status = sc === 'c' ? 'correct' : sc === 'w' ? 'wrong' : (answerIdxs?.length ? 'attempted' : 'skipped');
-                        answersByIndex.set(parseInt(String(qIdx), 10), { storedIdx: parseInt(String(qIdx), 10), fallbackIdx, answerIdxs, status });
+                        answersByIndex.set(parseInt(String(qIdx), 10), { storedIdx: parseInt(String(qIdx), 10), fallbackIdx, answerIdxs, status, rawAnswer: raw });
                     });
 
                     if (qLabel) qLabel.textContent = `QUESTION REVIEW · ${storedQuestions.length} QUESTIONS`;
 
                     window._tdQuestions = storedQuestions.map((q, qi) => {
-                        const ans = answersByIndex.get(qi) || { status: 'skipped', answerIdxs: null };
+                        const ans = answersByIndex.get(qi) || { status: 'skipped', answerIdxs: null, rawAnswer: '' };
                         const isNum = _isNumericalQ(q);
                         const rawAnsIdxs = ans.answerIdxs || [];
                         const correctIdxs = Array.isArray(q.correctIndexes) ? q.correctIndexes : (typeof q.correctIndex === 'number' ? [q.correctIndex] : [0]);
@@ -2504,7 +2504,7 @@
 
                 // ══ BUILD QUESTION DATA ARRAY for split-panel viewer ══
                 window._tdQuestions = questions.map((q, qidx) => {
-                    const stored = answersByIndex.get(qidx) || { answerIdxs: null, status: 'skipped' };
+                    const stored = answersByIndex.get(qidx) || { answerIdxs: null, status: 'skipped', rawAnswer: '' };
                     const isNum = _isNumericalQ(q);
                     let answerIdxs = stored.answerIdxs || [];
                     let correctIdxs = q.correctIndexes || (q.correctIndex !== undefined ? [q.correctIndex] : [0]);
