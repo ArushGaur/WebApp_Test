@@ -1207,7 +1207,7 @@ function sqRenderQuestionCards() {
         card.dataset.qidx = i;
         const hasImg = q.questionImage && q.questionImage.length > 0;
         const hasMulti = q.isMultiCorrect || (q.correctIndexes || []).length > 1;
-        const cardIsNumerical = (q.options || []).every(function(o) { return !o || String(o).trim() === ''; }) && (q.optionImages || []).every(function(im) { return !im; });
+        const cardIsNumerical = (q.numericalAnswer !== undefined && q.numericalAnswer !== null) || (Array.isArray(q.options) && q.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function(im) { return !im; })));
         card.innerHTML = `
                     ${_sqQSelectModeOn ? `<input type="checkbox" class="lec-checkbox" onclick="event.stopPropagation();sqToggleQuestionSelect(event,${i})" ${_sqSelectedQuestions.has(String(i)) ? "checked" : ""}>` : ""}
                     <div class="lecture-card-num" style="font-size:0.8rem;letter-spacing:0.3px">Q${i + 1}</div>
@@ -1485,7 +1485,7 @@ function sqOpenQuestionView(chapter, lecture, qCardIdx) {
     questionsToRender.forEach(([q, i]) => {
         const ci = q.correctIndexes || [q.correctIndex || 0];
         const isMulti = q.isMultiCorrect || ci.length > 1;
-        const isNumerical = (q.options || []).every(function(o) { return !o || String(o).trim() === ''; }) && (q.optionImages || []).every(function(im) { return !im; });
+        const isNumerical = (q.numericalAnswer !== undefined && q.numericalAnswer !== null) || (Array.isArray(q.options) && q.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function(im) { return !im; })));
         const hasImg = q.questionImage && q.questionImage.length > 0;
         const imgSrc = hasImg ? (q.questionImage.startsWith('http') ? q.questionImage : `data:image/jpeg;base64,${q.questionImage}`) : "";
         const imgHtml = hasImg ? `<div style="margin-bottom:14px;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border);text-align:center;background:rgba(0,0,0,0.1)"><img src="${imgSrc}" alt="Question diagram" style="max-width:100%;max-height:280px;display:inline-block;object-fit:contain;cursor:pointer;border-radius:var(--radius-sm)" onclick="this.style.maxHeight=this.style.maxHeight=='none'?'280px':'none'"></div>` : "";
@@ -1518,7 +1518,7 @@ function sqOpenQuestionView(chapter, lecture, qCardIdx) {
 
     setTimeout(() => {
         questionsToRender.forEach(([q, i]) => {
-            const isNumerical = (q.options || []).every(function(o) { return !o || String(o).trim() === ''; }) && (q.optionImages || []).every(function(im) { return !im; });
+            const isNumerical = (q.numericalAnswer !== undefined && q.numericalAnswer !== null) || (Array.isArray(q.options) && q.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function(im) { return !im; })));
             const prev = document.getElementById(`sq_iqe_preview_${i}`);
             if (prev) { prev.textContent = q.question; if (typeof renderMath === "function") renderMath(prev); }
             if (!isNumerical) {
@@ -1588,7 +1588,7 @@ function sqEnterEditMode() {
     questionsToRender.forEach(([q, i]) => {
         const ci = q.correctIndexes || [q.correctIndex || 0];
         const isMulti = q.isMultiCorrect || ci.length > 1;
-        const isNumerical = (q.options || []).every(function(o) { return !o || String(o).trim() === ''; }) && (q.optionImages || []).every(function(im) { return !im; });
+        const isNumerical = (q.numericalAnswer !== undefined && q.numericalAnswer !== null) || (Array.isArray(q.options) && q.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function(im) { return !im; })));
         const hasImg = q.questionImage && q.questionImage.length > 0;
         const imgSrc = hasImg ? (q.questionImage.startsWith('http') ? q.questionImage : `data:image/jpeg;base64,${q.questionImage}`) : "";
         const imgHtml = hasImg ? `<div style="margin-bottom:14px;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border);text-align:center;background:rgba(0,0,0,0.1)"><img src="${imgSrc}" alt="Question diagram" style="max-width:100%;max-height:280px;display:inline-block;object-fit:contain;cursor:pointer;border-radius:var(--radius-sm)" onclick="this.style.maxHeight=this.style.maxHeight=='none'?'280px':'none'"></div>` : "";
@@ -1666,7 +1666,7 @@ function sqEnterEditMode() {
 
     setTimeout(() => {
         questionsToRender.forEach(([q, i]) => {
-            const isNumerical = (q.options || []).every(function(o) { return !o || String(o).trim() === ''; }) && (q.optionImages || []).every(function(im) { return !im; });
+            const isNumerical = (q.numericalAnswer !== undefined && q.numericalAnswer !== null) || (Array.isArray(q.options) && q.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function(im) { return !im; })));
             const prev = document.getElementById(`sq_iqe_preview_${i}`);
             if (prev) { prev.textContent = q.question; if (typeof renderMath === "function") renderMath(prev); }
             if (!isNumerical) {
