@@ -611,8 +611,7 @@
             if (nav) nav.classList.add("active");
             const dateInput = document.getElementById("att-date");
             if (dateInput && !dateInput.value) dateInput.value = getTodayStr();
-            loadAttendanceClasses();
-            loadAttendanceStudents();
+            attShowClasses();
             history.pushState({ type: "section", name: "attendance" }, "", "");
         }
 
@@ -626,7 +625,7 @@
             if (name === "attendance") {
                 const dateInput = document.getElementById("att-date");
                 if (dateInput && !dateInput.value) dateInput.value = getTodayStr();
-                loadAttendanceClasses();
+                attShowClasses();
             }
             if (name === "students") {
                 loadRegisteredStudents();
@@ -809,83 +808,124 @@
         }
 
         /* ══════════════════════════════════════════════════════════════════
-           ATTENDANCE
+           ATTENDANCE — Card Drill-down (Classes → Batches → Students)
         ══════════════════════════════════════════════════════════════════ */
-        let _attClasses = [];
-        let _attBatches = [];
         let _attStudents = [];
+        let _attCurrentClassId = null;
+        let _attCurrentBatchId = null;
 
         function getTodayStr() {
             const d = new Date();
             return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
         }
 
-        async function loadAttendanceClasses() {
+        function attShowClasses() {
+            document.getElementById("att-classes-view").style.display = "block";
+            document.getElementById("att-batches-view").style.display = "none";
+            document.getElementById("att-marking-view").style.display = "none";
+            document.getElementById("att-history-section").style.display = "none";
+            _attCurrentClassId = null;
+            _attCurrentBatchId = null;
+            attRenderClasses();
+        }
+
+        function attGoBack() {
+            if (_attCurrentBatchId) attShowBatches(_attCurrentClassId);
+            else if (_attCurrentClassId) attShowClasses();
+            else attShowClasses();
+        }
+
+        async function attShowAllStudents() {
+            _attCurrentClassId = null;
+            _attCurrentBatchId = null;
+            document.getElementById("att-classes-view").style.display = "none";
+            document.getElementById("att-marking-view").style.display = "block";
+            document.getElementById("att-marking-title").textContent = "All Students";
+            await attLoadAndRenderStudents();
+        }
+
+        async function attShowBatches(classId) {
+            _attCurrentClassId = classId;
+            _attCurrentBatchId = null;
+            document.getElementById("att-classes-view").style.display = "none";
+            document.getElementById("att-batches-view").style.display = "block";
+            document.getElementById("att-marking-view").style.display = "none";
+            document.getElementById("att-history-section").style.display = "none";
+            const grid = document.getElementById("att-batches-grid");
+            const empty = document.getElementById("att-batches-empty");
+            document.getElementById("att-loading").style.display = "block";
+            try {
+                const r = await fetch(`${API_BASE}/api/admin/classes/${classId}/batches`, { credentials: "include", cache: "no-store" });
+                if (!r.ok) { empty.style.display = "block"; grid.innerHTML = ""; return; }
+                const batches = await r.json();
+                if (!batches.length) { empty.style.display = "block"; grid.innerHTML = ""; return; }
+                empty.style.display = "none";
+                grid.innerHTML = batches.map(b => `
+                    <div class="att-card" onclick="attShowStudents(${b.id})">
+                        <div class="att-card-icon">📂</div>
+                        <div class="att-card-name">${b.name}</div>
+                        <div class="att-card-sub">Click to view students</div>
+                    </div>
+                `).join("");
+            } catch (_) { empty.style.display = "block"; }
+            finally { document.getElementById("att-loading").style.display = "none"; }
+        }
+
+        async function attShowStudents(batchId) {
+            _attCurrentBatchId = batchId;
+            document.getElementById("att-batches-view").style.display = "none";
+            document.getElementById("att-marking-view").style.display = "block";
+            document.getElementById("att-marking-title").textContent = "Students";
+            await attLoadAndRenderStudents();
+        }
+
+        async function attRenderClasses() {
+            const grid = document.getElementById("att-classes-grid");
+            const empty = document.getElementById("att-classes-empty");
+            document.getElementById("att-loading").style.display = "block";
             try {
                 const r = await fetch(`${API_BASE}/api/admin/classes`, { credentials: "include", cache: "no-store" });
                 if (!r.ok) return;
-                _attClasses = await r.json();
-                const sel = document.getElementById("att-class-select");
-                if (!sel) return;
-                sel.innerHTML = '<option value="">👥 All Students</option>' + _attClasses.map(c =>
-                    `<option value="${c.id}">${c.name}</option>`
-                ).join("");
-            } catch (_) {}
+                const classes = await r.json();
+                let html = `<div class="att-card" onclick="attShowAllStudents()">
+                    <div class="att-card-icon">👥</div>
+                    <div class="att-card-name">All Students</div>
+                    <div class="att-card-sub">Mark attendance for everyone</div>
+                </div>`;
+                html += classes.map(c => `
+                    <div class="att-card" onclick="attShowBatches(${c.id})">
+                        <div class="att-card-icon">📚</div>
+                        <div class="att-card-name">${c.name}</div>
+                        <div class="att-card-sub">Click to view batches</div>
+                    </div>
+                `).join("");
+                grid.innerHTML = html;
+                empty.style.display = classes.length ? "none" : "block";
+            } catch (_) { empty.style.display = "block"; }
+            finally { document.getElementById("att-loading").style.display = "none"; }
         }
 
-        async function onAttClassChange() {
-            const classId = document.getElementById("att-class-select")?.value;
-            const batchSel = document.getElementById("att-batch-select");
-            if (!batchSel) return;
-            if (!classId) {
-                batchSel.innerHTML = '<option value="">— All Batches —</option>';
-                batchSel.disabled = true;
-                await loadAttendanceStudents();
-                return;
-            }
-            batchSel.disabled = false;
-            batchSel.innerHTML = '<option value="">— All Batches —</option>';
-            try {
-                const r = await fetch(`${API_BASE}/api/admin/classes/${classId}/batches`, { credentials: "include", cache: "no-store" });
-                if (!r.ok) return;
-                _attBatches = await r.json();
-                batchSel.innerHTML = '<option value="">— All Batches —</option>' + _attBatches.map(b =>
-                    `<option value="${b.id}">${b.name}</option>`
-                ).join("");
-            } catch (_) {}
-            await loadAttendanceStudents();
-        }
-
-        async function onAttBatchChange() {
-            await loadAttendanceStudents();
-        }
-
-        async function loadAttendanceStudents() {
-            const classId = document.getElementById("att-class-select")?.value;
-            const batchId = document.getElementById("att-batch-select")?.value || "";
+        async function attLoadAndRenderStudents() {
             const dateInput = document.getElementById("att-date");
-            if (!dateInput.value) {
-                dateInput.value = getTodayStr();
-            }
+            if (!dateInput.value) dateInput.value = getTodayStr();
             const date = dateInput.value;
 
             document.getElementById("att-loading").style.display = "block";
-            document.getElementById("att-student-section").style.display = "none";
+            document.getElementById("att-empty").style.display = "none";
 
             try {
                 const params = new URLSearchParams();
-                if (classId) params.set("class_id", classId);
-                if (batchId) params.set("batch_id", batchId);
+                if (_attCurrentClassId) params.set("class_id", _attCurrentClassId);
+                if (_attCurrentBatchId) params.set("batch_id", _attCurrentBatchId);
                 const r = await fetch(`${API_BASE}/api/admin/attendance/students?${params}`, { credentials: "include", cache: "no-store" });
                 if (!r.ok) throw new Error("Failed to load students");
                 _attStudents = await r.json();
 
-                // Also load today's attendance records to show existing status
                 let records = {};
                 try {
                     let recUrl = `${API_BASE}/api/admin/attendance/records?date=${date}`;
-                    if (classId) recUrl += `&class_id=${classId}`;
-                    if (batchId) recUrl += `&batch_id=${batchId}`;
+                    if (_attCurrentClassId) recUrl += `&class_id=${_attCurrentClassId}`;
+                    if (_attCurrentBatchId) recUrl += `&batch_id=${_attCurrentBatchId}`;
                     const rr = await fetch(recUrl, { credentials: "include", cache: "no-store" });
                     if (rr.ok) {
                         const recs = await rr.json();
@@ -893,7 +933,7 @@
                     }
                 } catch (_) {}
 
-                renderAttendanceStudents(records);
+                attRenderStudentsTable(records);
             } catch (e) {
                 showErrorModal(e.message || "Failed to load students");
             } finally {
@@ -901,20 +941,22 @@
             }
         }
 
-        function renderAttendanceStudents(existingRecords) {
+        function attRenderStudentsTable(existingRecords) {
             const tbody = document.getElementById("att-student-tbody");
-            const section = document.getElementById("att-student-section");
             const empty = document.getElementById("att-empty");
             if (!tbody) return;
 
             if (!_attStudents.length) {
-                section.style.display = "none";
                 empty.style.display = "block";
+                tbody.innerHTML = "";
+                document.getElementById("att-stat-total").textContent = "0";
+                document.getElementById("att-stat-selected").textContent = "0";
+                document.getElementById("att-selected-count").textContent = "0 selected";
+                document.getElementById("att-stat-present").textContent = "0";
                 return;
             }
 
             empty.style.display = "none";
-            section.style.display = "block";
 
             tbody.innerHTML = _attStudents.map(s => {
                 const existingStatus = existingRecords[s.roll_number] || "";
@@ -923,43 +965,48 @@
                     : '<span style="color:var(--text-muted);font-size:0.78rem">Not marked</span>';
                 return `<tr>
                     <td><input type="checkbox" class="att-student-cb" data-roll="${s.roll_number}" ${existingStatus ? 'checked' : ''}></td>
-                    <td style="font-family:'JetBrains Mono',monospace;font-size:0.8rem">${s.roll_number}</td>
                     <td>${s.name || '—'}</td>
                     <td>${statusBadge}</td>
                 </tr>`;
             }).join("");
 
             document.getElementById("att-stat-total").textContent = _attStudents.length;
-            updateAttCounts();
-            loadAttendanceHistory();
-        }
-
-        function updateAttCounts() {
-            const cbs = document.querySelectorAll(".att-student-cb:checked");
-            document.getElementById("att-stat-selected").textContent = cbs.length;
+            const sel = document.querySelectorAll(".att-student-cb:checked").length;
+            document.getElementById("att-stat-selected").textContent = sel;
+            document.getElementById("att-selected-count").textContent = `${sel} selected`;
             const presentCount = _attStudents.filter(s => {
                 const cb = document.querySelector(`.att-student-cb[data-roll="${s.roll_number}"]`);
                 return cb && cb.checked;
             }).length;
             document.getElementById("att-stat-present").textContent = presentCount;
+            attUpdateSelectAll();
         }
 
         function attToggleSelectAll() {
-            const allCb = document.getElementById("att-select-all");
-            document.querySelectorAll(".att-student-cb").forEach(cb => cb.checked = allCb.checked);
-            updateAttCounts();
+            const checked = document.getElementById("att-select-all").checked;
+            document.querySelectorAll(".att-student-cb").forEach(cb => cb.checked = checked);
+            const sel = checked ? _attStudents.length : 0;
+            document.getElementById("att-stat-selected").textContent = sel;
+            document.getElementById("att-selected-count").textContent = `${sel} selected`;
         }
 
-        async function markAttendance() {
-            const classId = document.getElementById("att-class-select")?.value;
-            const batchId = document.getElementById("att-batch-select")?.value || "";
-            const date = document.getElementById("att-date")?.value || getTodayStr();
-            const status = document.getElementById("att-mark-status")?.value || "present";
+        function attUpdateSelectAll() {
+            const cbs = document.querySelectorAll(".att-student-cb");
+            const all = document.getElementById("att-select-all");
+            if (!cbs.length || !all) return;
+            all.checked = [...cbs].every(cb => cb.checked);
+            all.indeterminate = [...cbs].some(cb => cb.checked) && !all.checked;
+            const sel = [...cbs].filter(cb => cb.checked).length;
+            document.getElementById("att-stat-selected").textContent = sel;
+            document.getElementById("att-selected-count").textContent = `${sel} selected`;
+        }
 
+        async function attMarkAttendance() {
             const selected = [];
             document.querySelectorAll(".att-student-cb:checked").forEach(cb => selected.push(cb.dataset.roll));
-
             if (!selected.length) { showErrorModal("Please select at least one student."); return; }
+            const date = document.getElementById("att-date")?.value || getTodayStr();
+            const status = document.getElementById("att-mark-status")?.value || "present";
 
             try {
                 const r = await fetch(`${API_BASE}/api/admin/attendance/mark`, {
@@ -968,44 +1015,39 @@
                     cache: "no-store",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        class_id: Number(classId),
-                        batch_id: batchId ? Number(batchId) : null,
-                        date,
-                        roll_numbers: selected,
-                        status,
+                        class_id: _attCurrentClassId || 0,
+                        batch_id: _attCurrentBatchId || null,
+                        date, roll_numbers: selected, status,
                     }),
                 });
                 const data = await r.json();
                 if (!r.ok) throw new Error(data.error || "Failed");
-                // Reload to show updated status
-                await loadAttendanceStudents();
+                await attLoadAndRenderStudents();
+                await attLoadTodaysRecord();
+                showSuccessToast(`Attendance marked for ${data.marked} student(s)`);
             } catch (e) {
                 showErrorModal(e.message || "Failed to mark attendance");
             }
         }
 
-        async function loadAttendanceHistory() {
-            const classId = document.getElementById("att-class-select")?.value;
-            const batchId = document.getElementById("att-batch-select")?.value || "";
-            const date = document.getElementById("att-date")?.value || getTodayStr();
+        async function attLoadTodaysRecord() {
             const section = document.getElementById("att-history-section");
             if (!section) return;
-
+            const date = document.getElementById("att-date")?.value || getTodayStr();
             try {
-                const params = new URLSearchParams({ class_id: classId, date });
-                if (batchId) params.set("batch_id", batchId);
-                const r = await fetch(`${API_BASE}/api/admin/attendance/records?${params}`, { credentials: "include", cache: "no-store" });
-                if (!r.ok) return;
+                let url = `${API_BASE}/api/admin/attendance/records?date=${date}`;
+                if (_attCurrentClassId) url += `&class_id=${_attCurrentClassId}`;
+                if (_attCurrentBatchId) url += `&batch_id=${_attCurrentBatchId}`;
+                const r = await fetch(url, { credentials: "include", cache: "no-store" });
+                if (!r.ok) { section.style.display = "none"; return; }
                 const records = await r.json();
                 if (!records.length) { section.style.display = "none"; return; }
-
                 section.style.display = "block";
                 const list = document.getElementById("att-history-list");
                 const present = records.filter(r => r.status === "present").length;
                 const absent = records.filter(r => r.status === "absent").length;
                 const late = records.filter(r => r.status === "late").length;
                 const leave = records.filter(r => r.status === "leave").length;
-
                 list.innerHTML = `
                     <div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap">
                         <span style="font-size:0.82rem">✅ Present: <strong>${present}</strong></span>
@@ -1026,7 +1068,6 @@
             } catch (_) { section.style.display = "none"; }
         }
 
-        // ── Manage Classes Modal ───────────────────────────────────────
         async function openManageClassesModal() {
             openModal("manageClassesModal");
             await renderManageClasses();
@@ -1087,7 +1128,6 @@
                 if (!r.ok) throw new Error(data.error || "Failed");
                 input.value = "";
                 await renderManageClasses();
-                await loadAttendanceClasses();
             } catch (e) { showErrorModal(e.message); }
         }
 
@@ -1096,7 +1136,6 @@
             try {
                 await fetch(`${API_BASE}/api/admin/classes/${id}`, { method: "DELETE", credentials: "include" });
                 await renderManageClasses();
-                await loadAttendanceClasses();
             } catch (_) {}
         }
 
@@ -1133,5 +1172,3 @@
                 await renderManageClasses();
             } catch (_) {}
         }
-
-        // Attendance section is handled inside showSection() above
