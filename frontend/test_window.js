@@ -592,7 +592,7 @@
                         ${structuredTablesHtml}
                         <div style="font-size:0.75rem;color:var(--text-faint);display:flex;flex-wrap:wrap;gap:12px">
                             <span>Your answer: <span style="color:${status === 'correct' ? '#22c55e' : status === 'wrong' ? '#ef4444' : 'var(--text-faint)'};font-weight:700">${_isNumericalQ(q) ? (ans !== null && ans !== -1 && String(ans).trim() !== '' ? escHtml(String(ans)) : 'Not attempted') : (ansArr.length ? ansArr.map(a => LTRS[a]).join(', ') : 'Not attempted')}</span></span>
-                            <span>Correct: <span style="color:#22c55e;font-weight:700">${_isNumericalQ(q) ? escHtml(String(q.numericalAnswer ?? q.correct_answer ?? 'N/A')) : ci.map(a => LTRS[a]).join(', ')}</span></span>
+                            <span>Correct: <span style="color:#22c55e;font-weight:700">${_isNumericalQ(q) ? escHtml(String(q.numericalAnswer ?? q.correct_answer ?? 'N/A')) : (q.isNoneCorrect ? 'None is correct' : ci.map(a => LTRS[a]).join(', '))}</span></span>
                         </div>
                         ${solnHtml}
                     </div>
@@ -618,7 +618,8 @@
 
                     _jeeQuestions.forEach((q, i) => {
                         const ans = _jeeAnswers[i];
-                        const ci = q.correctIndexes || [q.correctIndex || 0];
+                        const isNoneCorrect = q.isNoneCorrect === true;
+                        const ci = isNoneCorrect ? [] : (q.correctIndexes || [q.correctIndex || 0]);
                         const isNumerical = _isNumericalQ(q);
                         const ansArr = Array.isArray(ans) ? ans : (ans !== null && ans >= 0 ? [ans] : []);
 
@@ -2322,7 +2323,7 @@
                         const ans = answersByIndex.get(qi) || { status: 'skipped', answerIdxs: null, rawAnswer: '' };
                         const isNum = _isNumericalQ(q);
                         const rawAnsIdxs = ans.answerIdxs || [];
-                        const correctIdxs = Array.isArray(q.correctIndexes) ? q.correctIndexes : (typeof q.correctIndex === 'number' ? [q.correctIndex] : [0]);
+                        const correctIdxs = q.isNoneCorrect ? [] : (Array.isArray(q.correctIndexes) ? q.correctIndexes : (typeof q.correctIndex === 'number' ? [q.correctIndex] : [0]));
                         let answerIdxs, status;
                         if (isNum) {
                             const rawAns = ans.rawAnswer || '';
@@ -2507,7 +2508,7 @@
                     const stored = answersByIndex.get(qidx) || { answerIdxs: null, status: 'skipped', rawAnswer: '' };
                     const isNum = _isNumericalQ(q);
                     let answerIdxs = stored.answerIdxs || [];
-                    let correctIdxs = q.correctIndexes || (q.correctIndex !== undefined ? [q.correctIndex] : [0]);
+                    let correctIdxs = q.isNoneCorrect ? [] : (q.correctIndexes || (q.correctIndex !== undefined ? [q.correctIndex] : [0]));
                     let status = stored.status;
                     if (isNum) {
                         // For numerical: answerIdxs holds the raw numeric string
@@ -2702,7 +2703,7 @@
                 : (answerIdxs.length ? answerIdxs.map(i => LTRS[i] || i).join(', ') : 'Not Attempted');
             const correctAnsText = isTdNumerical
                 ? escHtml(String(q.numericalAnswer ?? q.correct_answer ?? 'N/A'))
-                : correctIdxs.map(i => LTRS[i] || i).join(', ');
+                : (q.isNoneCorrect ? 'None is correct' : correctIdxs.map(i => LTRS[i] || i).join(', '));
             const yourAnsColor = isSkipped ? 'var(--text-faint)' : isCorrect ? '#22c55e' : '#ef4444';
 
             // Solution — always visible (no tap needed)
