@@ -41,6 +41,7 @@
         <div class="drawer-item" id="drawer-manageQuestions" onclick="drawerNav('manageQuestions')"><span>📋</span>
             Question Library</div>
         <div class="drawer-item" id="drawer-students" onclick="drawerNav('students')"><span>👥</span> Students</div>
+        <div class="drawer-item" id="drawer-attendance" onclick="drawerNav('attendance')"><span>📋</span> Attendance</div>
         <div class="drawer-item" onclick="toggleTheme(); closeMobileDrawer()"><span id="drawerThemeIcon">☀️</span><span
                 id="drawerThemeLabel">Light Mode</span></div>
         <div class="drawer-item danger" onclick="confirmLogout()"><span>🚪</span> Logout</div>
@@ -289,6 +290,8 @@
         <div class="nav-group-label">Data</div> -->
         <div class="nav-item" onclick="showSection('students')" id="nav-students"><span class="nav-icon">👥</span><span
                 class="nav-label">Students</span></div>
+        <div class="nav-item" onclick="showSection('attendance')" id="nav-attendance"><span class="nav-icon">📋</span><span
+                class="nav-label">Attendance</span></div>
         <!-- <div class="nav-item" onclick="showSection('applications')" id="nav-applications"><span
                 class="nav-icon">📋</span><span class="nav-label">Applications</span></div>
         <div class="nav-item" onclick="showSection('migrate')" id="nav-migrate"><span class="nav-icon">🔧</span><span
@@ -1302,6 +1305,127 @@
                 <div id="sq-question-content" class="panel"></div>
             </div>
         </div>-->
+
+        <!-- ATTENDANCE -->
+        <div class="section" id="section-attendance">
+            <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+                <div>
+                    <h1>Attendance</h1>
+                    <p>Mark and manage student attendance by class and batch</p>
+                </div>
+                <button onclick="openManageClassesModal()"
+                    style="padding:9px 18px;background:var(--bg-card);border:1.5px solid var(--border);border-radius:10px;color:var(--text);cursor:pointer;font-size:0.84rem;font-weight:600;font-family:inherit;display:flex;align-items:center;gap:8px;flex-shrink:0"
+                    onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
+                    onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)'">
+                    ⚙️ Manage Classes
+                </button>
+            </div>
+
+            <div class="att-toolbar">
+                <div class="att-filter-group">
+                    <div class="att-field">
+                        <label>Class</label>
+                        <select id="att-class-select" onchange="onAttClassChange()">
+                            <option value="">— Select Class —</option>
+                        </select>
+                    </div>
+                    <div class="att-field">
+                        <label>Batch</label>
+                        <select id="att-batch-select" onchange="onAttBatchChange()">
+                            <option value="">— All Batches —</option>
+                        </select>
+                    </div>
+                    <div class="att-field">
+                        <label>Date</label>
+                        <input type="date" id="att-date">
+                    </div>
+                    <div class="att-field" style="align-self:flex-end">
+                        <button class="btn btn-primary" onclick="loadAttendanceStudents()"
+                            style="padding:9px 20px;font-size:0.84rem">🔍 Load Students</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="att-loading" style="display:none;text-align:center;padding:40px;color:var(--text-muted)">Loading students...</div>
+
+            <div id="att-student-section" style="display:none">
+                <div class="stu-stats-bar" style="margin-bottom:16px">
+                    <div class="stu-stat"><span class="stu-stat-num" id="att-stat-total">0</span><span class="stu-stat-label">Students</span></div>
+                    <div class="stu-stat"><span class="stu-stat-num" id="att-stat-selected">0</span><span class="stu-stat-label">Selected</span></div>
+                    <div class="stu-stat"><span class="stu-stat-num" id="att-stat-present">0</span><span class="stu-stat-label">Present Today</span></div>
+                    <div style="display:flex;gap:8px;margin-left:auto;align-items:center;flex-wrap:wrap">
+                        <div class="att-field" style="margin:0;min-width:120px">
+                            <select id="att-mark-status" style="padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.84rem;outline:none">
+                                <option value="present">Present</option>
+                                <option value="absent">Absent</option>
+                                <option value="late">Late</option>
+                                <option value="leave">Leave</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="markAttendance()"
+                            style="padding:9px 22px;font-size:0.85rem;gap:7px;display:flex;align-items:center">
+                            ✅ Mark Attendance
+                        </button>
+                    </div>
+                </div>
+                <div class="table-wrap">
+                    <table id="att-student-table">
+                        <thead>
+                            <tr>
+                                <th style="width:40px">
+                                    <input type="checkbox" id="att-select-all" onchange="attToggleSelectAll()">
+                                </th>
+                                <th>Roll Number</th>
+                                <th>Name</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="att-student-tbody"></tbody>
+                    </table>
+                </div>
+                <div id="att-empty" style="display:none;text-align:center;padding:60px 20px;color:var(--text-muted)">
+                    <div style="font-size:3rem;margin-bottom:12px">📋</div>
+                    <h3 style="margin:0 0 6px">No Students Found</h3>
+                    <p style="margin:0;font-size:0.88rem">Select a class and batch, then click Load Students.</p>
+                </div>
+            </div>
+
+            <div id="att-history-section" style="margin-top:24px;display:none">
+                <div class="panel">
+                    <div class="panel-title" style="margin-bottom:12px">📊 Today's Attendance Record</div>
+                    <div id="att-history-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Manage Classes Modal -->
+        <div class="modal-overlay" id="manageClassesModal" style="z-index:1200">
+            <div class="modal-box" style="max-width:480px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                    <h3 style="margin:0">⚙️ Manage Classes & Batches</h3>
+                    <button class="btn btn-ghost" onclick="closeModal('manageClassesModal')" style="padding:6px 10px;font-size:0.8rem">✕</button>
+                </div>
+                <div id="mc-class-list"></div>
+                <div style="margin-top:12px;display:flex;gap:8px">
+                    <input type="text" id="mc-new-class-name" placeholder="New class name..."
+                        style="flex:1;padding:9px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.84rem;outline:none">
+                    <button class="btn btn-primary" onclick="addNewClass()" style="padding:9px 16px;font-size:0.84rem">➕ Add</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Batch Modal -->
+        <div class="modal-overlay" id="addBatchModal" style="z-index:1200">
+            <div class="modal-box" style="max-width:380px">
+                <h3 id="addBatchModalTitle" style="margin-bottom:12px">➕ Add Batch</h3>
+                <input type="text" id="ab-new-batch-name" placeholder="Batch name..."
+                    style="width:100%;padding:9px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.84rem;outline:none;margin-bottom:14px">
+                <div class="modal-actions">
+                    <button class="btn btn-primary" onclick="addNewBatch()">Add</button>
+                    <button class="btn btn-ghost" onclick="closeModal('addBatchModal')">Cancel</button>
+                </div>
+            </div>
+        </div>
 
         <!-- FIX DB -->
         <!--<div class="section" id="section-migrate">
