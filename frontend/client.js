@@ -811,39 +811,57 @@
         }
 
         async function attLoadAndRenderStudents() {
+            console.log("[attendance] attLoadAndRenderStudents() called");
             const dateInput = document.getElementById("att-date");
-            if (!dateInput) { console.warn("[attendance] #att-date not found"); return; }
+            if (!dateInput) { console.warn("[attendance] #att-date not found — section not in DOM?"); return; }
             if (!dateInput.value) dateInput.value = getTodayStr();
             const date = dateInput.value;
+            console.log("[attendance] date =", date, "| API_BASE =", API_BASE);
 
             const searchEl  = document.getElementById("att-search");
             const filterEl  = document.getElementById("att-filter");
             const loadingEl = document.getElementById("att-loading");
             const emptyEl   = document.getElementById("att-empty");
+            console.log("[attendance] DOM elements — search:", !!searchEl, "filter:", !!filterEl, "loading:", !!loadingEl, "empty:", !!emptyEl);
             if (searchEl)  searchEl.value = "";
             if (filterEl)  filterEl.value = "";
             if (loadingEl) loadingEl.style.display = "block";
             if (emptyEl)   emptyEl.style.display   = "none";
 
             try {
-                const r = await fetch(`${API_BASE}/api/admin/attendance/students`, { credentials: "include", cache: "no-store" });
-                if (!r.ok) throw new Error(`Failed to load students (${r.status})`);
+                const stuUrl = `${API_BASE}/api/admin/attendance/students`;
+                console.log("[attendance] fetching students from:", stuUrl);
+                const r = await fetch(stuUrl, { credentials: "include", cache: "no-store" });
+                console.log("[attendance] students response status:", r.status);
+                if (!r.ok) {
+                    const errText = await r.text().catch(() => "");
+                    console.error("[attendance] students API error body:", errText);
+                    throw new Error(`Failed to load students (${r.status})`);
+                }
                 _attStudents = await r.json();
+                console.log("[attendance] students loaded:", _attStudents.length);
 
                 _attExistingRecords = {};
                 try {
-                    const rr = await fetch(`${API_BASE}/api/admin/attendance/records?date=${date}`, { credentials: "include", cache: "no-store" });
+                    const recUrl = `${API_BASE}/api/admin/attendance/records?date=${date}`;
+                    console.log("[attendance] fetching records from:", recUrl);
+                    const rr = await fetch(recUrl, { credentials: "include", cache: "no-store" });
+                    console.log("[attendance] records response status:", rr.status);
                     if (rr.ok) {
                         const recs = await rr.json();
+                        console.log("[attendance] existing records:", recs.length);
                         recs.forEach(rec => { _attExistingRecords[rec.roll_number] = rec.status; });
                     }
-                } catch (_) {}
+                } catch (recErr) { console.warn("[attendance] records fetch failed (non-fatal):", recErr.message); }
 
                 _attFilteredStudents = [..._attStudents];
+                console.log("[attendance] calling attRenderStudentsTable(), students count:", _attFilteredStudents.length);
                 attRenderStudentsTable();
+                console.log("[attendance] render done, loading today record");
                 await attLoadTodaysRecord();
+                console.log("[attendance] all done");
             } catch (e) {
-                console.error("[attendance] load error:", e);
+                console.error("[attendance] FATAL error:", e);
                 showErrorModal(e.message || "Failed to load students");
             } finally {
                 if (loadingEl) loadingEl.style.display = "none";
