@@ -234,6 +234,13 @@
                                     Paper Templates</div>
                                 <div style="font-size:0.76rem;color:var(--text-muted)">Templates apply headers, footers
                                     &amp; styles to generated papers</div>
+                                <div style="margin-top:8px;display:flex;align-items:center;gap:6px">
+                                    <span style="font-size:0.72rem;color:var(--text-dim);white-space:nowrap">Institute:</span>
+                                    <select id="tplInstituteFilter" onchange="onTplInstituteChange()"
+                                        style="flex:1;padding:4px 6px;font-size:0.78rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);color:var(--text);font-family:inherit;cursor:pointer">
+                                        <option value="">All Institutes</option>
+                                    </select>
+                                </div>
                             </div>
                             <div id="templateListContainer" style="max-height:220px;overflow-y:auto;padding:8px 0">
                             </div>
