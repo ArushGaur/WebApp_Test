@@ -423,6 +423,59 @@ async function initDB(TEACHER_PASSCODE, hashPasscode) {
 	await rebuildForPerInstituteRolls("registered_students");
 	await rebuildForPerInstituteRolls("student_requests");
 
+	// ── Classes & Batches for Attendance ────────────────────────────────────
+	try {
+		await db.execute(`CREATE TABLE IF NOT EXISTS classes (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			institute_id INTEGER DEFAULT NULL,
+			created_at INTEGER DEFAULT 0
+		)`);
+	} catch (_) { /* already exists */ }
+	try {
+		await db.execute(`CREATE TABLE IF NOT EXISTS batches (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			class_id INTEGER NOT NULL,
+			institute_id INTEGER DEFAULT NULL,
+			created_at INTEGER DEFAULT 0
+		)`);
+	} catch (_) { /* already exists */ }
+	try {
+		await db.execute(`CREATE TABLE IF NOT EXISTS attendance (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			class_id INTEGER NOT NULL,
+			batch_id INTEGER DEFAULT NULL,
+			roll_number TEXT NOT NULL,
+			date TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'present',
+			institute_id INTEGER DEFAULT NULL,
+			marked_by TEXT DEFAULT '',
+			marked_at INTEGER DEFAULT 0,
+			UNIQUE(roll_number, date)
+		)`);
+	} catch (_) { /* already exists */ }
+	try {
+		await db.execute(`CREATE TABLE IF NOT EXISTS notifications (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			roll_number TEXT NOT NULL,
+			message TEXT NOT NULL,
+			type TEXT DEFAULT 'attendance',
+			is_read INTEGER DEFAULT 0,
+			institute_id INTEGER DEFAULT NULL,
+			created_at INTEGER DEFAULT 0
+		)`);
+	} catch (_) { /* already exists */ }
+	// Safe migrations for registered_students: add batch_id
+	try { await db.execute("ALTER TABLE registered_students ADD COLUMN batch_id INTEGER DEFAULT NULL"); } catch (_) { }
+
+	// Institute-scoped indexes for new tables
+	for (const tbl of ["classes", "batches", "attendance", "notifications"]) {
+		try { await db.execute(`CREATE INDEX IF NOT EXISTS idx_${tbl}_institute ON ${tbl}(institute_id)`); } catch (_) { }
+	}
+	try { await db.execute("CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(date)"); } catch (_) { }
+	try { await db.execute("CREATE INDEX IF NOT EXISTS idx_notifications_roll ON notifications(roll_number, is_read)"); } catch (_) { }
+
 	console.log("Turso DB initialized");
 	return defaultInstituteId;
 }
