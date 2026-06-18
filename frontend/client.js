@@ -602,6 +602,19 @@
         /* ══════════════════════════════════════════════════════════════════
            NAVIGATION
         ══════════════════════════════════════════════════════════════════ */
+        function navAttendance() {
+            document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+            document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+            const sec = document.getElementById("section-attendance");
+            const nav = document.getElementById("nav-attendance");
+            if (sec) sec.classList.add("active");
+            if (nav) nav.classList.add("active");
+            const dateInput = document.getElementById("att-date");
+            if (dateInput && !dateInput.value) dateInput.value = getTodayStr();
+            loadAttendanceClasses();
+            history.pushState({ type: "section", name: "attendance" }, "", "");
+        }
+
         function showSection(name, push = true) {
             document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
             document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
