@@ -190,6 +190,9 @@
                     <span class="nav-icon">📊</span> Test Analysis
                     <span class="nav-badge" id="navTestsBadge" style="display:none">0</span>
                 </div>
+                <div class="sidebar-nav-item" id="navAttendance" onclick="navAttendance(); closeSidebar()">
+                    <span class="nav-icon">📅</span> Attendance
+                </div>
                 <div class="sidebar-nav-item" id="navEdit" style="display:none" onclick="showEditProfile()">
                     <span class="nav-icon">✏️</span> Edit Profile
                 </div>
@@ -392,6 +395,9 @@
                         </div>
                     </div>
 
+                    <!-- Notifications banner -->
+                    <div id="notificationBanner" style="display:none;margin-bottom:16px"></div>
+
                     <!-- Stats -->
                     <div class="stats-grid">
                         <div class="stat-tile c1">
@@ -499,6 +505,45 @@
 
 
                 </div>
+                <!-- ══ SCREEN: Attendance ══ -->
+                <div id="screen-attendance" class="screen hidden">
+                    <div class="page-header">
+                        <div class="page-greeting">📅 Attendance</div>
+                        <div class="page-title">My Attendance Record</div>
+                        <div class="page-sub">View your attendance marked by your teacher — day by day.</div>
+                    </div>
+
+                    <div id="notificationBannerAtt" style="display:none;margin-bottom:16px"></div>
+
+                    <div class="att-calendar-controls">
+                        <button class="btn-ghost" onclick="attCalendarPrevMonth()">← <span class="att-hide-mobile">Previous</span></button>
+                        <div class="att-calendar-month-label" id="attCalendarLabel">January 2026</div>
+                        <button class="btn-ghost" onclick="attCalendarNextMonth()"><span class="att-hide-mobile">Next</span> →</button>
+                    </div>
+
+                    <div class="att-calendar-legend">
+                        <span><span class="att-dot att-dot-present"></span> Present</span>
+                        <span><span class="att-dot att-dot-absent"></span> Absent</span>
+                        <span><span class="att-dot att-dot-late"></span> Late</span>
+                        <span><span class="att-dot att-dot-leave"></span> Leave</span>
+                    </div>
+
+                    <div id="attCalendarGrid" class="att-calendar-grid"></div>
+
+                    <div class="att-summary" id="attSummary">
+                        <div class="att-summary-stat"><span class="att-summary-num" id="attSumPresent">0</span> Present</div>
+                        <div class="att-summary-stat"><span class="att-summary-num" id="attSumAbsent">0</span> Absent</div>
+                        <div class="att-summary-stat"><span class="att-summary-num" id="attSumLate">0</span> Late</div>
+                        <div class="att-summary-stat"><span class="att-summary-num" id="attSumLeave">0</span> Leave</div>
+                    </div>
+
+                    <div id="attCalendarLoading" style="text-align:center;padding:40px;color:var(--text-dim);display:none">Loading attendance data…</div>
+                    <div id="attCalendarEmpty" style="text-align:center;padding:40px;color:var(--text-dim);display:none">
+                        <div style="font-size:2.5rem;margin-bottom:8px">📅</div>
+                        <div style="font-size:0.95rem">No attendance records for this month.</div>
+                    </div>
+                </div>
+
                 <!-- ══ SCREEN: Test Analysis ══ -->
                 <div id="screen-test-analysis" class="screen hidden">
                     
