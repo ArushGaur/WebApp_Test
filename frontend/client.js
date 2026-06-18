@@ -812,17 +812,22 @@
 
         async function attLoadAndRenderStudents() {
             const dateInput = document.getElementById("att-date");
+            if (!dateInput) { console.warn("[attendance] #att-date not found"); return; }
             if (!dateInput.value) dateInput.value = getTodayStr();
             const date = dateInput.value;
 
-            document.getElementById("att-search").value = "";
-            document.getElementById("att-filter").value = "";
-            document.getElementById("att-loading").style.display = "block";
-            document.getElementById("att-empty").style.display = "none";
+            const searchEl  = document.getElementById("att-search");
+            const filterEl  = document.getElementById("att-filter");
+            const loadingEl = document.getElementById("att-loading");
+            const emptyEl   = document.getElementById("att-empty");
+            if (searchEl)  searchEl.value = "";
+            if (filterEl)  filterEl.value = "";
+            if (loadingEl) loadingEl.style.display = "block";
+            if (emptyEl)   emptyEl.style.display   = "none";
 
             try {
                 const r = await fetch(`${API_BASE}/api/admin/attendance/students`, { credentials: "include", cache: "no-store" });
-                if (!r.ok) throw new Error("Failed to load students");
+                if (!r.ok) throw new Error(`Failed to load students (${r.status})`);
                 _attStudents = await r.json();
 
                 _attExistingRecords = {};
@@ -838,15 +843,17 @@
                 attRenderStudentsTable();
                 await attLoadTodaysRecord();
             } catch (e) {
+                console.error("[attendance] load error:", e);
                 showErrorModal(e.message || "Failed to load students");
             } finally {
-                document.getElementById("att-loading").style.display = "none";
+                if (loadingEl) loadingEl.style.display = "none";
             }
         }
 
         function attFilterStudents(query) {
-            const filterVal = document.getElementById("att-filter").value;
-            const q = query.toLowerCase().trim();
+            const filterEl = document.getElementById("att-filter");
+            const filterVal = filterEl ? filterEl.value : "";
+            const q = (query || "").toLowerCase().trim();
             _attFilteredStudents = _attStudents.filter(s => {
                 if (q && !(s.name && s.name.toLowerCase().includes(q))) return false;
                 if (!filterVal) return true;
@@ -863,15 +870,15 @@
             if (!tbody) return;
 
             if (!_attFilteredStudents.length) {
-                empty.style.display = "block";
+                if (empty) empty.style.display = "block";
                 tbody.innerHTML = "";
-                document.getElementById("att-stat-total").textContent = "0";
-                document.getElementById("att-stat-selected").textContent = "0";
-                document.getElementById("att-stat-present").textContent = "0";
+                const t = document.getElementById("att-stat-total");    if (t) t.textContent = "0";
+                const s = document.getElementById("att-stat-selected"); if (s) s.textContent = "0";
+                const p = document.getElementById("att-stat-present");  if (p) p.textContent = "0";
                 return;
             }
 
-            empty.style.display = "none";
+            if (empty) empty.style.display = "none";
 
             tbody.innerHTML = _attFilteredStudents.map(s => {
                 const existingStatus = _attExistingRecords[s.roll_number] || "";
@@ -880,42 +887,55 @@
                     : '<span style="color:var(--text-muted);font-size:0.78rem">Not marked</span>';
                 return `<tr>
                     <td><input type="checkbox" class="att-student-cb" data-roll="${s.roll_number}" ${existingStatus ? 'checked' : ''}></td>
-                    <td>${s.name || '—'}</td>
+                    <td>${s.name || s.roll_number || '—'}</td>
                     <td>${badge}</td>
                 </tr>`;
             }).join("");
 
-            document.getElementById("att-stat-total").textContent = _attFilteredStudents.length;
-            const sel = document.querySelectorAll(".att-student-cb:checked").length;
-            document.getElementById("att-stat-selected").textContent = sel;
+            const totalEl = document.getElementById("att-stat-total");
+            if (totalEl) totalEl.textContent = _attFilteredStudents.length;
+            const sel = tbody.querySelectorAll(".att-student-cb:checked").length;
+            const selEl = document.getElementById("att-stat-selected");
+            if (selEl) selEl.textContent = sel;
             const presentCount = _attFilteredStudents.filter(s => {
                 const status = _attExistingRecords[s.roll_number] || "";
                 return status === "present";
             }).length;
-            document.getElementById("att-stat-present").textContent = presentCount;
+            const presEl = document.getElementById("att-stat-present");
+            if (presEl) presEl.textContent = presentCount;
             attUpdateSelectAll();
         }
 
         function attToggleSelectAll() {
-            const checked = document.getElementById("att-select-all").checked;
-            document.querySelectorAll(".att-student-cb").forEach(cb => cb.checked = checked);
+            const all   = document.getElementById("att-select-all");
+            const tbody = document.getElementById("att-student-tbody");
+            if (!all || !tbody) return;
+            const checked = all.checked;
+            tbody.querySelectorAll(".att-student-cb").forEach(cb => cb.checked = checked);
             const sel = checked ? _attFilteredStudents.length : 0;
-            document.getElementById("att-stat-selected").textContent = sel;
+            const selEl = document.getElementById("att-stat-selected");
+            if (selEl) selEl.textContent = sel;
         }
 
         function attUpdateSelectAll() {
-            const cbs = document.querySelectorAll(".att-student-cb");
-            const all = document.getElementById("att-select-all");
-            if (!cbs.length || !all) return;
-            all.checked = [...cbs].every(cb => cb.checked);
-            all.indeterminate = [...cbs].some(cb => cb.checked) && !all.checked;
-            const sel = [...cbs].filter(cb => cb.checked).length;
-            document.getElementById("att-stat-selected").textContent = sel;
+            const tbody = document.getElementById("att-student-tbody");
+            const all   = document.getElementById("att-select-all");
+            if (!all) return;
+            const cbs = tbody ? [...tbody.querySelectorAll(".att-student-cb")] : [];
+            if (!cbs.length) { all.checked = false; all.indeterminate = false; return; }
+            all.checked = cbs.every(cb => cb.checked);
+            all.indeterminate = cbs.some(cb => cb.checked) && !all.checked;
+            const sel = cbs.filter(cb => cb.checked).length;
+            const selEl = document.getElementById("att-stat-selected");
+            if (selEl) selEl.textContent = sel;
         }
 
         async function attMarkAttendance() {
+            const tbody = document.getElementById("att-student-tbody");
             const selected = [];
-            document.querySelectorAll(".att-student-cb:checked").forEach(cb => selected.push(cb.dataset.roll));
+            if (tbody) {
+                tbody.querySelectorAll(".att-student-cb:checked").forEach(cb => selected.push(cb.dataset.roll));
+            }
             if (!selected.length) { showErrorModal("Please select at least one student."); return; }
             const date = document.getElementById("att-date")?.value || getTodayStr();
             const status = document.getElementById("att-mark-status")?.value || "present";
