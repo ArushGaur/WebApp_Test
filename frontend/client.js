@@ -1126,15 +1126,19 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             _attToggleFlatUI(false);
 
             if (!classes.length) {
-                wrap.innerHTML = `<div style="text-align:center;padding:60px 20px;color:var(--text-muted)">
-                    <div style="font-size:3rem;margin-bottom:12px">📋</div>
-                    <h3 style="margin:0 0 6px">No Students Found</h3>
-                    <p style="margin:0;font-size:0.88rem">Add students to the portal first.</p>
-                </div>`;
+                wrap.innerHTML = `
+                    ${_attDateWidgetHtml()}
+                    <div style="text-align:center;padding:60px 20px;color:var(--text-muted)">
+                        <div style="font-size:3rem;margin-bottom:12px">📋</div>
+                        <h3 style="margin:0 0 6px">No Students Found</h3>
+                        <p style="margin:0;font-size:0.88rem">Add students to the portal first.</p>
+                    </div>`;
+                _attSyncDateLabel();
                 return;
             }
 
             wrap.innerHTML = `
+                ${_attDateWidgetHtml()}
                 <div style="font-size:0.82rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:14px">Class Cards</div>
                 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px">
                     ${classes.map((cls, i) => {
@@ -1152,6 +1156,31 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                         </div>`;
                     }).join("")}
                 </div>`;
+            _attSyncDateLabel();
+        }
+
+        // ── shared markup for the date-picker widget shown above the class cards ──
+        function _attDateWidgetHtml() {
+            return `<div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+                <div class="att-marking-date" id="att-date-wrap" onclick="attToggleCalendar(event)" style="position:relative;cursor:pointer">
+                    <div id="att-date-display"
+                        style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.84rem;font-family:'Outfit',sans-serif;user-select:none;min-width:128px">
+                        <span id="att-date-label">--/--/----</span>
+                        <span style="margin-left:auto;opacity:0.7">📅</span>
+                    </div>
+                    <div id="att-cal-popup" style="display:none;position:fixed;z-index:200;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,0.18);padding:14px;width:260px;max-width:calc(100vw - 24px)"></div>
+                </div>
+            </div>`;
+        }
+
+        // ── keep the visible date label in sync with the hidden #att-date value ──
+        function _attSyncDateLabel() {
+            const hidden = document.getElementById("att-date");
+            const label  = document.getElementById("att-date-label");
+            if (hidden && hidden.value && label) {
+                const [y, m, d] = hidden.value.split("-");
+                label.textContent = `${d}-${m}-${y}`;
+            }
         }
 
         // ── LEVEL 2 : Section Cards ────────────────────────────────────────
@@ -1209,7 +1238,12 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             const students  = byClass[className] || [];
             const bySection = _attGroupBySection(students);
             _attFilteredStudents = bySection[section] || [];
-            _attSelectedRolls = new Set();
+            // Pre-select whoever is already marked present for the current date
+            _attSelectedRolls = new Set(
+                _attFilteredStudents
+                    .filter(s => _attExistingRecords[s.roll_number] === "present")
+                    .map(s => s.roll_number)
+            );
 
             _attToggleFlatUI(true);
 
@@ -1218,12 +1252,9 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
 
             wrap.innerHTML = `
                 <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
-                    <button onclick="_attShowClassCards()"
-                        style="padding:7px 14px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);cursor:pointer;font-size:0.83rem;font-weight:600;font-family:inherit"
-                        onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">← Classes</button>
                     <button onclick="_attShowSectionCards('${className.replace(/'/g,"\'")}' )"
                         style="padding:7px 14px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);cursor:pointer;font-size:0.83rem;font-weight:600;font-family:inherit"
-                        onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">← ${className}</button>
+                        onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">← Back</button>
                     <span style="font-size:0.84rem;color:var(--text-muted);font-weight:600">Section ${section} · ${_attFilteredStudents.length} Students</span>
                 </div>`;
 
@@ -1251,6 +1282,10 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             tbody.innerHTML = _attFilteredStudents.map(s => {
                 const roll    = s.roll_number || "";
                 const selected = _attSelectedRolls.has(roll);
+                const status  = _attExistingRecords[roll] || "";
+                let badge = `<span style="color:var(--text-muted);font-size:0.78rem">Not marked</span>`;
+                if (status === "present") badge = `<span class="badge-pill ok">Present</span>`;
+                else if (status === "absent") badge = `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;background:rgba(239,68,68,0.12);color:#ef4444;font-size:0.76rem;font-weight:700">Absent</span>`;
                 let rowBg = selected ? "background:rgba(86,169,255,0.14);box-shadow:inset 3px 0 0 var(--accent)" : "";
                 return `<tr onclick="attToggleSelect('${roll.replace(/'/g,"\\'")}')"
                         style="cursor:pointer;${rowBg}">
@@ -1258,6 +1293,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                         <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:5px;border:1.5px solid ${selected ? "var(--accent)" : "var(--border)"};background:${selected ? "var(--accent)" : "transparent"};color:#fff;font-size:0.72rem;flex-shrink:0">${selected ? "✓" : ""}</span>
                         ${s.name || roll || "—"}
                     </td>
+                    <td>${badge}</td>
                 </tr>`;
             }).join("");
 
@@ -1342,9 +1378,9 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                 await markGroup(absentRolls, "absent");
 
                 presentRolls.forEach(roll => { _attExistingRecords[roll] = "present"; });
-                absentRolls.forEach(roll => { delete _attExistingRecords[roll]; });
+                absentRolls.forEach(roll => { _attExistingRecords[roll] = "absent"; });
 
-                _attSelectedRolls = new Set();
+                _attSelectedRolls = new Set(presentRolls);
                 _attRenderStudentTable();
                 attShowSuccessPopup(presentRolls.length, absentRolls.length);
             } catch(e) {
