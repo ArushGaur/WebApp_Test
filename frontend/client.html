@@ -37,6 +37,19 @@
     <div id="mobileDrawerOverlay" onclick="closeMobileDrawer()"></div>
 
     <!-- MOBILE DRAWER -->
+    <style>
+        #mobileDrawer .drawer-item {
+            font-size: 1.05rem !important;
+            font-weight: 600 !important;
+            padding: 16px 18px !important;
+            gap: 14px !important;
+            display: flex !important;
+            align-items: center !important;
+        }
+        #mobileDrawer .drawer-item span:first-child {
+            font-size: 1.25rem !important;
+        }
+    </style>
     <div id="mobileDrawer" style="display:flex;flex-direction:column">
         <div id="mobileDrawerNavGroup" style="display:flex;flex-direction:column">
             <div class="drawer-item" id="drawer-manageQuestions" onclick="drawerNav('manageQuestions')"><span>📋</span>
