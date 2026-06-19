@@ -37,14 +37,18 @@
     <div id="mobileDrawerOverlay" onclick="closeMobileDrawer()"></div>
 
     <!-- MOBILE DRAWER -->
-    <div id="mobileDrawer">
-        <div class="drawer-item" id="drawer-manageQuestions" onclick="drawerNav('manageQuestions')"><span>📋</span>
-            Question Library</div>
-        <div class="drawer-item" id="drawer-students" onclick="drawerNav('students')"><span>👥</span> Students</div>
-        <div class="drawer-item" id="drawer-attendance" onclick="drawerNav('attendance')"><span>📋</span> Attendance</div>
-        <div class="drawer-item" onclick="toggleTheme(); closeMobileDrawer()"><span id="drawerThemeIcon">☀️</span><span
-                id="drawerThemeLabel">Light Mode</span></div>
-        <div class="drawer-item danger" onclick="confirmLogout()"><span>🚪</span> Logout</div>
+    <div id="mobileDrawer" style="display:flex;flex-direction:column">
+        <div id="mobileDrawerNavGroup" style="display:flex;flex-direction:column">
+            <div class="drawer-item" id="drawer-manageQuestions" onclick="drawerNav('manageQuestions')"><span>📋</span>
+                Question Library</div>
+            <div class="drawer-item" id="drawer-students" onclick="drawerNav('students')"><span>👥</span> Students</div>
+            <div class="drawer-item" id="drawer-attendance" onclick="drawerNav('attendance')"><span>📋</span> Attendance</div>
+        </div>
+        <div id="mobileDrawerBottomGroup" style="display:flex;flex-direction:column;margin-top:auto">
+            <div class="drawer-item" onclick="toggleTheme(); closeMobileDrawer()"><span id="drawerThemeIcon">☀️</span><span
+                    id="drawerThemeLabel">Light Mode</span></div>
+            <div class="drawer-item danger" onclick="confirmLogout()"><span>🚪</span> Logout</div>
+        </div>
     </div>
 
     <!-- ════════════════════════════════════════════════════════════════════
@@ -1475,6 +1479,7 @@
             .att-empty-state p { margin:0; font-size:0.86rem; }
 
             /* student list */
+            .att-table-wrap { overflow-x: visible !important; }
             .att-table-wrap table { border-collapse:separate; border-spacing:0; width:100%; table-layout:fixed; }
             .att-table-wrap thead th:first-child { width:auto; }
             .att-table-wrap thead th:last-child { width:100px; }
