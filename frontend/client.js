@@ -1109,6 +1109,23 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             return map;
         }
 
+        // ── small ring showing present/total proportion on a card ───────────
+        function _attRingSvg(present, total, color) {
+            const pct = total > 0 ? present / total : 0;
+            const r = 17, c = 2 * Math.PI * r;
+            const dash = c * pct;
+            return `<svg class="att-card-ring" width="44" height="44" viewBox="0 0 44 44">
+                <circle cx="22" cy="22" r="${r}" fill="none" stroke="var(--border)" stroke-width="4"/>
+                <circle cx="22" cy="22" r="${r}" fill="none" stroke="${color}" stroke-width="4"
+                    stroke-dasharray="${dash} ${c - dash}" stroke-linecap="round"
+                    transform="rotate(-90 22 22)"/>
+                <text x="22" y="26" text-anchor="middle" font-size="11" font-weight="800" fill="var(--text)" font-family="'Outfit',sans-serif">${present}/${total}</text>
+            </svg>`;
+        }
+
+        const ATT_CAP_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 3l10 5-10 5L2 8l10-5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M6 11v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>`;
+        const ATT_FOLDER_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>`;
+
         // ── LEVEL 1 : Class Cards ──────────────────────────────────────────
         function _attShowClassCards() {
             _attView = "classes";
@@ -1128,10 +1145,10 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             if (!classes.length) {
                 wrap.innerHTML = `
                     ${_attDateWidgetHtml()}
-                    <div style="text-align:center;padding:60px 20px;color:var(--text-muted)">
-                        <div style="font-size:3rem;margin-bottom:12px">📋</div>
-                        <h3 style="margin:0 0 6px">No Students Found</h3>
-                        <p style="margin:0;font-size:0.88rem">Add students to the portal first.</p>
+                    <div class="att-empty-state">
+                        <div class="att-empty-icon">${ATT_CAP_ICON}</div>
+                        <h3>No students found</h3>
+                        <p>Add students to the portal first.</p>
                     </div>`;
                 _attSyncDateLabel();
                 return;
@@ -1139,20 +1156,26 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
 
             wrap.innerHTML = `
                 ${_attDateWidgetHtml()}
-                <div style="font-size:0.82rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:14px">Class Cards</div>
-                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px">
+                <div class="att-eyebrow">Class Cards <span class="att-eyebrow-count">${classes.length}</span></div>
+                <div class="att-card-grid">
                     ${classes.map((cls, i) => {
                         const studs   = byClass[cls];
                         const color   = colors[i % colors.length];
                         const present = studs.filter(s => _attExistingRecords[s.roll_number] === "present").length;
-                        return `<div onclick="_attShowSectionCards('${cls.replace(/'/g,"\'")}')"
-                            style="background:var(--bg-card);border:1.5px solid var(--border);border-top:3px solid ${color};border-radius:14px;padding:24px 18px;cursor:pointer;text-align:center;transition:all 0.18s;box-shadow:0 2px 8px rgba(0,0,0,0.06)"
-                            onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,0.12)'"
-                            onmouseout="this.style.transform='';this.style.boxShadow='0 2px 8px rgba(0,0,0,0.06)'">
-                            <div style="font-size:2.2rem;margin-bottom:10px">🎓</div>
-                            <div style="font-weight:800;font-size:1rem;color:var(--text);margin-bottom:4px">${cls}</div>
-                            <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:6px">${studs.length} Student${studs.length !== 1 ? "s" : ""}</div>
-                            ${present ? `<div style="font-size:0.75rem;color:#10b981;font-weight:700">✅ ${present} Present</div>` : ""}
+                        const marked  = studs.filter(s => _attExistingRecords[s.roll_number]).length;
+                        let statusHtml = `<span class="att-card-status none">Not marked yet</span>`;
+                        if (marked > 0 && marked === studs.length) statusHtml = `<span class="att-card-status done">All marked</span>`;
+                        else if (marked > 0) statusHtml = `<span class="att-card-status partial">${marked}/${studs.length} marked</span>`;
+                        return `<div class="att-card" style="--card-color:${color}" tabindex="0" role="button"
+                            onclick="_attShowSectionCards('${cls.replace(/'/g,"\\'")}')"
+                            onkeydown="if(event.key==='Enter')this.click()">
+                            <div class="att-card-top">
+                                <div class="att-card-icon">${ATT_CAP_ICON}</div>
+                                ${marked > 0 ? _attRingSvg(present, studs.length, color) : ""}
+                            </div>
+                            <div class="att-card-title">${cls}</div>
+                            <div class="att-card-sub">${studs.length} Student${studs.length !== 1 ? "s" : ""}</div>
+                            ${statusHtml}
                         </div>`;
                     }).join("")}
                 </div>`;
@@ -1161,14 +1184,14 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
 
         // ── shared markup for the date-picker widget shown above the class cards ──
         function _attDateWidgetHtml() {
-            return `<div style="display:flex;justify-content:flex-end;margin-bottom:14px">
-                <div class="att-marking-date" id="att-date-wrap" onclick="attToggleCalendar(event)" style="position:relative;cursor:pointer">
-                    <div id="att-date-display"
-                        style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.84rem;font-family:'Outfit',sans-serif;user-select:none;min-width:128px">
+            return `<div style="display:flex;justify-content:flex-end;margin-bottom:18px">
+                <div class="att-marking-date" id="att-date-wrap" onclick="attToggleCalendar(event)" style="position:relative">
+                    <div id="att-date-display" class="att-date-pill">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="16" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
                         <span id="att-date-label">--/--/----</span>
-                        <span style="margin-left:auto;opacity:0.7">📅</span>
+                        <svg class="att-date-cal-icon" width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
                     </div>
-                    <div id="att-cal-popup" style="display:none;position:fixed;z-index:200;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,0.18);padding:14px;width:260px;max-width:calc(100vw - 24px)"></div>
+                    <div id="att-cal-popup" style="display:none;position:fixed;z-index:200;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;box-shadow:0 16px 40px rgba(0,0,0,0.18);padding:14px;width:260px;max-width:calc(100vw - 24px)"></div>
                 </div>
             </div>`;
         }
@@ -1201,25 +1224,32 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             _attToggleFlatUI(false);
 
             wrap.innerHTML = `
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
-                    <button onclick="_attShowClassCards()"
-                        style="padding:7px 14px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);cursor:pointer;font-size:0.83rem;font-weight:600;font-family:inherit;transition:all 0.15s"
-                        onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">← Back To Classes</button>
-                    <span style="font-size:0.84rem;color:var(--text-muted);font-weight:600">${className} · Sections</span>
+                <div class="att-breadcrumb">
+                    <button class="att-back-btn" onclick="_attShowClassCards()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        Classes
+                    </button>
+                    <span class="att-crumb-trail"><span class="att-crumb-sep">/</span><span class="att-crumb-current">${className}</span><span class="att-crumb-sep">·</span>${sections.length} Section${sections.length !== 1 ? "s" : ""}</span>
                 </div>
-                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px">
+                <div class="att-card-grid">
                     ${sections.map((sec, i) => {
                         const studs   = bySection[sec];
                         const color   = colors[i % colors.length];
                         const present = studs.filter(s => _attExistingRecords[s.roll_number] === "present").length;
-                        return `<div onclick="_attShowStudentList('${className.replace(/'/g,"\'")}','${sec.replace(/'/g,"\'")}' )"
-                            style="background:var(--bg-card);border:1.5px solid var(--border);border-top:3px solid ${color};border-radius:14px;padding:24px 18px;cursor:pointer;text-align:center;transition:all 0.18s;box-shadow:0 2px 8px rgba(0,0,0,0.06)"
-                            onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,0.12)'"
-                            onmouseout="this.style.transform='';this.style.boxShadow='0 2px 8px rgba(0,0,0,0.06)'">
-                            <div style="font-size:2.2rem;margin-bottom:10px">📁</div>
-                            <div style="font-weight:800;font-size:1rem;color:var(--text);margin-bottom:4px">Section ${sec}</div>
-                            <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:6px">${studs.length} Student${studs.length !== 1 ? "s" : ""}</div>
-                            ${present ? `<div style="font-size:0.75rem;color:#10b981;font-weight:700">✅ ${present} Present</div>` : ""}
+                        const marked  = studs.filter(s => _attExistingRecords[s.roll_number]).length;
+                        let statusHtml = `<span class="att-card-status none">Not marked yet</span>`;
+                        if (marked > 0 && marked === studs.length) statusHtml = `<span class="att-card-status done">All marked</span>`;
+                        else if (marked > 0) statusHtml = `<span class="att-card-status partial">${marked}/${studs.length} marked</span>`;
+                        return `<div class="att-card" style="--card-color:${color}" tabindex="0" role="button"
+                            onclick="_attShowStudentList('${className.replace(/'/g,"\\'")}','${sec.replace(/'/g,"\\'")}' )"
+                            onkeydown="if(event.key==='Enter')this.click()">
+                            <div class="att-card-top">
+                                <div class="att-card-icon">${ATT_FOLDER_ICON}</div>
+                                ${marked > 0 ? _attRingSvg(present, studs.length, color) : ""}
+                            </div>
+                            <div class="att-card-title">Section ${sec}</div>
+                            <div class="att-card-sub">${studs.length} Student${studs.length !== 1 ? "s" : ""}</div>
+                            ${statusHtml}
                         </div>`;
                     }).join("")}
                 </div>`;
@@ -1251,14 +1281,35 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             _attRefreshStats();
 
             wrap.innerHTML = `
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
-                    <button onclick="_attShowSectionCards('${className.replace(/'/g,"\'")}' )"
-                        style="padding:7px 14px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);cursor:pointer;font-size:0.83rem;font-weight:600;font-family:inherit"
-                        onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">← Back</button>
-                    <span style="font-size:0.84rem;color:var(--text-muted);font-weight:600">Section ${section} · ${_attFilteredStudents.length} Students</span>
+                <div class="att-breadcrumb">
+                    <button class="att-back-btn" onclick="_attShowSectionCards('${className.replace(/'/g,"\\'")}' )">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        Back
+                    </button>
+                    <span class="att-crumb-trail"><span class="att-crumb-sep">/</span><span class="att-crumb-current">${className} · Section ${section}</span><span class="att-crumb-sep">·</span>${_attFilteredStudents.length} Student${_attFilteredStudents.length !== 1 ? "s" : ""}</span>
+                </div>
+                <div class="att-list-toolbar">
+                    <div class="att-list-actions">
+                        <button class="att-link-btn" onclick="attSelectAll()">Select all</button>
+                        <button class="att-link-btn" onclick="attClearSelection()">Clear</button>
+                    </div>
                 </div>`;
 
             _attRenderStudentTable();
+        }
+
+        function _attInitials(name) {
+            const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+            if (!parts.length) return "?";
+            if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+            return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+        }
+
+        const ATT_AVATAR_COLORS = ["#6366f1","#0ea5e9","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6"];
+        function _attAvatarColor(seed) {
+            let h = 0;
+            for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+            return ATT_AVATAR_COLORS[h % ATT_AVATAR_COLORS.length];
         }
 
         function _attRenderStudentTable() {
@@ -1283,15 +1334,21 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                 const roll    = s.roll_number || "";
                 const selected = _attSelectedRolls.has(roll);
                 const status  = _attExistingRecords[roll] || "";
-                let badge = `<span style="color:var(--text-muted);font-size:0.78rem">Not marked</span>`;
-                if (status === "present") badge = `<span class="badge-pill ok">Present</span>`;
-                else if (status === "absent") badge = `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;background:rgba(239,68,68,0.12);color:#ef4444;font-size:0.76rem;font-weight:700">Absent</span>`;
-                let rowBg = selected ? "background:rgba(86,169,255,0.14);box-shadow:inset 3px 0 0 var(--accent)" : "";
-                return `<tr onclick="attToggleSelect('${roll.replace(/'/g,"\\'")}')"
-                        style="cursor:pointer;${rowBg}">
-                    <td style="display:flex;align-items:center;gap:10px">
-                        <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:5px;border:1.5px solid ${selected ? "var(--accent)" : "var(--border)"};background:${selected ? "var(--accent)" : "transparent"};color:#fff;font-size:0.72rem;flex-shrink:0">${selected ? "✓" : ""}</span>
-                        ${s.name || roll || "—"}
+                let badge = `<span class="att-status-pill unmarked">Not marked</span>`;
+                if (status === "present") badge = `<span class="att-status-pill present">● Present</span>`;
+                else if (status === "absent") badge = `<span class="att-status-pill absent">● Absent</span>`;
+                const name = s.name || roll || "—";
+                const avatarColor = _attAvatarColor(roll || name);
+                return `<tr class="att-row" onclick="attToggleSelect('${roll.replace(/'/g,"\\'")}')"
+                        style="${selected ? "background:color-mix(in srgb, var(--accent) 10%, transparent)" : ""}">
+                    <td>
+                        <div class="att-row-name">
+                            <span class="att-checkbox ${selected ? "checked" : ""}">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            </span>
+                            <span class="att-avatar" style="--avatar-color:${avatarColor}">${_attInitials(name)}</span>
+                            <span>${name}</span>
+                        </div>
                     </td>
                     <td>${badge}</td>
                 </tr>`;
@@ -1301,7 +1358,13 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
         }
 
         function _attRefreshStats() {
-            // Stats bar UI has been removed; selection count is tracked internally only.
+            const presentEl = document.getElementById("att-bulk-present-count");
+            const absentEl  = document.getElementById("att-bulk-absent-count");
+            if (!presentEl || !absentEl) return;
+            const total = _attFilteredStudents.length;
+            const present = _attFilteredStudents.filter(s => s.roll_number && _attSelectedRolls.has(s.roll_number)).length;
+            presentEl.textContent = present;
+            absentEl.textContent = Math.max(total - present, 0);
         }
 
         // ── selection: tapping a row toggles whether it's selected (no API call yet) ──
@@ -1346,9 +1409,11 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
 
             const btn     = document.getElementById("att-mark-btn");
             const spinner = document.getElementById("att-mark-btn-spinner");
+            const icon    = document.getElementById("att-mark-btn-icon");
             const label   = document.getElementById("att-mark-btn-label");
             if (btn) btn.disabled = true;
             if (spinner) spinner.style.display = "inline-block";
+            if (icon) icon.style.display = "none";
             if (label) label.textContent = "Marking attendance…";
 
             try {
@@ -1388,7 +1453,8 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             } finally {
                 if (btn) btn.disabled = false;
                 if (spinner) spinner.style.display = "none";
-                if (label) label.textContent = "✅ Mark Attendance";
+                if (icon) icon.style.display = "";
+                if (label) label.textContent = "Mark Attendance";
             }
         }
 
