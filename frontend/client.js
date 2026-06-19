@@ -834,6 +834,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
         let _attStudents = [];
         let _attFilteredStudents = [];
         let _attExistingRecords = {};
+        let _attSelectedRolls = new Set();
         let _attView = "classes"; // "classes" | "sections" | "list"
         let _attCurrentClass = null;
         let _attCurrentSection = null;
@@ -1208,6 +1209,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             const students  = byClass[className] || [];
             const bySection = _attGroupBySection(students);
             _attFilteredStudents = bySection[section] || [];
+            _attSelectedRolls = new Set();
 
             _attToggleFlatUI(true);
 
@@ -1237,19 +1239,32 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             if (!_attFilteredStudents.length) {
                 if (emptyEl) emptyEl.style.display = "block";
                 tbody.innerHTML = "";
+                const bulkBar = document.getElementById("att-bulk-bar");
+                if (bulkBar) bulkBar.style.display = "none";
                 return;
             }
             if (emptyEl) emptyEl.style.display = "none";
 
+            const bulkBar = document.getElementById("att-bulk-bar");
+            if (bulkBar) bulkBar.style.display = "flex";
+
             tbody.innerHTML = _attFilteredStudents.map(s => {
-                const status  = _attExistingRecords[s.roll_number] || "";
+                const roll    = s.roll_number || "";
+                const status  = _attExistingRecords[roll] || "";
                 const present = status === "present";
+                const selected = _attSelectedRolls.has(roll);
                 const badge   = present
                     ? `<span class="badge-pill ok">Present</span>`
-                    : `<span style="color:var(--text-muted);font-size:0.78rem">Tap to mark</span>`;
-                return `<tr onclick="attToggleStudentPresent('${(s.roll_number||"").replace(/'/g,"\\'")}')"
-                        style="cursor:pointer${present ? ";background:rgba(16,185,129,0.06)" : ""}">
-                    <td>${s.name || s.roll_number || "—"}</td>
+                    : `<span style="color:var(--text-muted);font-size:0.78rem">Not marked</span>`;
+                let rowBg = "";
+                if (selected) rowBg = "background:rgba(86,169,255,0.14);box-shadow:inset 3px 0 0 var(--accent)";
+                else if (present) rowBg = "background:rgba(16,185,129,0.06)";
+                return `<tr onclick="attToggleSelect('${roll.replace(/'/g,"\\'")}')"
+                        style="cursor:pointer;${rowBg}">
+                    <td style="display:flex;align-items:center;gap:10px">
+                        <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:5px;border:1.5px solid ${selected ? "var(--accent)" : "var(--border)"};background:${selected ? "var(--accent)" : "transparent"};color:#fff;font-size:0.72rem;flex-shrink:0">${selected ? "✓" : ""}</span>
+                        ${s.name || roll || "—"}
+                    </td>
                     <td>${badge}</td>
                 </tr>`;
             }).join("");
@@ -1261,39 +1276,42 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             const pres = _attFilteredStudents.filter(s => _attExistingRecords[s.roll_number] === "present").length;
             const t = document.getElementById("att-stat-total");   if (t) t.textContent = _attFilteredStudents.length;
             const p = document.getElementById("att-stat-present"); if (p) p.textContent = pres;
+
+            const selCount = _attSelectedRolls.size;
+            const selWrap  = document.getElementById("att-stat-selected-wrap");
+            const selEl    = document.getElementById("att-stat-selected");
+            if (selEl) selEl.textContent = selCount;
+            if (selWrap) selWrap.style.display = selCount ? "inline-flex" : "none";
         }
 
-        // ── show/hide flat table UI ────────────────────────────────────────
-        function _attToggleFlatUI(show) {
-            const tableWrap = document.getElementById("att-student-table");
-            const searchEl  = document.getElementById("att-search");
-            const statsBar  = document.querySelector("#section-attendance .stu-stats-bar");
-            if (tableWrap && tableWrap.parentElement) tableWrap.parentElement.style.display = show ? "" : "none";
-            if (searchEl && searchEl.closest(".stu-toolbar")) searchEl.closest(".stu-toolbar").style.display = show ? "" : "none";
-            if (statsBar) statsBar.style.display = show ? "" : "none";
-        }
-
-        // ── filter (search within list view) ──────────────────────────────
-        function attFilterStudents(query) {
-            if (_attView !== "list") return;
-            const q         = (query || "").toLowerCase().trim();
-            const byClass   = _attGroupByClass();
-            const students  = byClass[_attCurrentClass] || [];
-            const bySection = _attGroupBySection(students);
-            _attFilteredStudents = (bySection[_attCurrentSection] || []).filter(s => {
-                if (q && !(s.name||"").toLowerCase().includes(q) && !(s.roll_number||"").toLowerCase().includes(q)) return false;
-                return true;
-            });
+        // ── selection: tapping a row toggles whether it's selected (no API call yet) ──
+        function attToggleSelect(roll) {
+            if (!roll) return;
+            if (_attSelectedRolls.has(roll)) {
+                _attSelectedRolls.delete(roll);
+            } else {
+                _attSelectedRolls.add(roll);
+            }
             _attRenderStudentTable();
         }
 
-        // ── click-to-mark: tapping a student row toggles them present/absent ──
-        async function attToggleStudentPresent(roll) {
-            const student = _attFilteredStudents.find(s => s.roll_number === roll);
-            if (!student) return;
+        function attSelectAll() {
+            _attFilteredStudents.forEach(s => { if (s.roll_number) _attSelectedRolls.add(s.roll_number); });
+            _attRenderStudentTable();
+        }
 
-            const wasPresent = _attExistingRecords[roll] === "present";
-            const newStatus  = wasPresent ? "absent" : "present";
+        function attClearSelection() {
+            _attSelectedRolls = new Set();
+            _attRenderStudentTable();
+        }
+
+        // ── bulk action: mark every selected student present/absent in one go ──
+        async function attMarkSelected(newStatus) {
+            const rolls = Array.from(_attSelectedRolls);
+            if (!rolls.length) {
+                showErrorModal("Select at least one student first.");
+                return;
+            }
 
             const dateInput = document.getElementById("att-date");
             const date      = dateInput ? dateInput.value : getTodayStr();
@@ -1313,24 +1331,54 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                 const r = await fetch(`${API_BASE}/api/admin/attendance/mark`, {
                     method:"POST", credentials:"include", cache:"no-store",
                     headers:{"Content-Type":"application/json"},
-                    body: JSON.stringify({ class_id, batch_id:null, date, roll_numbers:[roll], status:newStatus }),
+                    body: JSON.stringify({ class_id, batch_id:null, date, roll_numbers:rolls, status:newStatus }),
                 });
                 const data = await r.json().catch(() => ({}));
                 if (!r.ok) throw new Error(data.error || "Failed");
 
-                if (newStatus === "present") {
-                    _attExistingRecords[roll] = "present";
-                    showOtSuccessToast(`${student.name || roll} marked present`);
-                } else {
-                    // "un-marking": drop the marked sign for this student
-                    delete _attExistingRecords[roll];
-                    showOtSuccessToast(`${student.name || roll} unmarked`);
-                }
+                rolls.forEach(roll => {
+                    if (newStatus === "present") {
+                        _attExistingRecords[roll] = "present";
+                    } else {
+                        delete _attExistingRecords[roll];
+                    }
+                });
+
+                showOtSuccessToast(`${rolls.length} student${rolls.length !== 1 ? "s" : ""} marked ${newStatus}`);
+                _attSelectedRolls = new Set();
                 _attRenderStudentTable();
             } catch(e) {
                 showErrorModal(e.message || "Failed to mark attendance");
             }
         }
+
+        // ── show/hide flat table UI ────────────────────────────────────────
+        function _attToggleFlatUI(show) {
+            const tableWrap = document.getElementById("att-student-table");
+            const searchEl  = document.getElementById("att-search");
+            const statsBar  = document.querySelector("#section-attendance .stu-stats-bar");
+            const bulkBar   = document.getElementById("att-bulk-bar");
+            if (tableWrap && tableWrap.parentElement) tableWrap.parentElement.style.display = show ? "" : "none";
+            if (searchEl && searchEl.closest(".stu-toolbar")) searchEl.closest(".stu-toolbar").style.display = show ? "" : "none";
+            if (statsBar) statsBar.style.display = show ? "" : "none";
+            if (!show && bulkBar) bulkBar.style.display = "none";
+        }
+
+        // ── filter (search within list view) ──────────────────────────────
+        function attFilterStudents(query) {
+            if (_attView !== "list") return;
+            const q         = (query || "").toLowerCase().trim();
+            const byClass   = _attGroupByClass();
+            const students  = byClass[_attCurrentClass] || [];
+            const bySection = _attGroupBySection(students);
+            _attFilteredStudents = (bySection[_attCurrentSection] || []).filter(s => {
+                if (q && !(s.name||"").toLowerCase().includes(q) && !(s.roll_number||"").toLowerCase().includes(q)) return false;
+                return true;
+            });
+            _attRenderStudentTable();
+        }
+
+        // (legacy single-tap toggle removed — replaced by select + attMarkSelected)
 
         async function openManageClassesModal() {
             openModal("manageClassesModal");
