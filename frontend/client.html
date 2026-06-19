@@ -1351,10 +1351,7 @@
             <div id="att-bulk-bar" style="display:none;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);flex-wrap:wrap">
                 <button class="btn btn-ghost" onclick="attSelectAll()" style="padding:7px 12px;font-size:0.8rem">☑️ Select All</button>
                 <button class="btn btn-ghost" onclick="attClearSelection()" style="padding:7px 12px;font-size:0.8rem">✕ Clear</button>
-                <div style="margin-left:auto;display:flex;gap:8px">
-                    <button class="btn btn-primary" onclick="attMarkSelected('present')" style="padding:7px 16px;font-size:0.83rem;background:#10b981;border-color:#10b981">✅ Mark Present</button>
-                    <button class="btn btn-ghost" onclick="attMarkSelected('absent')" style="padding:7px 16px;font-size:0.83rem">⬜ Mark Absent</button>
-                </div>
+                <button class="btn btn-primary" onclick="attMarkSelected()" style="margin-left:auto;padding:7px 18px;font-size:0.83rem;background:#10b981;border-color:#10b981">✅ Mark Present</button>
             </div>
 
             <!-- Loading -->
@@ -1362,7 +1359,7 @@
 
             <!-- Table -->
             <div class="table-wrap" style="display:none">
-                <p style="margin:0 0 10px;font-size:0.78rem;color:var(--text-muted)">Tap a student's name to select/unselect, then use "Mark Present" / "Mark Absent" below.</p>
+                <p style="margin:0 0 10px;font-size:0.78rem;color:var(--text-muted)">Tap names to select who's present, then hit "Mark Present" — everyone else will be marked absent.</p>
                 <table id="att-student-table">
                     <thead>
                         <tr>
