@@ -846,6 +846,19 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
         }
 
+        // ── attendance can only be marked/edited for TODAY. Past dates are
+        //    view-only; future dates can't be selected at all. ──────────────
+        function _attSelectedDateIso() {
+            const hidden = document.getElementById("att-date");
+            return (hidden && hidden.value) ? hidden.value : getTodayStr();
+        }
+        function _attIsEditableDate() {
+            return _attSelectedDateIso() === getTodayStr();
+        }
+        function _attIsFutureDate(iso) {
+            return iso > getTodayStr();
+        }
+
         /* ── custom date picker ────────────────────────────────────────────
            Replaces the native <input type="date"> with a click-anywhere
            popup calendar. The ISO value (yyyy-mm-dd) lives in the hidden
@@ -988,9 +1001,14 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                 const iso = `${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
                 const isSel   = iso === selIso;
                 const isToday = iso === todayIso;
+                const isFuture = iso > todayIso;
                 let bg = "transparent", color = "var(--text)", fw = "500", border = "1.5px solid transparent";
                 if (isSel)        { bg = "var(--accent)"; color = "#fff"; fw = "700"; }
                 else if (isToday) { border = "1.5px solid var(--accent)"; fw = "700"; }
+                if (isFuture) {
+                    cells += `<div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:0.82rem;font-weight:500;color:var(--text-muted);opacity:0.35;cursor:not-allowed">${day}</div>`;
+                    continue;
+                }
                 cells += `<div onclick="event.stopPropagation();_attPickDate('${iso}')"
                     style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;cursor:pointer;font-size:0.82rem;font-weight:${fw};color:${color};background:${bg};border:${border};transition:background 0.12s"
                     onmouseover="if('${isSel}'!=='true')this.style.background='var(--bg-input)'"
@@ -1014,6 +1032,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
         }
 
         function _attPickDate(iso) {
+            if (_attIsFutureDate(iso)) return;
             _attSetDateValue(iso, true);
             _attCloseCalendar();
         }
@@ -1313,6 +1332,8 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             // Update stat counters
             _attRefreshStats();
 
+            const isEditable = _attIsEditableDate();
+
             wrap.innerHTML = `
                 ${_attDateWidgetHtml()}
                 <div class="att-breadcrumb">
@@ -1322,12 +1343,17 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                     </button>
                     <span class="att-crumb-trail"><span class="att-crumb-sep">/</span><span class="att-crumb-current">${className} · Section ${section}</span><span class="att-crumb-sep">·</span>${_attFilteredStudents.length} Student${_attFilteredStudents.length !== 1 ? "s" : ""}</span>
                 </div>
+                ${isEditable ? `
                 <div class="att-list-toolbar">
                     <div class="att-list-actions">
                         <button class="att-link-btn" onclick="attSelectAll()">Select all</button>
                         <button class="att-link-btn" onclick="attClearSelection()">Clear</button>
                     </div>
-                </div>`;
+                </div>` : `
+                <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;margin-bottom:4px;background:var(--bg-input);border:1px solid var(--border);border-radius:10px;font-size:0.8rem;color:var(--text-muted);font-weight:600">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="flex:0 0 auto"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 8v5l3 2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Viewing past attendance — read only. Switch to today to mark attendance.
+                </div>`}`;
 
             _attSyncDateLabel();
             _attRenderStudentTable();
@@ -1353,6 +1379,8 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             const emptyEl = document.getElementById("att-empty");
             if (!tbody) return;
 
+            const isEditable = _attIsEditableDate();
+
             if (!_attFilteredStudents.length) {
                 if (emptyEl) emptyEl.style.display = "block";
                 tbody.innerHTML = "";
@@ -1363,7 +1391,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             if (emptyEl) emptyEl.style.display = "none";
 
             const bulkBar = document.getElementById("att-bulk-bar");
-            if (bulkBar) bulkBar.style.display = "flex";
+            if (bulkBar) bulkBar.style.display = isEditable ? "flex" : "none";
 
             tbody.innerHTML = _attFilteredStudents.map(s => {
                 const roll    = s.roll_number || "";
@@ -1374,14 +1402,18 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                 else if (status === "absent") badge = `<span class="att-status-pill absent">● Absent</span>`;
                 const name = s.name || roll || "—";
                 const avatarColor = _attAvatarColor(roll || name);
-                return `<tr class="att-row" onclick="attToggleSelect('${roll.replace(/'/g,"\\'")}')"
-                        style="${selected ? "background:color-mix(in srgb, var(--accent) 10%, transparent)" : ""}">
+                const rowClick = isEditable ? `onclick="attToggleSelect('${roll.replace(/'/g,"\\'")}')"` : "";
+                const checkboxHtml = isEditable
+                    ? `<span class="att-checkbox ${selected ? "checked" : ""}" style="flex:0 0 auto">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                       </span>`
+                    : "";
+                return `<tr class="att-row" ${rowClick}
+                        style="${isEditable ? "cursor:pointer;" : "cursor:default;"}${selected && isEditable ? "background:color-mix(in srgb, var(--accent) 10%, transparent)" : ""}">
                     <td colspan="2" style="padding:12px 14px;box-sizing:border-box">
                         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-width:0">
                             <div class="att-row-name" style="min-width:0;flex:1 1 auto;overflow:hidden">
-                                <span class="att-checkbox ${selected ? "checked" : ""}" style="flex:0 0 auto">
-                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                                </span>
+                                ${checkboxHtml}
                                 <span class="att-avatar" style="--avatar-color:${avatarColor};flex:0 0 auto">${_attInitials(name)}</span>
                                 <span style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span>
                             </div>
@@ -1406,7 +1438,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
 
         // ── selection: tapping a row toggles whether it's selected (no API call yet) ──
         function attToggleSelect(roll) {
-            if (!roll) return;
+            if (!roll || !_attIsEditableDate()) return;
             if (_attSelectedRolls.has(roll)) {
                 _attSelectedRolls.delete(roll);
             } else {
@@ -1416,17 +1448,23 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
         }
 
         function attSelectAll() {
+            if (!_attIsEditableDate()) return;
             _attFilteredStudents.forEach(s => { if (s.roll_number) _attSelectedRolls.add(s.roll_number); });
             _attRenderStudentTable();
         }
 
         function attClearSelection() {
+            if (!_attIsEditableDate()) return;
             _attSelectedRolls = new Set();
             _attRenderStudentTable();
         }
 
         // ── bulk action: selected students → present, everyone else in this list → absent ──
         async function attMarkSelected() {
+            if (!_attIsEditableDate()) {
+                showErrorModal("Attendance can only be marked for today. Past dates are view-only.");
+                return;
+            }
             if (!_attFilteredStudents.length) {
                 showErrorModal("No students to mark.");
                 return;
