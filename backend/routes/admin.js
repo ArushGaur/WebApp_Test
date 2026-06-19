@@ -1325,7 +1325,7 @@ router.post("/api/admin/attendance/mark", requireAdmin, async (req, res) => {
 	try {
 		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
 		const { class_id, batch_id, date, roll_numbers, status } = req.body || {};
-		if (!class_id || !date || !Array.isArray(roll_numbers) || !roll_numbers.length) {
+		if (class_id === undefined || class_id === null || !date || !Array.isArray(roll_numbers) || !roll_numbers.length) {
 			return res.status(400).json({ error: "class_id, date, and roll_numbers required" });
 		}
 		const attStatus = status || "present";
