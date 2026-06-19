@@ -1250,22 +1250,14 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
 
             tbody.innerHTML = _attFilteredStudents.map(s => {
                 const roll    = s.roll_number || "";
-                const status  = _attExistingRecords[roll] || "";
-                const present = status === "present";
                 const selected = _attSelectedRolls.has(roll);
-                const badge   = present
-                    ? `<span class="badge-pill ok">Present</span>`
-                    : `<span style="color:var(--text-muted);font-size:0.78rem">Not marked</span>`;
-                let rowBg = "";
-                if (selected) rowBg = "background:rgba(86,169,255,0.14);box-shadow:inset 3px 0 0 var(--accent)";
-                else if (present) rowBg = "background:rgba(16,185,129,0.06)";
+                let rowBg = selected ? "background:rgba(86,169,255,0.14);box-shadow:inset 3px 0 0 var(--accent)" : "";
                 return `<tr onclick="attToggleSelect('${roll.replace(/'/g,"\\'")}')"
                         style="cursor:pointer;${rowBg}">
                     <td style="display:flex;align-items:center;gap:10px">
                         <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:5px;border:1.5px solid ${selected ? "var(--accent)" : "var(--border)"};background:${selected ? "var(--accent)" : "transparent"};color:#fff;font-size:0.72rem;flex-shrink:0">${selected ? "✓" : ""}</span>
                         ${s.name || roll || "—"}
                     </td>
-                    <td>${badge}</td>
                 </tr>`;
             }).join("");
 
@@ -1273,15 +1265,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
         }
 
         function _attRefreshStats() {
-            const pres = _attFilteredStudents.filter(s => _attExistingRecords[s.roll_number] === "present").length;
-            const t = document.getElementById("att-stat-total");   if (t) t.textContent = _attFilteredStudents.length;
-            const p = document.getElementById("att-stat-present"); if (p) p.textContent = pres;
-
-            const selCount = _attSelectedRolls.size;
-            const selWrap  = document.getElementById("att-stat-selected-wrap");
-            const selEl    = document.getElementById("att-stat-selected");
-            if (selEl) selEl.textContent = selCount;
-            if (selWrap) selWrap.style.display = selCount ? "inline-flex" : "none";
+            // Stats bar UI has been removed; selection count is tracked internally only.
         }
 
         // ── selection: tapping a row toggles whether it's selected (no API call yet) ──
@@ -1324,41 +1308,61 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             const dateInput = document.getElementById("att-date");
             const date      = dateInput ? dateInput.value : getTodayStr();
 
-            // Resolve class_id from the current class name
-            let class_id = 0;
+            const btn     = document.getElementById("att-mark-btn");
+            const spinner = document.getElementById("att-mark-btn-spinner");
+            const label   = document.getElementById("att-mark-btn-label");
+            if (btn) btn.disabled = true;
+            if (spinner) spinner.style.display = "inline-block";
+            if (label) label.textContent = "Marking attendance…";
+
             try {
-                const cr = await fetch(`${API_BASE}/api/admin/classes`, { credentials: "include", cache: "no-store" });
-                if (cr.ok) {
-                    const classes = await cr.json();
-                    const match = classes.find(c => c.name === _attCurrentClass);
-                    if (match) class_id = match.id;
+                // Resolve class_id from the current class name
+                let class_id = 0;
+                try {
+                    const cr = await fetch(`${API_BASE}/api/admin/classes`, { credentials: "include", cache: "no-store" });
+                    if (cr.ok) {
+                        const classes = await cr.json();
+                        const match = classes.find(c => c.name === _attCurrentClass);
+                        if (match) class_id = match.id;
+                    }
+                } catch (_) {}
+
+                async function markGroup(rolls, status) {
+                    if (!rolls.length) return;
+                    const r = await fetch(`${API_BASE}/api/admin/attendance/mark`, {
+                        method:"POST", credentials:"include", cache:"no-store",
+                        headers:{"Content-Type":"application/json"},
+                        body: JSON.stringify({ class_id, batch_id:null, date, roll_numbers:rolls, status }),
+                    });
+                    const data = await r.json().catch(() => ({}));
+                    if (!r.ok) throw new Error(data.error || "Failed");
                 }
-            } catch (_) {}
 
-            async function markGroup(rolls, status) {
-                if (!rolls.length) return;
-                const r = await fetch(`${API_BASE}/api/admin/attendance/mark`, {
-                    method:"POST", credentials:"include", cache:"no-store",
-                    headers:{"Content-Type":"application/json"},
-                    body: JSON.stringify({ class_id, batch_id:null, date, roll_numbers:rolls, status }),
-                });
-                const data = await r.json().catch(() => ({}));
-                if (!r.ok) throw new Error(data.error || "Failed");
-            }
-
-            try {
                 await markGroup(presentRolls, "present");
                 await markGroup(absentRolls, "absent");
 
                 presentRolls.forEach(roll => { _attExistingRecords[roll] = "present"; });
                 absentRolls.forEach(roll => { delete _attExistingRecords[roll]; });
 
-                showOtSuccessToast(`Attendance marked: ${presentRolls.length} present, ${absentRolls.length} absent`);
                 _attSelectedRolls = new Set();
                 _attRenderStudentTable();
+                attShowSuccessPopup(presentRolls.length, absentRolls.length);
             } catch(e) {
                 showErrorModal(e.message || "Failed to mark attendance");
+            } finally {
+                if (btn) btn.disabled = false;
+                if (spinner) spinner.style.display = "none";
+                if (label) label.textContent = "✅ Mark Attendance";
             }
+        }
+
+        // ── custom success popup for attendance marking ──
+        function attShowSuccessPopup(presentCount, absentCount) {
+            const textEl = document.getElementById("attSuccessModalText");
+            if (textEl) {
+                textEl.textContent = `${presentCount} student${presentCount !== 1 ? "s" : ""} marked present, ${absentCount} marked absent.`;
+            }
+            openModal("attSuccessModal");
         }
 
         // ── show/hide flat table UI ────────────────────────────────────────
