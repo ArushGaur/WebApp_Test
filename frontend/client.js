@@ -627,7 +627,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             // Close mobile drawer if open
             if (typeof closeMobileDrawer === "function") closeMobileDrawer();
             const dateInput = document.getElementById("att-date");
-            if (dateInput && !dateInput.value) dateInput.value = getTodayStr();
+            if (dateInput && !dateInput.value) _attSetDateValue(getTodayStr(), false);
             history.pushState({ type: "section", name: "attendance" }, "", "");
             attLoadAndRenderStudents();
         }
@@ -644,7 +644,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             if (name === "attendance") {
                 console.log("[nav] attendance branch hit — calling attLoadAndRenderStudents()");
                 const dateInput = document.getElementById("att-date");
-                if (dateInput && !dateInput.value) dateInput.value = getTodayStr();
+                if (dateInput && !dateInput.value) _attSetDateValue(getTodayStr(), false);
                 attLoadAndRenderStudents();
             }
             // drawerNav('attendance') also lands here — handled above
@@ -843,6 +843,125 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
         }
 
+        /* ── custom date picker ────────────────────────────────────────────
+           Replaces the native <input type="date"> with a click-anywhere
+           popup calendar. The ISO value (yyyy-mm-dd) lives in the hidden
+           #att-date input; the visible label shows dd-mm-yyyy.          */
+        let _attCalViewYear  = null;
+        let _attCalViewMonth = null; // 0-indexed
+
+        function _attSetDateValue(isoStr, triggerChange) {
+            const hidden = document.getElementById("att-date");
+            const label  = document.getElementById("att-date-label");
+            if (hidden) hidden.value = isoStr;
+            if (label) {
+                const [y, m, d] = isoStr.split("-");
+                label.textContent = `${d}-${m}-${y}`;
+            }
+            if (triggerChange) attOnDateChange();
+        }
+
+        function attToggleCalendar(e) {
+            if (e) e.stopPropagation();
+            const popup = document.getElementById("att-cal-popup");
+            if (!popup) return;
+            const isOpen = popup.style.display !== "none";
+            if (isOpen) { popup.style.display = "none"; return; }
+            const hidden = document.getElementById("att-date");
+            const base = (hidden && hidden.value) ? hidden.value : getTodayStr();
+            const [y, m] = base.split("-").map(Number);
+            _attCalViewYear  = y;
+            _attCalViewMonth = m - 1;
+            _attRenderCalendar();
+            popup.style.display = "block";
+            // close when clicking outside
+            setTimeout(() => {
+                document.addEventListener("click", _attCalOutsideClick);
+            }, 0);
+        }
+
+        function _attCalOutsideClick(e) {
+            const wrap  = document.getElementById("att-date-wrap");
+            const popup = document.getElementById("att-cal-popup");
+            if (!popup || popup.style.display === "none") {
+                document.removeEventListener("click", _attCalOutsideClick);
+                return;
+            }
+            if (wrap && !wrap.contains(e.target)) {
+                popup.style.display = "none";
+                document.removeEventListener("click", _attCalOutsideClick);
+            }
+        }
+
+        function _attCalNav(delta) {
+            _attCalViewMonth += delta;
+            if (_attCalViewMonth < 0) { _attCalViewMonth = 11; _attCalViewYear--; }
+            if (_attCalViewMonth > 11) { _attCalViewMonth = 0; _attCalViewYear++; }
+            _attRenderCalendar();
+        }
+
+        function _attRenderCalendar() {
+            const popup = document.getElementById("att-cal-popup");
+            if (!popup) return;
+            const hidden  = document.getElementById("att-date");
+            const selIso  = hidden ? hidden.value : "";
+            const todayIso = getTodayStr();
+
+            const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+            const y = _attCalViewYear, m = _attCalViewMonth;
+            const firstDow   = new Date(y, m, 1).getDay();
+            const daysInMonth = new Date(y, m + 1, 0).getDate();
+
+            let cells = "";
+            for (let i = 0; i < firstDow; i++) cells += `<div></div>`;
+            for (let day = 1; day <= daysInMonth; day++) {
+                const iso = `${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                const isSel   = iso === selIso;
+                const isToday = iso === todayIso;
+                let bg = "transparent", color = "var(--text)", fw = "500", border = "1.5px solid transparent";
+                if (isSel)        { bg = "var(--accent)"; color = "#fff"; fw = "700"; }
+                else if (isToday) { border = "1.5px solid var(--accent)"; fw = "700"; }
+                cells += `<div onclick="event.stopPropagation();_attPickDate('${iso}')"
+                    style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;cursor:pointer;font-size:0.82rem;font-weight:${fw};color:${color};background:${bg};border:${border};transition:background 0.12s"
+                    onmouseover="if('${isSel}'!=='true')this.style.background='var(--bg-input)'"
+                    onmouseout="if('${isSel}'!=='true')this.style.background='${bg}'">${day}</div>`;
+            }
+
+            popup.innerHTML = `
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+                    <button onclick="event.stopPropagation();_attCalNav(-1)" style="background:none;border:none;cursor:pointer;font-size:1rem;color:var(--text);padding:4px 8px;border-radius:6px" onmouseover="this.style.background='var(--bg-input)'" onmouseout="this.style.background='none'">‹</button>
+                    <div style="font-weight:700;font-size:0.86rem;color:var(--text)">${monthNames[m]} ${y}</div>
+                    <button onclick="event.stopPropagation();_attCalNav(1)" style="background:none;border:none;cursor:pointer;font-size:1rem;color:var(--text);padding:4px 8px;border-radius:6px" onmouseover="this.style.background='var(--bg-input)'" onmouseout="this.style.background='none'">›</button>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:4px">
+                    ${["S","M","T","W","T","F","S"].map(d => `<div style="text-align:center;font-size:0.68rem;font-weight:700;color:var(--text-muted)">${d}</div>`).join("")}
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px">${cells}</div>
+                <div style="margin-top:10px;text-align:center">
+                    <button onclick="event.stopPropagation();_attPickDate('${todayIso}')"
+                        style="font-size:0.76rem;font-weight:600;color:var(--accent);background:none;border:none;cursor:pointer">Today</button>
+                </div>`;
+        }
+
+        function _attPickDate(iso) {
+            _attSetDateValue(iso, true);
+            const popup = document.getElementById("att-cal-popup");
+            if (popup) popup.style.display = "none";
+            document.removeEventListener("click", _attCalOutsideClick);
+        }
+
+        // ── date changed: reload records for new date, stay on current view ──
+        async function attOnDateChange() {
+            await _attLoadRecords();
+            if (_attView === "sections" && _attCurrentClass) {
+                _attShowSectionCards(_attCurrentClass);
+            } else if (_attView === "list" && _attCurrentClass && _attCurrentSection) {
+                _attShowStudentList(_attCurrentClass, _attCurrentSection);
+            } else {
+                _attShowClassCards();
+            }
+        }
+
         // ── top-level entry point called by navAttendance ──────────────────
         function _attEnsureCardsWrap() {
             let wrap = document.getElementById("att-cards-wrap");
@@ -872,7 +991,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             console.log("[attendance] attLoadAndRenderStudents() called");
             const dateInput = document.getElementById("att-date");
             if (!dateInput) { console.warn("[attendance] #att-date not found"); return; }
-            if (!dateInput.value) dateInput.value = getTodayStr();
+            if (!dateInput.value) _attSetDateValue(getTodayStr(), false);
 
             // Auto-create the cards container if the HTML hasn't been updated with it yet.
             _attEnsureCardsWrap();
