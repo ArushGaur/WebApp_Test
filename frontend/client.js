@@ -1305,13 +1305,21 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             _attRenderStudentTable();
         }
 
-        // ── bulk action: mark every selected student present/absent in one go ──
-        async function attMarkSelected(newStatus) {
-            const rolls = Array.from(_attSelectedRolls);
-            if (!rolls.length) {
-                showErrorModal("Select at least one student first.");
+        // ── bulk action: selected students → present, everyone else in this list → absent ──
+        async function attMarkSelected() {
+            if (!_attFilteredStudents.length) {
+                showErrorModal("No students to mark.");
                 return;
             }
+
+            const presentRolls = [];
+            const absentRolls  = [];
+            _attFilteredStudents.forEach(s => {
+                const roll = s.roll_number;
+                if (!roll) return;
+                if (_attSelectedRolls.has(roll)) presentRolls.push(roll);
+                else absentRolls.push(roll);
+            });
 
             const dateInput = document.getElementById("att-date");
             const date      = dateInput ? dateInput.value : getTodayStr();
@@ -1327,24 +1335,25 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                 }
             } catch (_) {}
 
-            try {
+            async function markGroup(rolls, status) {
+                if (!rolls.length) return;
                 const r = await fetch(`${API_BASE}/api/admin/attendance/mark`, {
                     method:"POST", credentials:"include", cache:"no-store",
                     headers:{"Content-Type":"application/json"},
-                    body: JSON.stringify({ class_id, batch_id:null, date, roll_numbers:rolls, status:newStatus }),
+                    body: JSON.stringify({ class_id, batch_id:null, date, roll_numbers:rolls, status }),
                 });
                 const data = await r.json().catch(() => ({}));
                 if (!r.ok) throw new Error(data.error || "Failed");
+            }
 
-                rolls.forEach(roll => {
-                    if (newStatus === "present") {
-                        _attExistingRecords[roll] = "present";
-                    } else {
-                        delete _attExistingRecords[roll];
-                    }
-                });
+            try {
+                await markGroup(presentRolls, "present");
+                await markGroup(absentRolls, "absent");
 
-                showOtSuccessToast(`${rolls.length} student${rolls.length !== 1 ? "s" : ""} marked ${newStatus}`);
+                presentRolls.forEach(roll => { _attExistingRecords[roll] = "present"; });
+                absentRolls.forEach(roll => { delete _attExistingRecords[roll]; });
+
+                showOtSuccessToast(`Attendance marked: ${presentRolls.length} present, ${absentRolls.length} absent`);
                 _attSelectedRolls = new Set();
                 _attRenderStudentTable();
             } catch(e) {
