@@ -4926,3 +4926,37 @@
         .mc-class-item + .mc-class-item {
             border-top: 1px solid var(--border);
         }
+        .att-marking-date {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        .att-marking-date input[type="date"] {
+            padding: 8px 32px 8px 12px;
+            background: var(--bg-input);
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text);
+            font-size: 0.84rem;
+            font-family: 'Outfit', sans-serif;
+            outline: none;
+            cursor: pointer;
+            transition: border-color 0.15s;
+            min-width: 140px;
+            color-scheme: dark;
+            position: relative;
+        }
+        .att-marking-date input[type="date"]:focus {
+            border-color: var(--accent);
+        }
+        .att-marking-date input[type="date"]::-webkit-calendar-picker-indicator {
+            position: absolute;
+            right: 6px;
+            cursor: pointer;
+            opacity: 0.6;
+            filter: invert(1);
+            transition: opacity 0.15s;
+        }
+        .att-marking-date input[type="date"]::-webkit-calendar-picker-indicator:hover {
+            opacity: 1;
+        }
