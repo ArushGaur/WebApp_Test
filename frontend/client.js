@@ -603,16 +603,17 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
         /* ══════════════════════════════════════════════════════════════════
            NAVIGATION
         ══════════════════════════════════════════════════════════════════ */
-        // Override drawerNav for attendance since shared showSection is intercepted
-        const _origDrawerNav = typeof drawerNav === "function" ? drawerNav : null;
+        // Drawer navigation: attendance gets a dedicated path (forces the
+        // section active directly); everything else goes through the
+        // shared showSection() defined below in this same file.
         function drawerNav(name) {
             console.log("[nav] drawerNav called with:", name);
             if (name === "attendance") {
                 navAttendance();
                 return;
             }
-            if (_origDrawerNav) _origDrawerNav(name);
-            else if (typeof showSection === "function") { closeMobileDrawer(); showSection(name); }
+            closeMobileDrawer();
+            if (typeof showSection === "function") showSection(name);
         }
 
         function navAttendance() {
@@ -1226,6 +1227,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             _attToggleFlatUI(false);
 
             wrap.innerHTML = `
+                ${_attDateWidgetHtml()}
                 <div class="att-breadcrumb">
                     <button class="att-back-btn" onclick="_attShowClassCards()">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1255,6 +1257,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                         </div>`;
                     }).join("")}
                 </div>`;
+            _attSyncDateLabel();
         }
 
         // ── LEVEL 3 : Student list with checkboxes ─────────────────────────
@@ -1283,6 +1286,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             _attRefreshStats();
 
             wrap.innerHTML = `
+                ${_attDateWidgetHtml()}
                 <div class="att-breadcrumb">
                     <button class="att-back-btn" onclick="_attShowSectionCards('${className.replace(/'/g,"\\'")}' )">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1297,6 +1301,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                     </div>
                 </div>`;
 
+            _attSyncDateLabel();
             _attRenderStudentTable();
         }
 
@@ -1343,16 +1348,18 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                 const avatarColor = _attAvatarColor(roll || name);
                 return `<tr class="att-row" onclick="attToggleSelect('${roll.replace(/'/g,"\\'")}')"
                         style="${selected ? "background:color-mix(in srgb, var(--accent) 10%, transparent)" : ""}">
-                    <td>
-                        <div class="att-row-name">
-                            <span class="att-checkbox ${selected ? "checked" : ""}">
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                            </span>
-                            <span class="att-avatar" style="--avatar-color:${avatarColor}">${_attInitials(name)}</span>
-                            <span>${name}</span>
+                    <td colspan="2" style="padding:12px 14px">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%">
+                            <div class="att-row-name" style="min-width:0;flex:1 1 auto">
+                                <span class="att-checkbox ${selected ? "checked" : ""}" style="flex:0 0 auto">
+                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                </span>
+                                <span class="att-avatar" style="--avatar-color:${avatarColor};flex:0 0 auto">${_attInitials(name)}</span>
+                                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span>
+                            </div>
+                            <div style="flex:0 0 auto">${badge}</div>
                         </div>
                     </td>
-                    <td>${badge}</td>
                 </tr>`;
             }).join("");
 
