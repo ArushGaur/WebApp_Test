@@ -1205,13 +1205,11 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                 const present = records.filter(r => r.status === "present").length;
                 const absent  = records.filter(r => r.status === "absent").length;
                 const late    = records.filter(r => r.status === "late").length;
-                const leave   = records.filter(r => r.status === "leave").length;
                 list.innerHTML = `
                     <div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap">
                         <span style="font-size:0.82rem">✅ Present: <strong>${present}</strong></span>
                         <span style="font-size:0.82rem">❌ Absent: <strong>${absent}</strong></span>
                         <span style="font-size:0.82rem">⏰ Late: <strong>${late}</strong></span>
-                        <span style="font-size:0.82rem">📋 Leave: <strong>${leave}</strong></span>
                         <span style="font-size:0.82rem">👥 Total: <strong>${records.length}</strong></span>
                     </div>
                     <div style="max-height:200px;overflow-y:auto;font-size:0.82rem">
