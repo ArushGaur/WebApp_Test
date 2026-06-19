@@ -1316,55 +1316,19 @@
 
             </div>
 
-            <!-- Search bar (like students section) -->
-            <div class="stu-toolbar" style="margin-bottom:12px;display:none">
-                <div class="stu-search-box">
-                    <span class="stu-search-icon">🔍</span>
-                    <input type="text" id="att-search" placeholder="Search student name…" oninput="attFilterStudents(this.value)">
-                </div>
-                <div class="stu-filters">
-                    <button class="btn btn-ghost" onclick="attLoadAndRenderStudents()" style="padding:8px 14px;font-size:0.83rem">↺ Refresh</button>
-                </div>
-            </div>
-
-            <!-- Stats + actions bar -->
-            <div class="stu-stats-bar" style="margin-bottom:16px;display:none">
-                <span class="att-stat"><strong id="att-stat-total">0</strong> Students</span>
-                <span class="att-stat"><strong id="att-stat-present">0</strong> Present</span>
-                <span class="att-stat" id="att-stat-selected-wrap" style="display:none">
-                    <strong id="att-stat-selected">0</strong> Selected
-                </span>
-                <div style="display:flex;gap:8px;margin-left:auto;align-items:center;flex-wrap:wrap">
-                    <div class="att-marking-date" id="att-date-wrap" onclick="attToggleCalendar(event)" style="position:relative;cursor:pointer">
-                        <div id="att-date-display"
-                            style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.84rem;font-family:'Outfit',sans-serif;user-select:none;min-width:128px">
-                            <span id="att-date-label">--/--/----</span>
-                            <span style="margin-left:auto;opacity:0.7">📅</span>
-                        </div>
-                        <input type="hidden" id="att-date" value="">
-                        <div id="att-cal-popup" style="display:none;position:fixed;z-index:200;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,0.18);padding:14px;width:260px;max-width:calc(100vw - 24px)"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Bulk selection action bar -->
-            <div id="att-bulk-bar" style="display:none;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);flex-wrap:wrap">
-                <button class="btn btn-ghost" onclick="attSelectAll()" style="padding:7px 12px;font-size:0.8rem">☑️ Select All</button>
-                <button class="btn btn-ghost" onclick="attClearSelection()" style="padding:7px 12px;font-size:0.8rem">✕ Clear</button>
-                <button class="btn btn-primary" onclick="attMarkSelected()" style="margin-left:auto;padding:7px 18px;font-size:0.83rem;background:#10b981;border-color:#10b981">✅ Mark Present</button>
-            </div>
+            <!-- Hidden date store (always today; no visible date picker) -->
+            <input type="hidden" id="att-date" value="">
 
             <!-- Loading -->
             <div id="att-loading" style="display:none;text-align:center;padding:40px;color:var(--text-muted)">Loading...</div>
 
             <!-- Table -->
             <div class="table-wrap" style="display:none">
-                <p style="margin:0 0 10px;font-size:0.78rem;color:var(--text-muted)">Tap names to select who's present, then hit "Mark Present" — everyone else will be marked absent.</p>
+                <p style="margin:0 0 10px;font-size:0.78rem;color:var(--text-muted)">Tap names to select who's present, then hit "Mark Attendance" — everyone else will be marked absent.</p>
                 <table id="att-student-table">
                     <thead>
                         <tr>
                             <th>Name</th>
-                            <th>Status</th>
                         </tr>
                     </thead>
                     <tbody id="att-student-tbody"></tbody>
@@ -1376,7 +1340,32 @@
                 <p style="margin:0;font-size:0.88rem">No students match your search or filter.</p>
             </div>
 
+            <!-- Single action: mark attendance -->
+            <div id="att-bulk-bar" style="display:none;margin-top:18px">
+                <button class="btn btn-primary btn-full" id="att-mark-btn" onclick="attMarkSelected()"
+                    style="padding:13px 18px;font-size:0.92rem;font-weight:700;background:#10b981;border-color:#10b981;display:flex;align-items:center;justify-content:center;gap:10px">
+                    <span id="att-mark-btn-spinner" class="att-spin" style="display:none;width:16px;height:16px;border-radius:50%;border:2.5px solid rgba(255,255,255,0.4);border-top-color:#fff"></span>
+                    <span id="att-mark-btn-label">✅ Mark Attendance</span>
+                </button>
+            </div>
+
         </div>
+
+        <!-- Custom attendance success popup -->
+        <div class="modal-overlay" id="attSuccessModal" style="z-index:1300">
+            <div class="modal-box" style="text-align:center;max-width:320px">
+                <div id="att-success-icon" style="width:56px;height:56px;border-radius:50%;background:rgba(16,185,129,0.12);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:1.8rem;color:#10b981">✓</div>
+                <h3 style="margin:0 0 8px">Attendance Marked</h3>
+                <p id="attSuccessModalText" style="margin:0 0 18px;color:var(--text-muted);font-size:0.88rem">Done.</p>
+                <button class="btn btn-primary btn-full" onclick="closeModal('attSuccessModal')">OK</button>
+            </div>
+        </div>
+
+        <style>
+            @keyframes att-spin-anim { to { transform: rotate(360deg); } }
+            .att-spin { animation: att-spin-anim 0.7s linear infinite; }
+        </style>
+
 
         <!-- Manage Classes Modal -->
         <div class="modal-overlay" id="manageClassesModal" style="z-index:1200">
