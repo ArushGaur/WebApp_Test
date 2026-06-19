@@ -864,7 +864,8 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
         function attToggleCalendar(e) {
             if (e) e.stopPropagation();
             const popup = document.getElementById("att-cal-popup");
-            if (!popup) return;
+            const wrap  = document.getElementById("att-date-wrap");
+            if (!popup || !wrap) return;
             const isOpen = popup.style.display !== "none";
             if (isOpen) { popup.style.display = "none"; return; }
             const hidden = document.getElementById("att-date");
@@ -874,10 +875,44 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             _attCalViewMonth = m - 1;
             _attRenderCalendar();
             popup.style.display = "block";
+            _attPositionCalendar(wrap, popup);
             // close when clicking outside
             setTimeout(() => {
                 document.addEventListener("click", _attCalOutsideClick);
+                window.addEventListener("resize", _attRepositionOpenCalendar);
             }, 0);
+        }
+
+        // Clamp the fixed-position popup so it always stays fully on-screen,
+        // regardless of viewport width (fixes mobile overflow/cropping).
+        function _attPositionCalendar(wrap, popup) {
+            const margin = 12;
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            const popW = Math.min(260, vw - margin * 2);
+            popup.style.width = popW + "px";
+            const rect = wrap.getBoundingClientRect();
+
+            let left = rect.right - popW;
+            if (left < margin) left = margin;
+            if (left + popW > vw - margin) left = vw - margin - popW;
+
+            const popH = popup.offsetHeight || 320;
+            let top = rect.bottom + 6;
+            if (top + popH > vh - margin) {
+                top = rect.top - popH - 6;
+                if (top < margin) top = margin;
+            }
+
+            popup.style.left = left + "px";
+            popup.style.top  = top + "px";
+        }
+
+        function _attRepositionOpenCalendar() {
+            const popup = document.getElementById("att-cal-popup");
+            const wrap  = document.getElementById("att-date-wrap");
+            if (!popup || !wrap || popup.style.display === "none") return;
+            _attPositionCalendar(wrap, popup);
         }
 
         function _attCalOutsideClick(e) {
@@ -885,11 +920,13 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             const popup = document.getElementById("att-cal-popup");
             if (!popup || popup.style.display === "none") {
                 document.removeEventListener("click", _attCalOutsideClick);
+                window.removeEventListener("resize", _attRepositionOpenCalendar);
                 return;
             }
             if (wrap && !wrap.contains(e.target)) {
                 popup.style.display = "none";
                 document.removeEventListener("click", _attCalOutsideClick);
+                window.removeEventListener("resize", _attRepositionOpenCalendar);
             }
         }
 
@@ -948,6 +985,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             const popup = document.getElementById("att-cal-popup");
             if (popup) popup.style.display = "none";
             document.removeEventListener("click", _attCalOutsideClick);
+            window.removeEventListener("resize", _attRepositionOpenCalendar);
         }
 
         // ── date changed: reload records for new date, stay on current view ──
@@ -1204,28 +1242,25 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             if (emptyEl) emptyEl.style.display = "none";
 
             tbody.innerHTML = _attFilteredStudents.map(s => {
-                const status = _attExistingRecords[s.roll_number] || "";
-                const badge  = status
-                    ? `<span class="badge-pill ${status==="present"?"ok":"wrong"}">${status.charAt(0).toUpperCase()+status.slice(1)}</span>`
-                    : `<span style="color:var(--text-muted);font-size:0.78rem">Not marked</span>`;
-                return `<tr>
-                    <td><input type="checkbox" class="att-student-cb" data-roll="${s.roll_number}" ${status?"checked":""}></td>
+                const status  = _attExistingRecords[s.roll_number] || "";
+                const present = status === "present";
+                const badge   = present
+                    ? `<span class="badge-pill ok">Present</span>`
+                    : `<span style="color:var(--text-muted);font-size:0.78rem">Tap to mark</span>`;
+                return `<tr onclick="attToggleStudentPresent('${(s.roll_number||"").replace(/'/g,"\\'")}')"
+                        style="cursor:pointer${present ? ";background:rgba(16,185,129,0.06)" : ""}">
                     <td>${s.name || s.roll_number || "—"}</td>
                     <td>${badge}</td>
                 </tr>`;
             }).join("");
 
             _attRefreshStats();
-            attUpdateSelectAll();
         }
 
         function _attRefreshStats() {
-            const tbody = document.getElementById("att-student-tbody");
-            const sel   = tbody ? tbody.querySelectorAll(".att-student-cb:checked").length : 0;
-            const pres  = _attFilteredStudents.filter(s => _attExistingRecords[s.roll_number] === "present").length;
-            const t = document.getElementById("att-stat-total");    if (t) t.textContent = _attFilteredStudents.length;
-            const s = document.getElementById("att-stat-selected"); if (s) s.textContent = sel;
-            const p = document.getElementById("att-stat-present");  if (p) p.textContent = pres;
+            const pres = _attFilteredStudents.filter(s => _attExistingRecords[s.roll_number] === "present").length;
+            const t = document.getElementById("att-stat-total");   if (t) t.textContent = _attFilteredStudents.length;
+            const p = document.getElementById("att-stat-present"); if (p) p.textContent = pres;
         }
 
         // ── show/hide flat table UI ────────────────────────────────────────
@@ -1241,52 +1276,27 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
         // ── filter (search within list view) ──────────────────────────────
         function attFilterStudents(query) {
             if (_attView !== "list") return;
-            const filterEl  = document.getElementById("att-filter");
-            const filterVal = filterEl ? filterEl.value : "";
             const q         = (query || "").toLowerCase().trim();
             const byClass   = _attGroupByClass();
             const students  = byClass[_attCurrentClass] || [];
             const bySection = _attGroupBySection(students);
             _attFilteredStudents = (bySection[_attCurrentSection] || []).filter(s => {
                 if (q && !(s.name||"").toLowerCase().includes(q) && !(s.roll_number||"").toLowerCase().includes(q)) return false;
-                if (!filterVal) return true;
-                const status = _attExistingRecords[s.roll_number] || "";
-                if (filterVal === "unmarked") return !status;
-                return status === filterVal;
+                return true;
             });
             _attRenderStudentTable();
         }
 
-        // ── select all ────────────────────────────────────────────────────
-        function attToggleSelectAll() {
-            const all   = document.getElementById("att-select-all");
-            const tbody = document.getElementById("att-student-tbody");
-            if (!all || !tbody) return;
-            tbody.querySelectorAll(".att-student-cb").forEach(cb => { cb.checked = all.checked; });
-            _attRefreshStats();
-        }
+        // ── click-to-mark: tapping a student row toggles them present/absent ──
+        async function attToggleStudentPresent(roll) {
+            const student = _attFilteredStudents.find(s => s.roll_number === roll);
+            if (!student) return;
 
-        function attUpdateSelectAll() {
-            const tbody = document.getElementById("att-student-tbody");
-            const all   = document.getElementById("att-select-all");
-            if (!all) return;
-            const cbs = tbody ? [...tbody.querySelectorAll(".att-student-cb")] : [];
-            all.checked       = cbs.length > 0 && cbs.every(cb => cb.checked);
-            all.indeterminate = cbs.some(cb => cb.checked) && !all.checked;
-            _attRefreshStats();
-        }
-
-        // ── mark attendance ────────────────────────────────────────────────
-        async function attMarkAttendance() {
-            const tbody    = document.getElementById("att-student-tbody");
-            const selected = [];
-            if (tbody) tbody.querySelectorAll(".att-student-cb:checked").forEach(cb => selected.push(cb.dataset.roll));
-            if (!selected.length) { showErrorModal("Please select at least one student."); return; }
+            const wasPresent = _attExistingRecords[roll] === "present";
+            const newStatus  = wasPresent ? "absent" : "present";
 
             const dateInput = document.getElementById("att-date");
-            const statusEl  = document.getElementById("att-mark-status");
             const date      = dateInput ? dateInput.value : getTodayStr();
-            const status    = statusEl  ? statusEl.value  : "present";
 
             // Resolve class_id from the current class name
             let class_id = 0;
@@ -1303,14 +1313,20 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                 const r = await fetch(`${API_BASE}/api/admin/attendance/mark`, {
                     method:"POST", credentials:"include", cache:"no-store",
                     headers:{"Content-Type":"application/json"},
-                    body: JSON.stringify({ class_id, batch_id:null, date, roll_numbers:selected, status }),
+                    body: JSON.stringify({ class_id, batch_id:null, date, roll_numbers:[roll], status:newStatus }),
                 });
                 const data = await r.json().catch(() => ({}));
                 if (!r.ok) throw new Error(data.error || "Failed");
-                // Update local records and re-render table
-                selected.forEach(roll => { _attExistingRecords[roll] = status; });
+
+                if (newStatus === "present") {
+                    _attExistingRecords[roll] = "present";
+                    showOtSuccessToast(`${student.name || roll} marked present`);
+                } else {
+                    // "un-marking": drop the marked sign for this student
+                    delete _attExistingRecords[roll];
+                    showOtSuccessToast(`${student.name || roll} unmarked`);
+                }
                 _attRenderStudentTable();
-                showOtSuccessToast(`Attendance marked for ${data.marked ?? selected.length} student(s)`);
             } catch(e) {
                 showErrorModal(e.message || "Failed to mark attendance");
             }
