@@ -1428,11 +1428,10 @@
             _attRecords.forEach(rec => { statusMap[rec.date] = rec.status; });
 
             // Count summary
-            let counts = { present: 0, absent: 0, late: 0 };
+            let counts = { present: 0, absent: 0 };
             _attRecords.forEach(rec => { if (counts[rec.status] !== undefined) counts[rec.status]++; });
             document.getElementById('attSumPresent').textContent = counts.present;
             document.getElementById('attSumAbsent').textContent = counts.absent;
-            document.getElementById('attSumLate').textContent = counts.late;
 
             // Build calendar days
             const year = _attCalendarYear;
@@ -1458,7 +1457,6 @@
                 let statusIcon = '';
                 if (status === 'present') { statusClass = ' att-cal-present'; statusIcon = '✅'; }
                 else if (status === 'absent') { statusClass = ' att-cal-absent'; statusIcon = '❌'; }
-                else if (status === 'late') { statusClass = ' att-cal-late'; statusIcon = '⏰'; }
                 dayCells += `<div class="att-cal-cell${statusClass}${isToday}">
                     <span class="att-cal-day-num">${d}</span>
                     ${statusIcon ? `<span class="att-cal-status-icon">${statusIcon}</span>` : ''}
