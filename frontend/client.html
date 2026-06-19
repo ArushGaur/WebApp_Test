@@ -1316,19 +1316,13 @@
 
             </div>
 
-            <!-- Search + filter bar (like students section) -->
+            <!-- Search bar (like students section) -->
             <div class="stu-toolbar" style="margin-bottom:12px;display:none">
                 <div class="stu-search-box">
                     <span class="stu-search-icon">🔍</span>
                     <input type="text" id="att-search" placeholder="Search student name…" oninput="attFilterStudents(this.value)">
                 </div>
                 <div class="stu-filters">
-                    <select id="att-filter" onchange="attFilterStudents(document.getElementById('att-search').value)">
-                        <option value="">All Students</option>
-                        <option value="present">Present</option>
-                        <option value="absent">Absent</option>
-                        <option value="unmarked">Not Marked</option>
-                    </select>
                     <button class="btn btn-ghost" onclick="attLoadAndRenderStudents()" style="padding:8px 14px;font-size:0.83rem">↺ Refresh</button>
                 </div>
             </div>
@@ -1336,7 +1330,6 @@
             <!-- Stats + actions bar -->
             <div class="stu-stats-bar" style="margin-bottom:16px;display:none">
                 <span class="att-stat"><strong id="att-stat-total">0</strong> Students</span>
-                <span class="att-stat"><strong id="att-stat-selected">0</strong> Selected</span>
                 <span class="att-stat"><strong id="att-stat-present">0</strong> Present</span>
                 <div style="display:flex;gap:8px;margin-left:auto;align-items:center;flex-wrap:wrap">
                     <div class="att-marking-date" id="att-date-wrap" onclick="attToggleCalendar(event)" style="position:relative;cursor:pointer">
@@ -1346,13 +1339,8 @@
                             <span style="margin-left:auto;opacity:0.7">📅</span>
                         </div>
                         <input type="hidden" id="att-date" value="">
-                        <div id="att-cal-popup" style="display:none;position:absolute;top:calc(100% + 6px);right:0;z-index:50;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,0.18);padding:14px;width:260px"></div>
+                        <div id="att-cal-popup" style="display:none;position:fixed;z-index:200;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,0.18);padding:14px;width:260px;max-width:calc(100vw - 24px)"></div>
                     </div>
-                    <select id="att-mark-status" style="padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.84rem;outline:none;font-family:'Outfit',sans-serif">
-                        <option value="present">Present</option>
-                        <option value="absent">Absent</option>
-                    </select>
-                    <button class="btn btn-primary" onclick="attMarkAttendance()">✅ Mark Attendance</button>
                 </div>
             </div>
 
@@ -1361,10 +1349,10 @@
 
             <!-- Table -->
             <div class="table-wrap" style="display:none">
+                <p style="margin:0 0 10px;font-size:0.78rem;color:var(--text-muted)">Tap a student's name to mark/unmark them present.</p>
                 <table id="att-student-table">
                     <thead>
                         <tr>
-                            <th style="width:40px"><input type="checkbox" id="att-select-all" onchange="attToggleSelectAll()"></th>
                             <th>Name</th>
                             <th>Status</th>
                         </tr>
