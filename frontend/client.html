@@ -1317,7 +1317,7 @@
             </div>
 
             <!-- Search + filter bar (like students section) -->
-            <div class="stu-toolbar" style="margin-bottom:12px">
+            <div class="stu-toolbar" style="margin-bottom:12px;display:none">
                 <div class="stu-search-box">
                     <span class="stu-search-icon">🔍</span>
                     <input type="text" id="att-search" placeholder="Search student name…" oninput="attFilterStudents(this.value)">
@@ -1334,13 +1334,19 @@
             </div>
 
             <!-- Stats + actions bar -->
-            <div class="stu-stats-bar" style="margin-bottom:16px">
+            <div class="stu-stats-bar" style="margin-bottom:16px;display:none">
                 <span class="att-stat"><strong id="att-stat-total">0</strong> Students</span>
                 <span class="att-stat"><strong id="att-stat-selected">0</strong> Selected</span>
                 <span class="att-stat"><strong id="att-stat-present">0</strong> Present</span>
                 <div style="display:flex;gap:8px;margin-left:auto;align-items:center;flex-wrap:wrap">
-                    <div class="att-marking-date">
-                        <input type="date" id="att-date" onchange="attLoadAndRenderStudents()">
+                    <div class="att-marking-date" id="att-date-wrap" onclick="attToggleCalendar(event)" style="position:relative;cursor:pointer">
+                        <div id="att-date-display"
+                            style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.84rem;font-family:'Outfit',sans-serif;user-select:none;min-width:128px">
+                            <span id="att-date-label">--/--/----</span>
+                            <span style="margin-left:auto;opacity:0.7">📅</span>
+                        </div>
+                        <input type="hidden" id="att-date" value="">
+                        <div id="att-cal-popup" style="display:none;position:absolute;top:calc(100% + 6px);right:0;z-index:50;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,0.18);padding:14px;width:260px"></div>
                     </div>
                     <select id="att-mark-status" style="padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.84rem;outline:none;font-family:'Outfit',sans-serif">
                         <option value="present">Present</option>
@@ -1354,7 +1360,7 @@
             <div id="att-loading" style="display:none;text-align:center;padding:40px;color:var(--text-muted)">Loading...</div>
 
             <!-- Table -->
-            <div class="table-wrap">
+            <div class="table-wrap" style="display:none">
                 <table id="att-student-table">
                     <thead>
                         <tr>
