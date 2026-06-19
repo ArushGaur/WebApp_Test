@@ -1320,10 +1320,13 @@
             <input type="hidden" id="att-date" value="">
 
             <!-- Loading -->
-            <div id="att-loading" style="display:none;text-align:center;padding:40px;color:var(--text-muted)">Loading...</div>
+            <div id="att-loading" style="display:none;text-align:center;padding:60px 20px;color:var(--text-muted)">
+                <div class="att-loading-spinner" aria-hidden="true"></div>
+                <div style="margin-top:14px;font-size:0.86rem;font-weight:600">Loading students…</div>
+            </div>
 
             <!-- Table -->
-            <div class="table-wrap" style="display:none">
+            <div class="table-wrap att-table-wrap" style="display:none">
                 <table id="att-student-table">
                     <thead>
                         <tr>
@@ -1334,18 +1337,32 @@
                     <tbody id="att-student-tbody"></tbody>
                 </table>
             </div>
-            <div id="att-empty" style="display:none;text-align:center;padding:60px 20px;color:var(--text-muted)">
-                <div style="font-size:3rem;margin-bottom:12px">📋</div>
-                <h3 style="margin:0 0 6px">No Students Found</h3>
-                <p style="margin:0;font-size:0.88rem">No students match your search or filter.</p>
+            <div id="att-empty" class="att-empty-state" style="display:none">
+                <div class="att-empty-icon">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
+                        <path d="M9 11l3 3L22 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity="0.35"/>
+                        <path d="M21 12v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <h3>No students found</h3>
+                <p>No students match your search or filter.</p>
             </div>
 
             <!-- Single action: mark attendance -->
-            <div id="att-bulk-bar" style="display:none;margin-top:18px">
-                <button class="btn btn-primary btn-full" id="att-mark-btn" onclick="attMarkSelected()"
-                    style="padding:13px 18px;font-size:0.92rem;font-weight:700;background:#10b981;border-color:#10b981;display:flex;align-items:center;justify-content:center;gap:10px">
-                    <span id="att-mark-btn-spinner" class="att-spin" style="display:none;width:16px;height:16px;border-radius:50%;border:2.5px solid rgba(255,255,255,0.4);border-top-color:#fff"></span>
-                    <span id="att-mark-btn-label">✅ Mark Attendance</span>
+            <div id="att-bulk-bar" class="att-bulk-bar" style="display:none">
+                <div class="att-bulk-summary">
+                    <span class="att-bulk-dot present"></span>
+                    <span id="att-bulk-present-count">0</span>&nbsp;present
+                    <span class="att-bulk-sep">·</span>
+                    <span class="att-bulk-dot absent"></span>
+                    <span id="att-bulk-absent-count">0</span>&nbsp;absent
+                </div>
+                <button class="btn btn-primary att-mark-btn" id="att-mark-btn" onclick="attMarkSelected()">
+                    <span id="att-mark-btn-spinner" class="att-spin" style="display:none"></span>
+                    <svg id="att-mark-btn-icon" width="15" height="15" viewBox="0 0 24 24" fill="none">
+                        <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span id="att-mark-btn-label">Mark Attendance</span>
                 </button>
             </div>
 
@@ -1362,8 +1379,162 @@
         </div>
 
         <style>
+            /* ── Attendance module — visual refresh ─────────────────────────── */
             @keyframes att-spin-anim { to { transform: rotate(360deg); } }
-            .att-spin { animation: att-spin-anim 0.7s linear infinite; }
+            .att-spin {
+                display: inline-block; width: 14px; height: 14px; border-radius: 50%;
+                border: 2px solid rgba(255,255,255,0.35); border-top-color: #fff;
+                animation: att-spin-anim 0.7s linear infinite;
+            }
+            .att-loading-spinner {
+                width: 30px; height: 30px; margin: 0 auto; border-radius: 50%;
+                border: 3px solid var(--border); border-top-color: var(--accent);
+                animation: att-spin-anim 0.8s linear infinite;
+            }
+
+            #att-cards-wrap { animation: attFadeIn 0.22s ease both; }
+            @keyframes attFadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+
+            /* date control */
+            .att-date-pill {
+                display:flex; align-items:center; gap:10px; padding:9px 14px;
+                background:var(--bg-card); border:1.5px solid var(--border); border-radius:11px;
+                color:var(--text); font-size:0.85rem; font-weight:600; cursor:pointer;
+                user-select:none; transition:border-color .15s, box-shadow .15s; min-width:150px;
+            }
+            .att-date-pill:hover { border-color:var(--accent); box-shadow:0 2px 10px rgba(0,0,0,0.06); }
+            .att-date-pill svg { opacity:0.55; flex-shrink:0; }
+            .att-date-pill .att-date-cal-icon { margin-left:auto; }
+
+            /* eyebrow label above card grids */
+            .att-eyebrow {
+                font-size: 0.74rem; font-weight: 700; color: var(--text-muted);
+                text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 14px;
+                display:flex; align-items:center; gap:8px;
+            }
+            .att-eyebrow .att-eyebrow-count {
+                background:var(--bg-input); color:var(--text-muted); border-radius:99px;
+                padding:1px 8px; font-size:0.72rem; font-weight:700; letter-spacing:0;
+            }
+
+            /* breadcrumb row */
+            .att-breadcrumb { display:flex; align-items:center; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
+            .att-back-btn {
+                display:flex; align-items:center; gap:6px; padding:7px 13px 7px 10px;
+                background:var(--bg-input); border:1.5px solid var(--border); border-radius:9px;
+                color:var(--text); cursor:pointer; font-size:0.83rem; font-weight:600;
+                font-family:inherit; transition:border-color .15s, background .15s;
+            }
+            .att-back-btn:hover { border-color:var(--accent); color:var(--accent); }
+            .att-crumb-trail { font-size:0.84rem; color:var(--text-muted); font-weight:600; display:flex; align-items:center; gap:6px; }
+            .att-crumb-trail .att-crumb-sep { opacity:0.5; }
+            .att-crumb-trail .att-crumb-current { color:var(--text); }
+
+            /* card grid */
+            .att-card-grid {
+                display:grid; grid-template-columns:repeat(auto-fill,minmax(196px,1fr)); gap:16px;
+            }
+            .att-card {
+                position:relative; background:var(--bg-card); border:1.5px solid var(--border);
+                border-radius:16px; padding:20px 18px; cursor:pointer; text-align:left;
+                transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+                overflow:hidden;
+            }
+            .att-card:hover { transform:translateY(-3px); box-shadow:0 10px 28px rgba(0,0,0,0.10); border-color:var(--card-color, var(--accent)); }
+            .att-card:focus-visible { outline:2px solid var(--card-color, var(--accent)); outline-offset:2px; }
+            .att-card::before {
+                content:""; position:absolute; top:0; left:0; right:0; height:3px;
+                background:var(--card-color, var(--accent));
+            }
+            .att-card-top { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:14px; }
+            .att-card-icon {
+                width:42px; height:42px; border-radius:11px; display:flex; align-items:center; justify-content:center;
+                background:color-mix(in srgb, var(--card-color, var(--accent)) 14%, transparent);
+                color:var(--card-color, var(--accent)); flex-shrink:0;
+            }
+            .att-card-ring { flex-shrink:0; }
+            .att-card-title { font-weight:800; font-size:1rem; color:var(--text); margin-bottom:3px; line-height:1.25; }
+            .att-card-sub { font-size:0.79rem; color:var(--text-muted); margin-bottom:10px; }
+            .att-card-status {
+                display:inline-flex; align-items:center; gap:5px; font-size:0.74rem; font-weight:700;
+                padding:3px 9px; border-radius:99px;
+            }
+            .att-card-status.done { background:rgba(16,185,129,0.12); color:#10b981; }
+            .att-card-status.partial { background:rgba(245,158,11,0.12); color:#f59e0b; }
+            .att-card-status.none { background:var(--bg-input); color:var(--text-muted); }
+
+            /* empty state */
+            .att-empty-state { text-align:center; padding:64px 20px; color:var(--text-muted); }
+            .att-empty-icon {
+                width:64px; height:64px; margin:0 auto 16px; border-radius:50%;
+                background:var(--bg-input); display:flex; align-items:center; justify-content:center;
+                color:var(--text-muted);
+            }
+            .att-empty-state h3 { margin:0 0 6px; color:var(--text); font-size:1rem; }
+            .att-empty-state p { margin:0; font-size:0.86rem; }
+
+            /* student list */
+            .att-table-wrap table { border-collapse:separate; border-spacing:0; }
+            .att-table-wrap td, .att-table-wrap th { padding:12px 16px; }
+            .att-row { cursor:pointer; transition:background .12s; }
+            .att-row:hover { background:var(--bg-input); }
+            .att-row-name { display:flex; align-items:center; gap:12px; }
+            .att-avatar {
+                width:30px; height:30px; border-radius:50%; flex-shrink:0;
+                display:flex; align-items:center; justify-content:center;
+                font-size:0.72rem; font-weight:800; color:#fff;
+                background:var(--avatar-color, var(--accent));
+            }
+            .att-checkbox {
+                width:19px; height:19px; border-radius:6px; flex-shrink:0;
+                border:1.5px solid var(--border); display:flex; align-items:center; justify-content:center;
+                transition:background .12s, border-color .12s; color:#fff;
+            }
+            .att-checkbox svg { opacity:0; transition:opacity .1s; }
+            .att-checkbox.checked { background:var(--accent); border-color:var(--accent); }
+            .att-checkbox.checked svg { opacity:1; }
+            .att-status-pill {
+                display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:99px;
+                font-size:0.74rem; font-weight:700;
+            }
+            .att-status-pill.present { background:rgba(16,185,129,0.12); color:#10b981; }
+            .att-status-pill.absent { background:rgba(239,68,68,0.12); color:#ef4444; }
+            .att-status-pill.unmarked { background:var(--bg-input); color:var(--text-muted); font-weight:600; }
+
+            /* list toolbar (select all / clear) */
+            .att-list-toolbar {
+                display:flex; align-items:center; justify-content:space-between; gap:12px;
+                margin-bottom:12px; flex-wrap:wrap;
+            }
+            .att-list-actions { display:flex; align-items:center; gap:8px; }
+            .att-link-btn {
+                background:none; border:none; padding:5px 9px; border-radius:7px;
+                color:var(--accent); font-size:0.78rem; font-weight:700; cursor:pointer; font-family:inherit;
+                transition:background .12s;
+            }
+            .att-link-btn:hover { background:var(--bg-input); }
+
+            /* sticky bulk action bar */
+            .att-bulk-bar {
+                margin-top:18px; display:flex; align-items:center; justify-content:space-between;
+                gap:14px; padding:12px 16px; background:var(--bg-card); border:1.5px solid var(--border);
+                border-radius:14px; flex-wrap:wrap; position:sticky; bottom:12px; box-shadow:0 8px 24px rgba(0,0,0,0.08);
+            }
+            .att-bulk-summary { font-size:0.83rem; color:var(--text-muted); font-weight:600; display:flex; align-items:center; gap:6px; }
+            .att-bulk-sep { opacity:0.4; margin:0 2px; }
+            .att-bulk-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+            .att-bulk-dot.present { background:#10b981; }
+            .att-bulk-dot.absent { background:#ef4444; }
+            .att-mark-btn {
+                padding:11px 22px; font-size:0.86rem; font-weight:700; background:#10b981; border-color:#10b981;
+                display:flex; align-items:center; justify-content:center; gap:9px; border-radius:10px;
+            }
+
+            @media (max-width: 520px) {
+                .att-card-grid { grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; }
+                .att-bulk-bar { flex-direction:column; align-items:stretch; }
+                .att-mark-btn { width:100%; }
+            }
         </style>
 
 
