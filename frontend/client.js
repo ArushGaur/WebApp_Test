@@ -894,10 +894,12 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             popup.style.width = popW + "px";
             const rect = wrap.getBoundingClientRect();
 
-            let left = rect.right - popW;
-            if (left < margin) left = margin;
+            // Align left edge with the wrap element; fallback to right-align if it overflows
+            let left = rect.left;
             if (left + popW > vw - margin) left = vw - margin - popW;
+            if (left < margin) left = margin;
 
+            // Measure real height now that popup is visible (display:block was set before this call)
             const popH = popup.offsetHeight || 320;
             let top = rect.bottom + 6;
             if (top + popH > vh - margin) {
@@ -1184,7 +1186,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
 
         // ── shared markup for the date-picker widget shown above the class cards ──
         function _attDateWidgetHtml() {
-            return `<div style="display:flex;justify-content:flex-end;margin-bottom:18px">
+            return `<div style="display:flex;justify-content:flex-start;margin-bottom:18px">
                 <div class="att-marking-date" id="att-date-wrap" onclick="attToggleCalendar(event)" style="position:relative">
                     <div id="att-date-display" class="att-date-pill">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="16" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
