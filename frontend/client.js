@@ -635,6 +635,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
 
         function showSection(name, push = true) {
             console.log("[nav] showSection called with name:", name);
+            if (typeof _attCloseCalendar === "function") _attCloseCalendar();
             document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
             document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
             const sec = document.getElementById(`section-${name}`);
@@ -863,13 +864,37 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             if (triggerChange) attOnDateChange();
         }
 
+        // The popup is a single persistent node appended directly to <body>.
+        // Appending it to body (rather than nesting it inside the repeatedly
+        // re-rendered #att-cards-wrap) means it's immune to any transformed/
+        // overflow ancestor that would otherwise break `position:fixed`
+        // coordinates, and a very high z-index keeps it above the bulk
+        // action bar at the bottom of the student list.
+        function _attGetCalendarPopup() {
+            let popup = document.getElementById("att-cal-popup");
+            if (!popup) {
+                popup = document.createElement("div");
+                popup.id = "att-cal-popup";
+                popup.style.cssText = "display:none;position:fixed;z-index:99999;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;box-shadow:0 16px 40px rgba(0,0,0,0.28);padding:14px;width:260px;max-width:calc(100vw - 24px)";
+                document.body.appendChild(popup);
+            }
+            return popup;
+        }
+
+        function _attCloseCalendar() {
+            const popup = document.getElementById("att-cal-popup");
+            if (popup) popup.style.display = "none";
+            document.removeEventListener("click", _attCalOutsideClick);
+            window.removeEventListener("resize", _attRepositionOpenCalendar);
+        }
+
         function attToggleCalendar(e) {
             if (e) e.stopPropagation();
-            const popup = document.getElementById("att-cal-popup");
+            const popup = _attGetCalendarPopup();
             const wrap  = document.getElementById("att-date-wrap");
             if (!popup || !wrap) return;
             const isOpen = popup.style.display !== "none";
-            if (isOpen) { popup.style.display = "none"; return; }
+            if (isOpen) { _attCloseCalendar(); return; }
             const hidden = document.getElementById("att-date");
             const base = (hidden && hidden.value) ? hidden.value : getTodayStr();
             const [y, m] = base.split("-").map(Number);
@@ -927,10 +952,9 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                 window.removeEventListener("resize", _attRepositionOpenCalendar);
                 return;
             }
+            if (popup.contains(e.target)) return;
             if (wrap && !wrap.contains(e.target)) {
-                popup.style.display = "none";
-                document.removeEventListener("click", _attCalOutsideClick);
-                window.removeEventListener("resize", _attRepositionOpenCalendar);
+                _attCloseCalendar();
             }
         }
 
@@ -939,10 +963,15 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             if (_attCalViewMonth < 0) { _attCalViewMonth = 11; _attCalViewYear--; }
             if (_attCalViewMonth > 11) { _attCalViewMonth = 0; _attCalViewYear++; }
             _attRenderCalendar();
+            // Month length can change (28-31 days), which changes popup
+            // height — reposition so it stays anchored under the pill.
+            const wrap = document.getElementById("att-date-wrap");
+            const popup = document.getElementById("att-cal-popup");
+            if (wrap && popup) _attPositionCalendar(wrap, popup);
         }
 
         function _attRenderCalendar() {
-            const popup = document.getElementById("att-cal-popup");
+            const popup = _attGetCalendarPopup();
             if (!popup) return;
             const hidden  = document.getElementById("att-date");
             const selIso  = hidden ? hidden.value : "";
@@ -986,10 +1015,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
 
         function _attPickDate(iso) {
             _attSetDateValue(iso, true);
-            const popup = document.getElementById("att-cal-popup");
-            if (popup) popup.style.display = "none";
-            document.removeEventListener("click", _attCalOutsideClick);
-            window.removeEventListener("resize", _attRepositionOpenCalendar);
+            _attCloseCalendar();
         }
 
         // ── date changed: reload records for new date, stay on current view ──
@@ -1131,6 +1157,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
 
         // ── LEVEL 1 : Class Cards ──────────────────────────────────────────
         function _attShowClassCards() {
+            _attCloseCalendar();
             _attView = "classes";
             _attCurrentClass = null;
             _attCurrentSection = null;
@@ -1194,7 +1221,6 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                         <span id="att-date-label">--/--/----</span>
                         <svg class="att-date-cal-icon" width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
                     </div>
-                    <div id="att-cal-popup" style="display:none;position:fixed;z-index:200;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;box-shadow:0 16px 40px rgba(0,0,0,0.18);padding:14px;width:260px;max-width:calc(100vw - 24px)"></div>
                 </div>
             </div>`;
         }
@@ -1211,6 +1237,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
 
         // ── LEVEL 2 : Section Cards ────────────────────────────────────────
         function _attShowSectionCards(className) {
+            _attCloseCalendar();
             _attView = "sections";
             _attCurrentClass   = className;
             _attCurrentSection = null;
@@ -1262,6 +1289,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
 
         // ── LEVEL 3 : Student list with checkboxes ─────────────────────────
         function _attShowStudentList(className, section) {
+            _attCloseCalendar();
             _attView = "list";
             _attCurrentClass   = className;
             _attCurrentSection = section;
@@ -1348,14 +1376,14 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                 const avatarColor = _attAvatarColor(roll || name);
                 return `<tr class="att-row" onclick="attToggleSelect('${roll.replace(/'/g,"\\'")}')"
                         style="${selected ? "background:color-mix(in srgb, var(--accent) 10%, transparent)" : ""}">
-                    <td colspan="2" style="padding:12px 14px">
-                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%">
-                            <div class="att-row-name" style="min-width:0;flex:1 1 auto">
+                    <td colspan="2" style="padding:12px 14px;box-sizing:border-box">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-width:0">
+                            <div class="att-row-name" style="min-width:0;flex:1 1 auto;overflow:hidden">
                                 <span class="att-checkbox ${selected ? "checked" : ""}" style="flex:0 0 auto">
                                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
                                 </span>
                                 <span class="att-avatar" style="--avatar-color:${avatarColor};flex:0 0 auto">${_attInitials(name)}</span>
-                                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span>
+                                <span style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span>
                             </div>
                             <div style="flex:0 0 auto">${badge}</div>
                         </div>
