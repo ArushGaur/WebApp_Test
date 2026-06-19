@@ -1327,7 +1327,6 @@
                         <option value="">All Students</option>
                         <option value="present">Present</option>
                         <option value="absent">Absent</option>
-                        <option value="late">Late</option>
                         <option value="unmarked">Not Marked</option>
                     </select>
                     <button class="btn btn-ghost" onclick="attLoadAndRenderStudents()" style="padding:8px 14px;font-size:0.83rem">↺ Refresh</button>
@@ -1338,16 +1337,14 @@
             <div class="stu-stats-bar" style="margin-bottom:16px">
                 <span class="att-stat"><strong id="att-stat-total">0</strong> Students</span>
                 <span class="att-stat"><strong id="att-stat-selected">0</strong> Selected</span>
-                <span class="att-stat"><strong id="att-stat-present">0</strong> Present Today</span>
+                <span class="att-stat"><strong id="att-stat-present">0</strong> Present</span>
                 <div style="display:flex;gap:8px;margin-left:auto;align-items:center;flex-wrap:wrap">
                     <div class="att-marking-date">
-                        <label for="att-date" style="font-size:0.78rem;font-weight:600;color:var(--text-dim)">Date</label>
                         <input type="date" id="att-date" onchange="attLoadAndRenderStudents()">
                     </div>
                     <select id="att-mark-status" style="padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.84rem;outline:none;font-family:'Outfit',sans-serif">
                         <option value="present">Present</option>
                         <option value="absent">Absent</option>
-                        <option value="late">Late</option>
                     </select>
                     <button class="btn btn-primary" onclick="attMarkAttendance()">✅ Mark Attendance</button>
                 </div>
@@ -1375,12 +1372,6 @@
                 <p style="margin:0;font-size:0.88rem">No students match your search or filter.</p>
             </div>
 
-            <div id="att-history-section" style="margin-top:24px;display:none">
-                <div class="panel">
-                    <div class="panel-title" style="margin-bottom:12px">📊 Today's Attendance Record</div>
-                    <div id="att-history-list"></div>
-                </div>
-            </div>
         </div>
 
         <!-- Manage Classes Modal -->
