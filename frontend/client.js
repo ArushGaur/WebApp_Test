@@ -914,12 +914,26 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
         }
 
         // ── group helpers ──────────────────────────────────────────────────
+        // Splits a raw class string like "Class 10 - A" / "10-A" / "Class 12"
+        // into { base: "10", section: "A" } (section is "" if none present).
+        function _attParseClassSection(raw) {
+            const str = (raw || "").trim();
+            if (!str) return { base: "Unspecified", section: "" };
+            // Match "<anything> - <section>" or "<anything>-<section>" at the end
+            const m = str.match(/^(.*?)\s*-\s*([A-Za-z0-9]+)\s*$/);
+            if (m) {
+                return { base: m[1].trim(), section: m[2].trim() };
+            }
+            return { base: str, section: "" };
+        }
+
         function _attGroupByClass() {
             const map = {};
             _attStudents.forEach(s => {
-                const cls = (s.class_name || s.class || "Unspecified").trim() || "Unspecified";
-                if (!map[cls]) map[cls] = [];
-                map[cls].push(s);
+                const raw = s.class_name || s.class || "Unspecified";
+                const { base } = _attParseClassSection(raw);
+                if (!map[base]) map[base] = [];
+                map[base].push(s);
             });
             return map;
         }
@@ -927,7 +941,10 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
         function _attGroupBySection(students) {
             const map = {};
             students.forEach(s => {
-                const sec = (s.section || s.batch_name || "General").trim() || "General";
+                const raw = s.class_name || s.class || "";
+                const { section } = _attParseClassSection(raw);
+                const explicitSec = (s.section || s.batch_name || "").trim();
+                const sec = explicitSec || section || "General";
                 if (!map[sec]) map[sec] = [];
                 map[sec].push(s);
             });
@@ -971,7 +988,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                             onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,0.12)'"
                             onmouseout="this.style.transform='';this.style.boxShadow='0 2px 8px rgba(0,0,0,0.06)'">
                             <div style="font-size:2.2rem;margin-bottom:10px">🎓</div>
-                            <div style="font-weight:800;font-size:1rem;color:var(--text);margin-bottom:4px">Class ${cls}</div>
+                            <div style="font-weight:800;font-size:1rem;color:var(--text);margin-bottom:4px">${cls}</div>
                             <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:6px">${studs.length} Student${studs.length !== 1 ? "s" : ""}</div>
                             ${present ? `<div style="font-size:0.75rem;color:#10b981;font-weight:700">✅ ${present} Present</div>` : ""}
                         </div>`;
@@ -1001,7 +1018,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                     <button onclick="_attShowClassCards()"
                         style="padding:7px 14px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);cursor:pointer;font-size:0.83rem;font-weight:600;font-family:inherit;transition:all 0.15s"
                         onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">← Back To Classes</button>
-                    <span style="font-size:0.84rem;color:var(--text-muted);font-weight:600">Class ${className} · Section Cards</span>
+                    <span style="font-size:0.84rem;color:var(--text-muted);font-weight:600">${className} · Sections</span>
                 </div>
                 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px">
                     ${sections.map((sec, i) => {
@@ -1047,7 +1064,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                         onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">← Classes</button>
                     <button onclick="_attShowSectionCards('${className.replace(/'/g,"\'")}' )"
                         style="padding:7px 14px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);cursor:pointer;font-size:0.83rem;font-weight:600;font-family:inherit"
-                        onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">← Class ${className}</button>
+                        onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">← ${className}</button>
                     <span style="font-size:0.84rem;color:var(--text-muted);font-weight:600">Section ${section} · ${_attFilteredStudents.length} Students</span>
                 </div>`;
 
