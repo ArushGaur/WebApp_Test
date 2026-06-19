@@ -877,10 +877,6 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             // Auto-create the cards container if the HTML hasn't been updated with it yet.
             _attEnsureCardsWrap();
 
-            // Hide the flat table/search/stats UI IMMEDIATELY (synchronously) so it
-            // never flashes empty while the fetch below is in flight.
-            _attToggleFlatUI(false);
-
             const loadingEl = document.getElementById("att-loading");
             if (loadingEl) loadingEl.style.display = "block";
 
@@ -1091,7 +1087,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             tbody.innerHTML = _attFilteredStudents.map(s => {
                 const status = _attExistingRecords[s.roll_number] || "";
                 const badge  = status
-                    ? `<span class="badge-pill ${status==="present"?"ok":status==="late"?"warn":"wrong"}">${status.charAt(0).toUpperCase()+status.slice(1)}</span>`
+                    ? `<span class="badge-pill ${status==="present"?"ok":"wrong"}">${status.charAt(0).toUpperCase()+status.slice(1)}</span>`
                     : `<span style="color:var(--text-muted);font-size:0.78rem">Not marked</span>`;
                 return `<tr>
                     <td><input type="checkbox" class="att-student-cb" data-roll="${s.roll_number}" ${status?"checked":""}></td>
@@ -1173,59 +1169,32 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             const date      = dateInput ? dateInput.value : getTodayStr();
             const status    = statusEl  ? statusEl.value  : "present";
 
+            // Resolve class_id from the current class name
+            let class_id = 0;
+            try {
+                const cr = await fetch(`${API_BASE}/api/admin/classes`, { credentials: "include", cache: "no-store" });
+                if (cr.ok) {
+                    const classes = await cr.json();
+                    const match = classes.find(c => c.name === _attCurrentClass);
+                    if (match) class_id = match.id;
+                }
+            } catch (_) {}
+
             try {
                 const r = await fetch(`${API_BASE}/api/admin/attendance/mark`, {
                     method:"POST", credentials:"include", cache:"no-store",
                     headers:{"Content-Type":"application/json"},
-                    body: JSON.stringify({ class_id:0, batch_id:null, date, roll_numbers:selected, status }),
+                    body: JSON.stringify({ class_id, batch_id:null, date, roll_numbers:selected, status }),
                 });
                 const data = await r.json().catch(() => ({}));
                 if (!r.ok) throw new Error(data.error || "Failed");
                 // Update local records and re-render table
                 selected.forEach(roll => { _attExistingRecords[roll] = status; });
                 _attRenderStudentTable();
-                // Refresh the history panel
-                await attLoadTodaysRecord();
-                showSuccessToast(`Attendance marked for ${data.marked ?? selected.length} student(s)`);
+                showOtSuccessToast(`Attendance marked for ${data.marked ?? selected.length} student(s)`);
             } catch(e) {
                 showErrorModal(e.message || "Failed to mark attendance");
             }
-        }
-
-        // ── today's record summary ─────────────────────────────────────────
-        async function attLoadTodaysRecord() {
-            const section = document.getElementById("att-history-section");
-            if (!section) return;
-            const dateInput = document.getElementById("att-date");
-            const date      = dateInput ? dateInput.value : getTodayStr();
-            try {
-                const r = await fetch(`${API_BASE}/api/admin/attendance/records?date=${date}`, { credentials:"include", cache:"no-store" });
-                if (!r.ok) { section.style.display = "none"; return; }
-                const records = await r.json();
-                if (!records.length) { section.style.display = "none"; return; }
-                section.style.display = "block";
-                const list    = document.getElementById("att-history-list");
-                if (!list) return;
-                const present = records.filter(r => r.status === "present").length;
-                const absent  = records.filter(r => r.status === "absent").length;
-                const late    = records.filter(r => r.status === "late").length;
-                const leave   = records.filter(r => r.status === "leave").length;
-                list.innerHTML = `
-                    <div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap">
-                        <span style="font-size:0.82rem">✅ Present: <strong>${present}</strong></span>
-                        <span style="font-size:0.82rem">❌ Absent: <strong>${absent}</strong></span>
-                        <span style="font-size:0.82rem">⏰ Late: <strong>${late}</strong></span>
-                        <span style="font-size:0.82rem">📋 Leave: <strong>${leave}</strong></span>
-                        <span style="font-size:0.82rem">👥 Total: <strong>${records.length}</strong></span>
-                    </div>
-                    <div style="max-height:200px;overflow-y:auto;font-size:0.82rem">
-                        ${records.map(rec => `
-                            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
-                                <span>${rec.roll_number}${rec.student_name ? " — "+rec.student_name : ""}</span>
-                                <span class="badge-pill ${rec.status==="present"?"ok":rec.status==="late"?"warn":"wrong"}">${rec.status}</span>
-                            </div>`).join("")}
-                    </div>`;
-            } catch(_) { section.style.display = "none"; }
         }
 
         async function openManageClassesModal() {
