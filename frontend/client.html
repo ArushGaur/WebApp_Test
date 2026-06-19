@@ -1331,6 +1331,9 @@
             <div class="stu-stats-bar" style="margin-bottom:16px;display:none">
                 <span class="att-stat"><strong id="att-stat-total">0</strong> Students</span>
                 <span class="att-stat"><strong id="att-stat-present">0</strong> Present</span>
+                <span class="att-stat" id="att-stat-selected-wrap" style="display:none">
+                    <strong id="att-stat-selected">0</strong> Selected
+                </span>
                 <div style="display:flex;gap:8px;margin-left:auto;align-items:center;flex-wrap:wrap">
                     <div class="att-marking-date" id="att-date-wrap" onclick="attToggleCalendar(event)" style="position:relative;cursor:pointer">
                         <div id="att-date-display"
@@ -1344,12 +1347,22 @@
                 </div>
             </div>
 
+            <!-- Bulk selection action bar -->
+            <div id="att-bulk-bar" style="display:none;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);flex-wrap:wrap">
+                <button class="btn btn-ghost" onclick="attSelectAll()" style="padding:7px 12px;font-size:0.8rem">☑️ Select All</button>
+                <button class="btn btn-ghost" onclick="attClearSelection()" style="padding:7px 12px;font-size:0.8rem">✕ Clear</button>
+                <div style="margin-left:auto;display:flex;gap:8px">
+                    <button class="btn btn-primary" onclick="attMarkSelected('present')" style="padding:7px 16px;font-size:0.83rem;background:#10b981;border-color:#10b981">✅ Mark Present</button>
+                    <button class="btn btn-ghost" onclick="attMarkSelected('absent')" style="padding:7px 16px;font-size:0.83rem">⬜ Mark Absent</button>
+                </div>
+            </div>
+
             <!-- Loading -->
             <div id="att-loading" style="display:none;text-align:center;padding:40px;color:var(--text-muted)">Loading...</div>
 
             <!-- Table -->
             <div class="table-wrap" style="display:none">
-                <p style="margin:0 0 10px;font-size:0.78rem;color:var(--text-muted)">Tap a student's name to mark/unmark them present.</p>
+                <p style="margin:0 0 10px;font-size:0.78rem;color:var(--text-muted)">Tap a student's name to select/unselect, then use "Mark Present" / "Mark Absent" below.</p>
                 <table id="att-student-table">
                     <thead>
                         <tr>
