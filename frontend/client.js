@@ -603,6 +603,237 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
         /* ══════════════════════════════════════════════════════════════════
            NAVIGATION
         ══════════════════════════════════════════════════════════════════ */
+        /* ══════════════════════════════════════════════════════════════════
+           STUDENTS — Class Cards → Section Cards → Student List drill-down
+        ══════════════════════════════════════════════════════════════════ */
+        let _regStudents = [];
+        let _regView = "classes"; // "classes" | "sections" | "list"
+        let _regCurrentClass = null;
+        let _regCurrentSection = null;
+
+        async function loadRegisteredStudents() {
+            try {
+                const r = await fetch(`${API_BASE}/api/admin/registered-students`, { credentials: "include", cache: "no-store" });
+                if (!r.ok) throw new Error(`Failed (${r.status})`);
+                _regStudents = await r.json();
+            } catch (e) {
+                console.warn("[students] loadRegisteredStudents error:", e.message);
+                _regStudents = [];
+            }
+            _regUpdateStats();
+            _regShowClassCards();
+        }
+
+        function _regUpdateStats() {
+            const total    = _regStudents.length;
+            const complete = _regStudents.filter(s => s.name && s.name.trim()).length;
+            const pending  = total - complete;
+            const showEl   = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+            showEl("reg-stat-total",    total);
+            showEl("reg-stat-complete", complete);
+            showEl("reg-stat-pending",  pending);
+            showEl("reg-stat-showing",  total);
+        }
+
+        function _regGroupByClass() {
+            const map = {};
+            _regStudents.forEach(s => {
+                const cls = (s.class_name || s.class || "Unspecified").trim() || "Unspecified";
+                if (!map[cls]) map[cls] = [];
+                map[cls].push(s);
+            });
+            return map;
+        }
+
+        function _regGroupBySection(students) {
+            const map = {};
+            students.forEach(s => {
+                const sec = (s.section || s.batch_name || "General").trim() || "General";
+                if (!map[sec]) map[sec] = [];
+                map[sec].push(s);
+            });
+            return map;
+        }
+
+        function _regShowClassCards() {
+            _regView = "classes";
+            _regCurrentClass = null;
+            _regCurrentSection = null;
+
+            const tableWrap   = document.getElementById("regStuTableWrap");
+            const groupedWrap = document.getElementById("regStuGroupedWrap");
+            const emptyEl     = document.getElementById("regStuEmpty");
+            const searchEl    = document.getElementById("regStuSearch");
+            const filterEl    = document.getElementById("regStuFilter");
+            if (tableWrap)   tableWrap.style.display   = "none";
+            if (emptyEl)     emptyEl.style.display     = "none";
+            if (searchEl)    searchEl.style.display    = "none";
+            if (filterEl && filterEl.parentElement) filterEl.parentElement.style.display = "none";
+
+            if (!groupedWrap) return;
+            groupedWrap.style.display = "block";
+
+            const byClass = _regGroupByClass();
+            const classes = Object.keys(byClass).sort();
+
+            if (!classes.length) {
+                groupedWrap.innerHTML = `<div style="text-align:center;padding:60px 20px;color:var(--text-muted)">
+                    <div style="font-size:3rem;margin-bottom:12px">👥</div>
+                    <h3 style="margin:0 0 6px">No Students Yet</h3>
+                    <p style="margin:0;font-size:0.88rem">Add roll numbers above to get started.</p>
+                </div>`;
+                return;
+            }
+
+            const colors = ["#6366f1","#0ea5e9","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6"];
+            groupedWrap.innerHTML = `
+                <div style="font-size:0.82rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:14px">Class Cards</div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px">
+                    ${classes.map((cls, i) => {
+                        const students = byClass[cls];
+                        const color = colors[i % colors.length];
+                        return `<div onclick="_regShowSectionCards('${cls.replace(/'/g,"\'")}' )"
+                            style="background:var(--bg-card);border:1.5px solid var(--border);border-top:3px solid ${color};border-radius:14px;padding:24px 18px;cursor:pointer;text-align:center;transition:all 0.18s;box-shadow:0 2px 8px rgba(0,0,0,0.06)"
+                            onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,0.12)'"
+                            onmouseout="this.style.transform='';this.style.boxShadow='0 2px 8px rgba(0,0,0,0.06)'">
+                            <div style="font-size:2.2rem;margin-bottom:10px">🎓</div>
+                            <div style="font-weight:800;font-size:1rem;color:var(--text);margin-bottom:4px">Class ${cls}</div>
+                            <div style="font-size:0.8rem;color:var(--text-muted)">${students.length} Student${students.length !== 1 ? "s" : ""}</div>
+                        </div>`;
+                    }).join("")}
+                </div>`;
+        }
+
+        function _regShowSectionCards(className) {
+            _regView = "sections";
+            _regCurrentClass = className;
+
+            const groupedWrap = document.getElementById("regStuGroupedWrap");
+            if (!groupedWrap) return;
+
+            const byClass    = _regGroupByClass();
+            const students   = byClass[className] || [];
+            const bySection  = _regGroupBySection(students);
+            const sections   = Object.keys(bySection).sort();
+
+            const colors = ["#6366f1","#0ea5e9","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6"];
+
+            groupedWrap.innerHTML = `
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+                    <button onclick="_regShowClassCards()"
+                        style="padding:7px 14px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);cursor:pointer;font-size:0.83rem;font-weight:600;font-family:inherit;transition:all 0.15s"
+                        onmouseover="this.style.borderColor='var(--accent)'"
+                        onmouseout="this.style.borderColor='var(--border)'">← Back To Classes</button>
+                    <span style="font-size:0.84rem;color:var(--text-muted);font-weight:600">Class ${className} · Section Cards</span>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px">
+                    ${sections.map((sec, i) => {
+                        const stuList = bySection[sec];
+                        const color   = colors[i % colors.length];
+                        return `<div onclick="_regShowStudentList('${className.replace(/'/g,"\'")}','${sec.replace(/'/g,"\'")}' )"
+                            style="background:var(--bg-card);border:1.5px solid var(--border);border-top:3px solid ${color};border-radius:14px;padding:24px 18px;cursor:pointer;text-align:center;transition:all 0.18s;box-shadow:0 2px 8px rgba(0,0,0,0.06)"
+                            onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,0.12)'"
+                            onmouseout="this.style.transform='';this.style.boxShadow='0 2px 8px rgba(0,0,0,0.06)'">
+                            <div style="font-size:2.2rem;margin-bottom:10px">📁</div>
+                            <div style="font-weight:800;font-size:1rem;color:var(--text);margin-bottom:4px">Section ${sec}</div>
+                            <div style="font-size:0.8rem;color:var(--text-muted)">${stuList.length} Student${stuList.length !== 1 ? "s" : ""}</div>
+                        </div>`;
+                    }).join("")}
+                </div>`;
+        }
+
+        function _regShowStudentList(className, section) {
+            _regView = "list";
+            _regCurrentClass   = className;
+            _regCurrentSection = section;
+
+            const groupedWrap = document.getElementById("regStuGroupedWrap");
+            const tableWrap   = document.getElementById("regStuTableWrap");
+            const emptyEl     = document.getElementById("regStuEmpty");
+            if (!groupedWrap) return;
+
+            const byClass   = _regGroupByClass();
+            const students  = byClass[className] || [];
+            const bySection = _regGroupBySection(students);
+            const list      = bySection[section] || [];
+
+            // Breadcrumb header
+            groupedWrap.innerHTML = `
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+                    <button onclick="_regShowClassCards()"
+                        style="padding:7px 14px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);cursor:pointer;font-size:0.83rem;font-weight:600;font-family:inherit"
+                        onmouseover="this.style.borderColor='var(--accent)'"
+                        onmouseout="this.style.borderColor='var(--border)'">← Classes</button>
+                    <button onclick="_regShowSectionCards('${className.replace(/'/g,"\'")}')"
+                        style="padding:7px 14px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);cursor:pointer;font-size:0.83rem;font-weight:600;font-family:inherit"
+                        onmouseover="this.style.borderColor='var(--accent)'"
+                        onmouseout="this.style.borderColor='var(--border)'">← Class ${className}</button>
+                    <span style="font-size:0.84rem;color:var(--text-muted);font-weight:600">Section ${section} · ${list.length} Students</span>
+                </div>`;
+
+            if (!list.length) {
+                groupedWrap.innerHTML += `<div style="text-align:center;padding:40px;color:var(--text-muted)">No students in this section.</div>`;
+                return;
+            }
+
+            // Render table inside groupedWrap
+            groupedWrap.innerHTML += `
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr>
+                            <th>Roll Number</th><th>Name</th><th>Class</th><th>Phone</th><th>Status</th><th>Action</th>
+                        </tr></thead>
+                        <tbody>
+                            ${list.map(s => {
+                                const hasProfile = s.name && s.name.trim();
+                                const badge = hasProfile
+                                    ? `<span class="badge-pill ok">Complete</span>`
+                                    : `<span class="badge-pill wrong">Pending</span>`;
+                                return `<tr>
+                                    <td style="font-family:'JetBrains Mono',monospace;font-size:0.82rem">${s.roll_number || "—"}</td>
+                                    <td>${s.name || '<span style="color:var(--text-muted);font-size:0.8rem">Not registered</span>'}</td>
+                                    <td>${s.class_name || s.class || "—"}</td>
+                                    <td>${s.phone || s.mobile || "—"}</td>
+                                    <td>${badge}</td>
+                                    <td><button onclick="openDelStuPopup('${(s.roll_number||"").replace(/'/g,"\'")}','${(s.name||"").replace(/'/g,"\'")}' )"
+                                        style="padding:5px 10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:7px;color:#ef4444;cursor:pointer;font-size:0.75rem;font-family:inherit">🗑</button></td>
+                                </tr>`;
+                            }).join("")}
+                        </tbody>
+                    </table>
+                </div>`;
+        }
+
+        function filterRegisteredStudents(query) {
+            // When in class/section view just reload; in list view filter the visible table
+            if (_regView !== "list") return;
+            const q = (query || "").toLowerCase().trim();
+            const filterVal = document.getElementById("regStuFilter")?.value || "";
+            const byClass   = _regGroupByClass();
+            const students  = byClass[_regCurrentClass] || [];
+            const bySection = _regGroupBySection(students);
+            let list        = bySection[_regCurrentSection] || [];
+            if (q) list = list.filter(s => (s.name || "").toLowerCase().includes(q) || (s.roll_number || "").toLowerCase().includes(q));
+            if (filterVal === "complete")   list = list.filter(s => s.name && s.name.trim());
+            if (filterVal === "incomplete") list = list.filter(s => !s.name || !s.name.trim());
+            // Re-render just the table body
+            const tbody = document.querySelector("#regStuGroupedWrap table tbody");
+            if (!tbody) return;
+            tbody.innerHTML = list.map(s => {
+                const hasProfile = s.name && s.name.trim();
+                const badge = hasProfile ? `<span class="badge-pill ok">Complete</span>` : `<span class="badge-pill wrong">Pending</span>`;
+                return `<tr>
+                    <td style="font-family:'JetBrains Mono',monospace;font-size:0.82rem">${s.roll_number || "—"}</td>
+                    <td>${s.name || '<span style="color:var(--text-muted);font-size:0.8rem">Not registered</span>'}</td>
+                    <td>${s.class_name || s.class || "—"}</td>
+                    <td>${s.phone || s.mobile || "—"}</td>
+                    <td>${badge}</td>
+                    <td><button onclick="openDelStuPopup('${(s.roll_number||"").replace(/'/g,"\'")}','${(s.name||"").replace(/'/g,"\'")}' )"
+                        style="padding:5px 10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:7px;color:#ef4444;cursor:pointer;font-size:0.75rem;font-family:inherit">🗑</button></td>
+                </tr>`;
+            }).join("");
+        }
+
         // Override drawerNav for attendance since shared showSection is intercepted
         const _origDrawerNav = typeof drawerNav === "function" ? drawerNav : null;
         function drawerNav(name) {
@@ -649,6 +880,11 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             }
             // drawerNav('attendance') also lands here — handled above
             if (name === "students") {
+                // Hide flat table, show grouped card view
+                const tw = document.getElementById("regStuTableWrap");
+                const gw = document.getElementById("regStuGroupedWrap");
+                if (tw) tw.style.display = "none";
+                if (gw) gw.style.display = "block";
                 loadRegisteredStudents();
                 // Refresh request badge count
                 fetch(`${API_BASE}/api/admin/student-requests`, { credentials: 'include', cache: 'no-store' })
@@ -829,140 +1065,278 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
         }
 
         /* ══════════════════════════════════════════════════════════════════
-           ATTENDANCE — Flat list (same navigation as Students section)
+           ATTENDANCE — Class Cards → Section Cards → Student list (with checkboxes)
         ══════════════════════════════════════════════════════════════════ */
         let _attStudents = [];
         let _attFilteredStudents = [];
         let _attExistingRecords = {};
+        let _attView = "classes"; // "classes" | "sections" | "list"
+        let _attCurrentClass = null;
+        let _attCurrentSection = null;
 
         function getTodayStr() {
             const d = new Date();
-            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
         }
 
+        // ── top-level entry point called by navAttendance ──────────────────
         async function attLoadAndRenderStudents() {
             console.log("[attendance] attLoadAndRenderStudents() called");
             const dateInput = document.getElementById("att-date");
-            if (!dateInput) { console.warn("[attendance] #att-date not found — section not in DOM?"); return; }
+            if (!dateInput) { console.warn("[attendance] #att-date not found"); return; }
             if (!dateInput.value) dateInput.value = getTodayStr();
-            const date = dateInput.value;
-            console.log("[attendance] date =", date, "| API_BASE =", API_BASE);
 
-            const searchEl  = document.getElementById("att-search");
-            const filterEl  = document.getElementById("att-filter");
             const loadingEl = document.getElementById("att-loading");
-            const emptyEl   = document.getElementById("att-empty");
-            console.log("[attendance] DOM elements — search:", !!searchEl, "filter:", !!filterEl, "loading:", !!loadingEl, "empty:", !!emptyEl);
-            if (searchEl)  searchEl.value = "";
-            if (filterEl)  filterEl.value = "";
             if (loadingEl) loadingEl.style.display = "block";
-            if (emptyEl)   emptyEl.style.display   = "none";
 
             try {
-                const stuUrl = `${API_BASE}/api/admin/attendance/students`;
-                console.log("[attendance] fetching students from:", stuUrl);
-                const r = await fetch(stuUrl, { credentials: "include", cache: "no-store" });
-                console.log("[attendance] students response status:", r.status);
-                if (!r.ok) {
-                    const errText = await r.text().catch(() => "");
-                    console.error("[attendance] students API error body:", errText);
-                    throw new Error(`Failed to load students (${r.status})`);
-                }
+                const r = await fetch(`${API_BASE}/api/admin/attendance/students`, { credentials:"include", cache:"no-store" });
+                if (!r.ok) throw new Error(`Failed to load students (${r.status})`);
                 _attStudents = await r.json();
                 console.log("[attendance] students loaded:", _attStudents.length);
-
-                _attExistingRecords = {};
-                try {
-                    const recUrl = `${API_BASE}/api/admin/attendance/records?date=${date}`;
-                    console.log("[attendance] fetching records from:", recUrl);
-                    const rr = await fetch(recUrl, { credentials: "include", cache: "no-store" });
-                    console.log("[attendance] records response status:", rr.status);
-                    if (rr.ok) {
-                        const recs = await rr.json();
-                        console.log("[attendance] existing records:", recs.length);
-                        recs.forEach(rec => { _attExistingRecords[rec.roll_number] = rec.status; });
-                    }
-                } catch (recErr) { console.warn("[attendance] records fetch failed (non-fatal):", recErr.message); }
-
-                _attFilteredStudents = [..._attStudents];
-                console.log("[attendance] calling attRenderStudentsTable(), students count:", _attFilteredStudents.length);
-                attRenderStudentsTable();
-                console.log("[attendance] render done, loading today record");
-                await attLoadTodaysRecord();
-                console.log("[attendance] all done");
-            } catch (e) {
-                console.error("[attendance] FATAL error:", e);
-                showErrorModal(e.message || "Failed to load students");
-            } finally {
+            } catch(e) {
+                console.error("[attendance] load error:", e);
                 if (loadingEl) loadingEl.style.display = "none";
+                showErrorModal(e.message || "Failed to load students");
+                return;
             }
+
+            if (loadingEl) loadingEl.style.display = "none";
+
+            // Load today's existing records
+            await _attLoadRecords();
+            // Show class cards view
+            _attShowClassCards();
         }
 
+        async function _attLoadRecords() {
+            const dateInput = document.getElementById("att-date");
+            const date = dateInput ? dateInput.value : getTodayStr();
+            _attExistingRecords = {};
+            try {
+                const rr = await fetch(`${API_BASE}/api/admin/attendance/records?date=${date}`, { credentials:"include", cache:"no-store" });
+                if (rr.ok) {
+                    const recs = await rr.json();
+                    recs.forEach(rec => { _attExistingRecords[rec.roll_number] = rec.status; });
+                }
+            } catch(_) {}
+        }
+
+        // ── group helpers ──────────────────────────────────────────────────
+        function _attGroupByClass() {
+            const map = {};
+            _attStudents.forEach(s => {
+                const cls = (s.class_name || s.class || "Unspecified").trim() || "Unspecified";
+                if (!map[cls]) map[cls] = [];
+                map[cls].push(s);
+            });
+            return map;
+        }
+
+        function _attGroupBySection(students) {
+            const map = {};
+            students.forEach(s => {
+                const sec = (s.section || s.batch_name || "General").trim() || "General";
+                if (!map[sec]) map[sec] = [];
+                map[sec].push(s);
+            });
+            return map;
+        }
+
+        // ── LEVEL 1 : Class Cards ──────────────────────────────────────────
+        function _attShowClassCards() {
+            _attView = "classes";
+            _attCurrentClass = null;
+            _attCurrentSection = null;
+
+            const wrap = document.getElementById("att-cards-wrap");
+            if (!wrap) return;
+
+            const byClass = _attGroupByClass();
+            const classes = Object.keys(byClass).sort();
+            const colors  = ["#6366f1","#0ea5e9","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6"];
+
+            // Hide flat table elements, show cards
+            _attToggleFlatUI(false);
+
+            if (!classes.length) {
+                wrap.innerHTML = `<div style="text-align:center;padding:60px 20px;color:var(--text-muted)">
+                    <div style="font-size:3rem;margin-bottom:12px">📋</div>
+                    <h3 style="margin:0 0 6px">No Students Found</h3>
+                    <p style="margin:0;font-size:0.88rem">Add students to the portal first.</p>
+                </div>`;
+                return;
+            }
+
+            wrap.innerHTML = `
+                <div style="font-size:0.82rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:14px">Class Cards</div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px">
+                    ${classes.map((cls, i) => {
+                        const studs   = byClass[cls];
+                        const color   = colors[i % colors.length];
+                        const present = studs.filter(s => _attExistingRecords[s.roll_number] === "present").length;
+                        return `<div onclick="_attShowSectionCards('${cls.replace(/'/g,"\'")}')"
+                            style="background:var(--bg-card);border:1.5px solid var(--border);border-top:3px solid ${color};border-radius:14px;padding:24px 18px;cursor:pointer;text-align:center;transition:all 0.18s;box-shadow:0 2px 8px rgba(0,0,0,0.06)"
+                            onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,0.12)'"
+                            onmouseout="this.style.transform='';this.style.boxShadow='0 2px 8px rgba(0,0,0,0.06)'">
+                            <div style="font-size:2.2rem;margin-bottom:10px">🎓</div>
+                            <div style="font-weight:800;font-size:1rem;color:var(--text);margin-bottom:4px">Class ${cls}</div>
+                            <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:6px">${studs.length} Student${studs.length !== 1 ? "s" : ""}</div>
+                            ${present ? `<div style="font-size:0.75rem;color:#10b981;font-weight:700">✅ ${present} Present</div>` : ""}
+                        </div>`;
+                    }).join("")}
+                </div>`;
+        }
+
+        // ── LEVEL 2 : Section Cards ────────────────────────────────────────
+        function _attShowSectionCards(className) {
+            _attView = "sections";
+            _attCurrentClass   = className;
+            _attCurrentSection = null;
+
+            const wrap = document.getElementById("att-cards-wrap");
+            if (!wrap) return;
+
+            const byClass   = _attGroupByClass();
+            const students  = byClass[className] || [];
+            const bySection = _attGroupBySection(students);
+            const sections  = Object.keys(bySection).sort();
+            const colors    = ["#6366f1","#0ea5e9","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6"];
+
+            _attToggleFlatUI(false);
+
+            wrap.innerHTML = `
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+                    <button onclick="_attShowClassCards()"
+                        style="padding:7px 14px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);cursor:pointer;font-size:0.83rem;font-weight:600;font-family:inherit;transition:all 0.15s"
+                        onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">← Back To Classes</button>
+                    <span style="font-size:0.84rem;color:var(--text-muted);font-weight:600">Class ${className} · Section Cards</span>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px">
+                    ${sections.map((sec, i) => {
+                        const studs   = bySection[sec];
+                        const color   = colors[i % colors.length];
+                        const present = studs.filter(s => _attExistingRecords[s.roll_number] === "present").length;
+                        return `<div onclick="_attShowStudentList('${className.replace(/'/g,"\'")}','${sec.replace(/'/g,"\'")}' )"
+                            style="background:var(--bg-card);border:1.5px solid var(--border);border-top:3px solid ${color};border-radius:14px;padding:24px 18px;cursor:pointer;text-align:center;transition:all 0.18s;box-shadow:0 2px 8px rgba(0,0,0,0.06)"
+                            onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,0.12)'"
+                            onmouseout="this.style.transform='';this.style.boxShadow='0 2px 8px rgba(0,0,0,0.06)'">
+                            <div style="font-size:2.2rem;margin-bottom:10px">📁</div>
+                            <div style="font-weight:800;font-size:1rem;color:var(--text);margin-bottom:4px">Section ${sec}</div>
+                            <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:6px">${studs.length} Student${studs.length !== 1 ? "s" : ""}</div>
+                            ${present ? `<div style="font-size:0.75rem;color:#10b981;font-weight:700">✅ ${present} Present</div>` : ""}
+                        </div>`;
+                    }).join("")}
+                </div>`;
+        }
+
+        // ── LEVEL 3 : Student list with checkboxes ─────────────────────────
+        function _attShowStudentList(className, section) {
+            _attView = "list";
+            _attCurrentClass   = className;
+            _attCurrentSection = section;
+
+            const wrap = document.getElementById("att-cards-wrap");
+            if (!wrap) return;
+
+            const byClass   = _attGroupByClass();
+            const students  = byClass[className] || [];
+            const bySection = _attGroupBySection(students);
+            _attFilteredStudents = bySection[section] || [];
+
+            _attToggleFlatUI(true);
+
+            // Update stat counters
+            _attRefreshStats();
+
+            wrap.innerHTML = `
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+                    <button onclick="_attShowClassCards()"
+                        style="padding:7px 14px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);cursor:pointer;font-size:0.83rem;font-weight:600;font-family:inherit"
+                        onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">← Classes</button>
+                    <button onclick="_attShowSectionCards('${className.replace(/'/g,"\'")}' )"
+                        style="padding:7px 14px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;color:var(--text);cursor:pointer;font-size:0.83rem;font-weight:600;font-family:inherit"
+                        onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">← Class ${className}</button>
+                    <span style="font-size:0.84rem;color:var(--text-muted);font-weight:600">Section ${section} · ${_attFilteredStudents.length} Students</span>
+                </div>`;
+
+            _attRenderStudentTable();
+        }
+
+        function _attRenderStudentTable() {
+            // The table is the existing #att-student-table — we render into #att-student-tbody
+            const tbody  = document.getElementById("att-student-tbody");
+            const emptyEl = document.getElementById("att-empty");
+            if (!tbody) return;
+
+            if (!_attFilteredStudents.length) {
+                if (emptyEl) emptyEl.style.display = "block";
+                tbody.innerHTML = "";
+                return;
+            }
+            if (emptyEl) emptyEl.style.display = "none";
+
+            tbody.innerHTML = _attFilteredStudents.map(s => {
+                const status = _attExistingRecords[s.roll_number] || "";
+                const badge  = status
+                    ? `<span class="badge-pill ${status==="present"?"ok":status==="late"?"warn":"wrong"}">${status.charAt(0).toUpperCase()+status.slice(1)}</span>`
+                    : `<span style="color:var(--text-muted);font-size:0.78rem">Not marked</span>`;
+                return `<tr>
+                    <td><input type="checkbox" class="att-student-cb" data-roll="${s.roll_number}" ${status?"checked":""}></td>
+                    <td>${s.name || s.roll_number || "—"}</td>
+                    <td>${badge}</td>
+                </tr>`;
+            }).join("");
+
+            _attRefreshStats();
+            attUpdateSelectAll();
+        }
+
+        function _attRefreshStats() {
+            const tbody = document.getElementById("att-student-tbody");
+            const sel   = tbody ? tbody.querySelectorAll(".att-student-cb:checked").length : 0;
+            const pres  = _attFilteredStudents.filter(s => _attExistingRecords[s.roll_number] === "present").length;
+            const t = document.getElementById("att-stat-total");    if (t) t.textContent = _attFilteredStudents.length;
+            const s = document.getElementById("att-stat-selected"); if (s) s.textContent = sel;
+            const p = document.getElementById("att-stat-present");  if (p) p.textContent = pres;
+        }
+
+        // ── show/hide flat table UI ────────────────────────────────────────
+        function _attToggleFlatUI(show) {
+            const tableWrap = document.getElementById("att-student-table");
+            const searchEl  = document.getElementById("att-search");
+            const statsBar  = document.querySelector("#section-attendance .stu-stats-bar");
+            if (tableWrap && tableWrap.parentElement) tableWrap.parentElement.style.display = show ? "" : "none";
+            if (searchEl && searchEl.closest(".stu-toolbar")) searchEl.closest(".stu-toolbar").style.display = show ? "" : "none";
+            if (statsBar) statsBar.style.display = show ? "" : "none";
+        }
+
+        // ── filter (search within list view) ──────────────────────────────
         function attFilterStudents(query) {
-            const filterEl = document.getElementById("att-filter");
+            if (_attView !== "list") return;
+            const filterEl  = document.getElementById("att-filter");
             const filterVal = filterEl ? filterEl.value : "";
-            const q = (query || "").toLowerCase().trim();
-            _attFilteredStudents = _attStudents.filter(s => {
-                if (q && !(s.name && s.name.toLowerCase().includes(q))) return false;
+            const q         = (query || "").toLowerCase().trim();
+            const byClass   = _attGroupByClass();
+            const students  = byClass[_attCurrentClass] || [];
+            const bySection = _attGroupBySection(students);
+            _attFilteredStudents = (bySection[_attCurrentSection] || []).filter(s => {
+                if (q && !(s.name||"").toLowerCase().includes(q) && !(s.roll_number||"").toLowerCase().includes(q)) return false;
                 if (!filterVal) return true;
                 const status = _attExistingRecords[s.roll_number] || "";
                 if (filterVal === "unmarked") return !status;
                 return status === filterVal;
             });
-            attRenderStudentsTable();
+            _attRenderStudentTable();
         }
 
-        function attRenderStudentsTable() {
-            const tbody = document.getElementById("att-student-tbody");
-            const empty = document.getElementById("att-empty");
-            if (!tbody) return;
-
-            if (!_attFilteredStudents.length) {
-                if (empty) empty.style.display = "block";
-                tbody.innerHTML = "";
-                const t = document.getElementById("att-stat-total");    if (t) t.textContent = "0";
-                const s = document.getElementById("att-stat-selected"); if (s) s.textContent = "0";
-                const p = document.getElementById("att-stat-present");  if (p) p.textContent = "0";
-                return;
-            }
-
-            if (empty) empty.style.display = "none";
-
-            tbody.innerHTML = _attFilteredStudents.map(s => {
-                const existingStatus = _attExistingRecords[s.roll_number] || "";
-                const badge = existingStatus
-                    ? `<span class="badge-pill ${existingStatus === 'present' ? 'ok' : existingStatus === 'late' ? 'warn' : 'wrong'}">${existingStatus.charAt(0).toUpperCase() + existingStatus.slice(1)}</span>`
-                    : '<span style="color:var(--text-muted);font-size:0.78rem">Not marked</span>';
-                return `<tr>
-                    <td><input type="checkbox" class="att-student-cb" data-roll="${s.roll_number}" ${existingStatus ? 'checked' : ''}></td>
-                    <td>${s.name || s.roll_number || '—'}</td>
-                    <td>${badge}</td>
-                </tr>`;
-            }).join("");
-
-            const totalEl = document.getElementById("att-stat-total");
-            if (totalEl) totalEl.textContent = _attFilteredStudents.length;
-            const sel = tbody.querySelectorAll(".att-student-cb:checked").length;
-            const selEl = document.getElementById("att-stat-selected");
-            if (selEl) selEl.textContent = sel;
-            const presentCount = _attFilteredStudents.filter(s => {
-                const status = _attExistingRecords[s.roll_number] || "";
-                return status === "present";
-            }).length;
-            const presEl = document.getElementById("att-stat-present");
-            if (presEl) presEl.textContent = presentCount;
-            attUpdateSelectAll();
-        }
-
+        // ── select all ────────────────────────────────────────────────────
         function attToggleSelectAll() {
             const all   = document.getElementById("att-select-all");
             const tbody = document.getElementById("att-student-tbody");
             if (!all || !tbody) return;
-            const checked = all.checked;
-            tbody.querySelectorAll(".att-student-cb").forEach(cb => cb.checked = checked);
-            const sel = checked ? _attFilteredStudents.length : 0;
-            const selEl = document.getElementById("att-stat-selected");
-            if (selEl) selEl.textContent = sel;
+            tbody.querySelectorAll(".att-student-cb").forEach(cb => { cb.checked = all.checked; });
+            _attRefreshStats();
         }
 
         function attUpdateSelectAll() {
@@ -970,56 +1344,60 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             const all   = document.getElementById("att-select-all");
             if (!all) return;
             const cbs = tbody ? [...tbody.querySelectorAll(".att-student-cb")] : [];
-            if (!cbs.length) { all.checked = false; all.indeterminate = false; return; }
-            all.checked = cbs.every(cb => cb.checked);
+            all.checked       = cbs.length > 0 && cbs.every(cb => cb.checked);
             all.indeterminate = cbs.some(cb => cb.checked) && !all.checked;
-            const sel = cbs.filter(cb => cb.checked).length;
-            const selEl = document.getElementById("att-stat-selected");
-            if (selEl) selEl.textContent = sel;
+            _attRefreshStats();
         }
 
+        // ── mark attendance ────────────────────────────────────────────────
         async function attMarkAttendance() {
-            const tbody = document.getElementById("att-student-tbody");
+            const tbody    = document.getElementById("att-student-tbody");
             const selected = [];
-            if (tbody) {
-                tbody.querySelectorAll(".att-student-cb:checked").forEach(cb => selected.push(cb.dataset.roll));
-            }
+            if (tbody) tbody.querySelectorAll(".att-student-cb:checked").forEach(cb => selected.push(cb.dataset.roll));
             if (!selected.length) { showErrorModal("Please select at least one student."); return; }
-            const date = document.getElementById("att-date")?.value || getTodayStr();
-            const status = document.getElementById("att-mark-status")?.value || "present";
+
+            const dateInput = document.getElementById("att-date");
+            const statusEl  = document.getElementById("att-mark-status");
+            const date      = dateInput ? dateInput.value : getTodayStr();
+            const status    = statusEl  ? statusEl.value  : "present";
 
             try {
                 const r = await fetch(`${API_BASE}/api/admin/attendance/mark`, {
-                    method: "POST",
-                    credentials: "include",
-                    cache: "no-store",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ class_id: 0, batch_id: null, date, roll_numbers: selected, status }),
+                    method:"POST", credentials:"include", cache:"no-store",
+                    headers:{"Content-Type":"application/json"},
+                    body: JSON.stringify({ class_id:0, batch_id:null, date, roll_numbers:selected, status }),
                 });
-                const data = await r.json();
+                const data = await r.json().catch(() => ({}));
                 if (!r.ok) throw new Error(data.error || "Failed");
-                await attLoadAndRenderStudents();
-                showSuccessToast(`Attendance marked for ${data.marked} student(s)`);
-            } catch (e) {
+                // Update local records and re-render table
+                selected.forEach(roll => { _attExistingRecords[roll] = status; });
+                _attRenderStudentTable();
+                // Refresh the history panel
+                await attLoadTodaysRecord();
+                showSuccessToast(`Attendance marked for ${data.marked ?? selected.length} student(s)`);
+            } catch(e) {
                 showErrorModal(e.message || "Failed to mark attendance");
             }
         }
 
+        // ── today's record summary ─────────────────────────────────────────
         async function attLoadTodaysRecord() {
             const section = document.getElementById("att-history-section");
             if (!section) return;
-            const date = document.getElementById("att-date")?.value || getTodayStr();
+            const dateInput = document.getElementById("att-date");
+            const date      = dateInput ? dateInput.value : getTodayStr();
             try {
-                const r = await fetch(`${API_BASE}/api/admin/attendance/records?date=${date}`, { credentials: "include", cache: "no-store" });
+                const r = await fetch(`${API_BASE}/api/admin/attendance/records?date=${date}`, { credentials:"include", cache:"no-store" });
                 if (!r.ok) { section.style.display = "none"; return; }
                 const records = await r.json();
                 if (!records.length) { section.style.display = "none"; return; }
                 section.style.display = "block";
-                const list = document.getElementById("att-history-list");
+                const list    = document.getElementById("att-history-list");
+                if (!list) return;
                 const present = records.filter(r => r.status === "present").length;
-                const absent = records.filter(r => r.status === "absent").length;
-                const late = records.filter(r => r.status === "late").length;
-                const leave = records.filter(r => r.status === "leave").length;
+                const absent  = records.filter(r => r.status === "absent").length;
+                const late    = records.filter(r => r.status === "late").length;
+                const leave   = records.filter(r => r.status === "leave").length;
                 list.innerHTML = `
                     <div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap">
                         <span style="font-size:0.82rem">✅ Present: <strong>${present}</strong></span>
@@ -1029,15 +1407,13 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                         <span style="font-size:0.82rem">👥 Total: <strong>${records.length}</strong></span>
                     </div>
                     <div style="max-height:200px;overflow-y:auto;font-size:0.82rem">
-                        ${records.map(r => `
+                        ${records.map(rec => `
                             <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
-                                <span>${r.roll_number} — ${r.student_name || ''}</span>
-                                <span class="badge-pill ${r.status === 'present' ? 'ok' : r.status === 'late' ? 'warn' : 'wrong'}">${r.status}</span>
-                            </div>
-                        `).join("")}
-                    </div>
-                `;
-            } catch (_) { section.style.display = "none"; }
+                                <span>${rec.roll_number}${rec.student_name ? " — "+rec.student_name : ""}</span>
+                                <span class="badge-pill ${rec.status==="present"?"ok":rec.status==="late"?"warn":"wrong"}">${rec.status}</span>
+                            </div>`).join("")}
+                    </div>`;
+            } catch(_) { section.style.display = "none"; }
         }
 
         async function openManageClassesModal() {
