@@ -1396,23 +1396,10 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                             <p class="attx-subtitle" id="attx-subtitle">${pctPresent}% present · ${marked}/${total} marked</p>
                         </div>
                     </div>
-                    <div class="attx-markbulk-wrap ${isEditable ? "" : "is-disabled"}">
-                        <div class="attx-status-selector" id="attx-status-selector">
-                            <button class="attx-status-opt is-sel" data-status="present" onclick="attSelectBulkStatus(this,'present')" ${isEditable ? "" : "disabled"}>
-                                <span class="attx-status-dot present"></span>Present
-                            </button>
-                            <button class="attx-status-opt" data-status="late" onclick="attSelectBulkStatus(this,'late')" ${isEditable ? "" : "disabled"}>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 8v4l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Late
-                            </button>
-                            <button class="attx-status-opt" data-status="absent" onclick="attSelectBulkStatus(this,'absent')" ${isEditable ? "" : "disabled"}>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>Absent
-                            </button>
-                        </div>
-                        <button class="attx-markall ${isEditable ? "" : "is-disabled"}" id="attx-markall" onclick="attMarkAllBulk()" ${isEditable ? "" : "disabled"}>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                            Mark Attendance
-                        </button>
-                    </div>
+                    <button class="attx-markall ${isEditable ? "" : "is-disabled"}" id="attx-markall" onclick="attOpenMarkModal()" ${isEditable ? "" : "disabled"}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        Mark Attendance
+                    </button>
                 </header>
 
                 ${_attDayStripHtml(iso)}
@@ -1720,23 +1707,34 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             if (!r.ok) throw new Error(data.error || "Failed to save");
         }
 
-        // ── Bulk status selector (Present / Late / Absent) ──────────────────
+        // ── "Mark Attendance" modal ──────────────────────────────────────────
         let _attBulkStatus = "present";
 
-        function attSelectBulkStatus(btn, status) {
-            _attBulkStatus = status;
-            const opts = document.querySelectorAll(".attx-status-opt");
-            opts.forEach(o => o.classList.remove("is-sel"));
-            if (btn) btn.classList.add("is-sel");
-        }
-
-        // ── "Mark Attendance" — sets everyone to the chosen status + saves ──
-        async function attMarkAllBulk() {
+        function attOpenMarkModal() {
             if (!_attIsEditableDate()) {
                 showErrorModal("Attendance can only be marked for today. Past dates are view-only.");
                 return;
             }
             if (!_attFilteredStudents.length) { showErrorModal("No students to mark."); return; }
+            // Reset to present each time modal opens
+            _attBulkStatus = "present";
+            const opts = document.querySelectorAll(".attx-status-opt");
+            opts.forEach(o => {
+                o.classList.remove("is-sel");
+                if (o.dataset.status === "present") o.classList.add("is-sel");
+            });
+            openModal("attMarkModal");
+        }
+
+        function attSelectBulkStatus(btn, status) {
+            _attBulkStatus = status;
+            document.querySelectorAll(".attx-status-opt").forEach(o => o.classList.remove("is-sel"));
+            if (btn) btn.classList.add("is-sel");
+        }
+
+        async function attMarkAllBulk() {
+            closeModal("attMarkModal");
+            if (!_attFilteredStudents.length) return;
 
             const status = _attBulkStatus || "present";
             const rolls = _attFilteredStudents.map(s => s.roll_number).filter(Boolean);
@@ -1773,7 +1771,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             }
         }
 
-        // kept for backward-compat (legacy bulk bar still references this)
+        // kept for backward-compat (legacy bulk bar)
         async function attMarkAllPresent() { _attBulkStatus = "present"; await attMarkAllBulk(); }
 
         // ── show/hide legacy flat table UI (kept so card views still work) ──
