@@ -1306,9 +1306,36 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             _attSyncDateLabel();
         }
 
-        // ── LEVEL 3 : Student list — redesigned flat list view ──────────────
-        //    (matches reference UI: date strip, stat cards, Present/Late/Absent)
-        let _attStatusByRoll = {}; // roll -> "present" | "late" | "absent" (working draft, this session)
+        // ══════════════════════════════════════════════════════════════════
+        // LEVEL 3 : Student list — flat list with 3-way Present/Late/Absent.
+        // Redesigned to match the reference UI. Still fully wired to the real
+        // backend (/api/admin/attendance/{records,mark}). Setting a status on a
+        // student auto-saves immediately (no separate "mark" step needed).
+        // The card system (class cards → section cards) above is unchanged.
+        // ══════════════════════════════════════════════════════════════════
+
+        // Per-roll status for the currently-shown list. Mirrors _attExistingRecords
+        // but is the live working copy for this section's list view.
+        let _attListStatus = {};   // { roll_number: "present" | "late" | "absent" }
+        let _attLastSaved  = null; // timestamp of last successful save (for "Last saved" line)
+
+        const MONTH_FULL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+        const WEEKDAY_FULL = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+        const WEEKDAY_ABBR = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+        const MONTH_ABBR = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+        function _attIsoToDate(iso) {
+            const [y, m, d] = (iso || getTodayStr()).split("-").map(Number);
+            return new Date(y, (m || 1) - 1, d || 1);
+        }
+        function _attDateToIso(dt) {
+            return dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
+        }
+        function _attAddDays(iso, delta) {
+            const dt = _attIsoToDate(iso);
+            dt.setDate(dt.getDate() + delta);
+            return _attDateToIso(dt);
+        }
 
         function _attShowStudentList(className, section) {
             _attCloseCalendar();
@@ -1324,281 +1351,260 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             const bySection = _attGroupBySection(students);
             _attFilteredStudents = bySection[section] || [];
 
-            // Seed working status from whatever's already recorded for this date.
-            // Anything not yet marked stays unset (renders with no active button).
-            _attStatusByRoll = {};
+            // Seed the working status map from whatever the backend already has.
+            _attListStatus = {};
             _attFilteredStudents.forEach(s => {
-                if (!s.roll_number) return;
-                const rec = _attExistingRecords[s.roll_number];
-                if (rec) _attStatusByRoll[s.roll_number] = rec;
+                const r = s.roll_number;
+                if (r && _attExistingRecords[r]) _attListStatus[r] = _attExistingRecords[r];
             });
-            // keep legacy selection set in sync (used by the underlying mark API call) ──
-            _attSelectedRolls = new Set(
-                _attFilteredStudents
-                    .filter(s => _attStatusByRoll[s.roll_number] === "present")
-                    .map(s => s.roll_number)
-            );
 
-            _attToggleFlatUI(false); // old table/bulk-bar elements stay hidden; we render our own panel below
+            // Hide the legacy flat table/toolbar/bulk-bar — this redesigned view
+            // renders its own panel inside #att-cards-wrap.
+            _attToggleFlatUI(false);
 
-            // new view owns #att-cards-wrap entirely
-            wrap.innerHTML = `<div id="att-lv-root"></div>`;
-            _attRenderListView();
+            wrap.innerHTML = _attBuildListView(className, section);
+            _attBindDayStrip();
+            _attRenderStudentTable();
         }
 
-        // ── builds the whole list-view DOM: header, date strip, stats, panel ──
-        function _attRenderListView() {
-            const root = document.getElementById("att-lv-root");
-            if (!root) return;
-
-            const className = _attCurrentClass;
-            const section   = _attCurrentSection;
+        // Build the entire student-list view markup (header → day strip → date row
+        // → stat cards → students panel).
+        function _attBuildListView(className, section) {
+            const iso       = _attSelectedDateIso();
+            const dateObj   = _attIsoToDate(iso);
             const total     = _attFilteredStudents.length;
+            const present   = _attCountStatus("present");
+            const late      = _attCountStatus("late");
+            const absent    = _attCountStatus("absent");
+            const marked    = present + late + absent;
+            const pctPresent = total > 0 ? Math.round(((present + late) / total) * 100) : 0;
             const isEditable = _attIsEditableDate();
 
-            const presentCount = _attFilteredStudents.filter(s => _attStatusByRoll[s.roll_number] === "present").length;
-            const lateCount    = _attFilteredStudents.filter(s => _attStatusByRoll[s.roll_number] === "late").length;
-            const absentCount  = _attFilteredStudents.filter(s => _attStatusByRoll[s.roll_number] === "absent").length;
-            const markedCount  = presentCount + lateCount + absentCount;
-            const presentPct   = total > 0 ? Math.round(((presentCount + lateCount) / total) * 100) : 0;
-
-            root.innerHTML = `
-                <button class="att-lv-back" onclick="_attShowSectionCards('${(className||"").replace(/'/g,"\\'")}' )">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    Back
-                </button>
-
-                <div class="att-lv-header">
-                    <div>
-                        <div class="att-lv-eyebrow"><span class="att-lv-eyebrow-dot"></span>${_attEyebrowLabel(className, section)}</div>
-                        <h1 class="att-lv-title">Attendance</h1>
-                        <p class="att-lv-sub">${presentPct}% present · ${markedCount}/${total} marked</p>
-                    </div>
-                    ${isEditable ? `
-                    <button class="att-lv-markall" id="att-lv-markall-btn" onclick="attMarkAllPresent()">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                        Mark all present
-                    </button>` : ``}
-                </div>
-
-                <div id="att-lv-datestrip-mount"></div>
-
-                <div class="att-lv-stats">
-                    <div class="att-lv-stat tone-neutral">
-                        <div class="att-lv-stat-top">
-                            <div class="att-lv-stat-icon">
-                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="7" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                            </div>
-                        </div>
-                        <div class="att-lv-stat-label">Total Students</div>
-                        <div class="att-lv-stat-value">${total}</div>
-                        <div class="att-lv-stat-foot">All enrolled students</div>
-                    </div>
-
-                    <div class="att-lv-stat tone-green">
-                        <div class="att-lv-stat-top">
-                            <div class="att-lv-stat-icon">
-                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M8.5 12.5l2.3 2.3 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                            </div>
-                            <span class="att-lv-stat-delta up">▲ ${presentPct}%</span>
-                        </div>
-                        <div class="att-lv-stat-label">Present</div>
-                        <div class="att-lv-stat-value">${presentPct}%</div>
-                        <div class="att-lv-stat-foot">${presentCount + lateCount} student${(presentCount+lateCount) !== 1 ? "s" : ""} present</div>
-                    </div>
-
-                    <div class="att-lv-stat tone-red">
-                        <div class="att-lv-stat-top">
-                            <div class="att-lv-stat-icon">
-                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M2 21v-1a6 6 0 0 1 6-6h2a6 6 0 0 1 6 6v1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 8l4 4m0-4l-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-                            </div>
-                            <span class="att-lv-stat-delta down">▲ ${absentCount}</span>
-                        </div>
-                        <div class="att-lv-stat-label">Absent</div>
-                        <div class="att-lv-stat-value">${absentCount}</div>
-                        <div class="att-lv-stat-foot">${absentCount} student${absentCount !== 1 ? "s" : ""} absent</div>
-                    </div>
-
-                    <div class="att-lv-stat tone-blue">
-                        <div class="att-lv-stat-top">
-                            <div class="att-lv-stat-icon">
-                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M3 20h18M6 20V10M11 20V6M16 20v-8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                            </div>
-                        </div>
-                        <div class="att-lv-stat-label">Last 14 days</div>
-                        ${_attSparklineHtml()}
-                        <div class="att-lv-stat-foot">Average ${Math.max(total - 1, 0)}/${total}</div>
-                    </div>
-                </div>
-
-                <div class="att-lv-panel">
-                    <div class="att-lv-panel-head">
-                        <h3 class="att-lv-panel-title">Students (${total})</h3>
-                        <div class="att-lv-legend">
-                            <span class="att-lv-legend-item"><span class="att-lv-legend-dot present"></span>Present</span>
-                            <span class="att-lv-legend-item"><span class="att-lv-legend-dot late"></span>Late</span>
-                            <span class="att-lv-legend-item"><span class="att-lv-legend-dot absent"></span>Absent</span>
-                        </div>
-                    </div>
-                    <div class="att-lv-colheads">
-                        <span>Student</span>
-                        <span>Status</span>
-                    </div>
-                    ${!isEditable ? `
-                    <div class="att-lv-readonly-tag">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="flex:0 0 auto"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 8v5l3 2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                        Viewing past attendance — read only. Switch to today to mark attendance.
-                    </div>` : ``}
-                    <div class="att-lv-rows" id="att-lv-rows">${_attRowsHtml()}</div>
-                </div>
-            `;
-
-            // mount the interactive date strip (shares state with the rest of the module)
-            const stripMount = document.getElementById("att-lv-datestrip-mount");
-            if (stripMount) stripMount.innerHTML = _attDateStripHtml();
-        }
-
-        function _attRowsHtml() {
-            if (!_attFilteredStudents.length) {
-                return `<div class="att-empty-state"><div class="att-empty-icon">${ATT_CAP_ICON}</div><h3>No students found</h3><p>No students in this section.</p></div>`;
-            }
-            const isEditable = _attIsEditableDate();
-            return _attFilteredStudents.map(s => {
-                const roll = s.roll_number || "";
-                const name = s.name || roll || "—";
-                const status = _attStatusByRoll[roll] || "";
-                const avatarColor = _attAvatarColor(roll || name);
-                const dis = isEditable ? "" : "disabled style=\"opacity:0.55;cursor:not-allowed\"";
-                return `<div class="att-lv-row">
-                    <div class="att-lv-row-student">
-                        <span class="att-lv-avatar" style="--avatar-color:${avatarColor}">${_attInitials(name)}</span>
-                        <div class="att-lv-row-name">
-                            <div class="att-lv-row-name-text">${name}</div>
-                            <div class="att-lv-row-roll">${roll}</div>
-                        </div>
-                    </div>
-                    <div class="att-lv-row-actions">
-                        <button class="att-lv-statusbtn present ${status === "present" ? "is-active" : ""}" ${dis}
-                            onclick="attSetRowStatus('${roll.replace(/'/g,"\\'")}','present')">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                            Present
-                        </button>
-                        <button class="att-lv-statusbtn late ${status === "late" ? "is-active" : ""}" ${dis}
-                            onclick="attSetRowStatus('${roll.replace(/'/g,"\\'")}','late')">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                            Late
-                        </button>
-                        <button class="att-lv-statusbtn absent ${status === "absent" ? "is-active" : ""}" ${dis}
-                            onclick="attSetRowStatus('${roll.replace(/'/g,"\\'")}','absent')">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
-                            Absent
-                        </button>
-                    </div>
-                </div>`;
-            }).join("");
-        }
-
-        // ── builds "CLASS X · SEC Y" without doubling "CLASS" if className already has it ──
-        function _attEyebrowLabel(className, section) {
-            const cls = (className || "").trim();
-            const clsUpper = cls.toUpperCase();
-            const clsPart = /^CLASS\b/.test(clsUpper) ? clsUpper : `CLASS ${clsUpper}`;
-            const secPart = (section || "").trim();
-            return secPart ? `${clsPart} · SEC ${secPart.toUpperCase()}` : clsPart;
-        }
-
-        // ── 14-bar sparkline (illustrative trend; deterministic per render) ──
-        function _attSparklineHtml() {
-            const heights = [55,70,40,85,60,75,50,90,65,45,80,60,95,70];
-            const bars = heights.map((h, i) => {
-                const isHigh = i === heights.length - 1;
-                return `<div class="att-lv-spark-bar ${isHigh ? "is-high" : ""}" style="height:${h}%"></div>`;
-            }).join("");
-            return `<div class="att-lv-spark">${bars}</div>`;
-        }
-
-        // ── week-view date strip shown above the stat cards ──────────────────
-        let _attStripAnchor = null; // ISO date the visible 7-day window is centered/anchored on
-        function _attDateStripHtml() {
-            const selIso = _attSelectedDateIso();
-            const todayIso = getTodayStr();
-            if (!_attStripAnchor) _attStripAnchor = selIso;
-
-            const anchor = new Date(_attStripAnchor + "T00:00:00");
-            // show 3 days before anchor .. 3 days after (7 total), matching reference layout
-            const days = [];
-            for (let i = -3; i <= 3; i++) {
-                const d = new Date(anchor);
-                d.setDate(d.getDate() + i);
-                const iso = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-                days.push({ date: d, iso });
-            }
-            const dayNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-            const monNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-
-            const cells = days.map(({ date, iso }) => {
-                const isToday = iso === todayIso;
-                const isSel   = iso === selIso;
-                const isFuture = iso > todayIso;
-                const showDot = !isFuture && !isToday;
-                return `<div class="att-lv-day ${isSel ? "is-today" : ""} ${isFuture ? "is-future" : ""}"
-                        onclick="${isFuture ? "" : `attPickStripDate('${iso}')`}">
-                    <span class="att-lv-day-name">${dayNames[date.getDay()]}</span>
-                    <span class="att-lv-day-num">${date.getDate()}</span>
-                    <span class="att-lv-day-mon">${monNames[date.getMonth()]} ${date.getFullYear()}</span>
-                    <span class="att-lv-day-dot ${showDot ? "" : "placeholder"}"></span>
-                </div>`;
-            }).join("");
-
-            const [sy, sm, sd] = selIso.split("-").map(Number);
-            const fullDate = new Date(sy, sm - 1, sd);
-            const fullDateStr = `${["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][fullDate.getDay()]}, ${sd} ${monNames[sm-1]} ${sy}`;
+            const eyebrow = `${className} · Section ${section}`;
+            const longDate = `${WEEKDAY_FULL[dateObj.getDay()]}, ${dateObj.getDate()} ${MONTH_FULL[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
 
             return `
-                <div class="att-lv-datestrip">
-                    <div class="att-lv-datestrip-row">
-                        <div class="att-lv-datenav" onclick="attShiftStrip(-1)">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                        </div>
-                        <div class="att-lv-days">${cells}</div>
-                        <div class="att-lv-datenav" onclick="attShiftStrip(1)">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <section class="attx" aria-label="Attendance for ${eyebrow}">
+                <header class="attx-head">
+                    <div class="attx-head-left">
+                        <button class="attx-crumb-back" onclick="_attShowSectionCards('${className.replace(/'/g,"\\'")}' )" aria-label="Back to sections">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </button>
+                        <div>
+                            <div class="attx-eyebrow"><span class="attx-eyebrow-dot"></span>${eyebrow.toUpperCase()}</div>
+                            <h1 class="attx-title">Attendance</h1>
+                            <p class="attx-subtitle" id="attx-subtitle">${pctPresent}% present · ${marked}/${total} marked</p>
                         </div>
                     </div>
-                    <div class="att-lv-datestrip-foot">
-                        <div class="att-lv-datestrip-foot-left">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="16" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-                            ${fullDateStr}
-                        </div>
-                        <span class="att-lv-savedtag">
-                            Last saved just now
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M8.5 12.5l2.3 2.3 5-5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                        </span>
+                    <button class="attx-markall ${isEditable ? "" : "is-disabled"}" id="attx-markall" onclick="attMarkAllPresent()" ${isEditable ? "" : "disabled"}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        Mark all present
+                    </button>
+                </header>
+
+                ${_attDayStripHtml(iso)}
+
+                <div class="attx-daterow">
+                    <div class="attx-daterow-left">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="16" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+                        <span>${longDate}</span>
                     </div>
+                    <div class="attx-saved" id="attx-saved">${_attSavedLabel()}</div>
+                </div>
+
+                <div class="attx-stats" id="attx-stats">
+                    ${_attStatCardsHtml(total, present, late, absent, pctPresent)}
+                </div>
+
+                <section class="attx-panel">
+                    <div class="attx-panel-head">
+                        <h2 class="attx-panel-title">Students <span class="attx-panel-count">(${total})</span></h2>
+                        <div class="attx-legend">
+                            <span class="attx-legend-item"><span class="attx-legend-dot present"></span>Present</span>
+                            <span class="attx-legend-item"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v4l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Late</span>
+                            <span class="attx-legend-item"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Absent</span>
+                        </div>
+                    </div>
+                    <div class="attx-thead">
+                        <span>Student</span>
+                        <span class="attx-thead-status">Status</span>
+                    </div>
+                    <div class="attx-rows" id="attx-rows"></div>
+                    <div class="attx-empty" id="attx-empty" style="display:none">
+                        <div class="attx-empty-icon">${ATT_CAP_ICON}</div>
+                        <h3>No students found</h3>
+                        <p>No students in this section yet.</p>
+                    </div>
+                </section>
+            </section>`;
+        }
+
+        function _attCountStatus(status) {
+            return _attFilteredStudents.filter(s => s.roll_number && _attListStatus[s.roll_number] === status).length;
+        }
+
+        function _attSavedLabel() {
+            if (!_attLastSaved) return `<span class="attx-saved-muted">Not saved yet</span>`;
+            const secs = Math.round((Date.now() - _attLastSaved) / 1000);
+            let txt = "just now";
+            if (secs >= 60) { const m = Math.floor(secs/60); txt = m + (m === 1 ? " min ago" : " mins ago"); }
+            return `Last saved ${txt} <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="var(--success)"/><path d="M8 12.5l2.5 2.5L16 9" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+        }
+
+        // ── horizontal day / week strip ────────────────────────────────────
+        function _attDayStripHtml(selectedIso) {
+            const todayIso = getTodayStr();
+            // Center the selected day; show 3 before + selected + 3 after (7 cols).
+            const days = [];
+            for (let i = -3; i <= 3; i++) days.push(_attAddDays(selectedIso, i));
+
+            const cols = days.map(iso => {
+                const dt = _attIsoToDate(iso);
+                const isSel    = iso === selectedIso;
+                const isFuture = iso > todayIso;
+                const isToday  = iso === todayIso;
+                const hasMark  = !!_attExistingRecords[iso]; // not per-day but kept for dot; see below
+                // Dot indicator: show a small dot when that date has saved records.
+                // We can't cheaply know per-date totals here, so show a subtle dot
+                // for past/today dates that are not the selected one.
+                const showDot = !isSel && !isFuture;
+                return `
+                <button class="attx-day ${isSel ? "is-sel" : ""} ${isFuture ? "is-future" : ""}"
+                    ${isFuture ? "disabled" : `data-iso="${iso}"`}
+                    aria-label="${WEEKDAY_FULL[dt.getDay()]} ${dt.getDate()}">
+                    <span class="attx-day-wd">${WEEKDAY_ABBR[dt.getDay()]}</span>
+                    <span class="attx-day-num">${dt.getDate()}</span>
+                    ${isSel ? `<span class="attx-day-mon">${MONTH_ABBR[dt.getMonth()]} ${dt.getFullYear()}</span>` : (showDot ? `<span class="attx-day-dot"></span>` : `<span class="attx-day-dot-gap"></span>`)}
+                </button>`;
+            }).join("");
+
+            return `
+            <div class="attx-daystrip">
+                <button class="attx-day-nav" id="attx-day-prev" aria-label="Previous week">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+                <div class="attx-days">${cols}</div>
+                <button class="attx-day-nav" id="attx-day-next" aria-label="Next week">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+            </div>`;
+        }
+
+        function _attBindDayStrip() {
+            const wrap = document.getElementById("att-cards-wrap");
+            if (!wrap) return;
+            wrap.querySelectorAll(".attx-day[data-iso]").forEach(btn => {
+                btn.addEventListener("click", () => _attGoToDate(btn.getAttribute("data-iso")));
+            });
+            const prev = document.getElementById("attx-day-prev");
+            const next = document.getElementById("attx-day-next");
+            if (prev) prev.addEventListener("click", () => _attGoToDate(_attAddDays(_attSelectedDateIso(), -7)));
+            if (next) next.addEventListener("click", () => {
+                const target = _attAddDays(_attSelectedDateIso(), 7);
+                if (!_attIsFutureDate(target)) _attGoToDate(target);
+                else _attGoToDate(getTodayStr());
+            });
+        }
+
+        async function _attGoToDate(iso) {
+            if (!iso || _attIsFutureDate(iso)) return;
+            _attSetDateValue(iso, false);
+            await _attLoadRecords();
+            // Re-render the list for the new date (stays in list view).
+            _attShowStudentList(_attCurrentClass, _attCurrentSection);
+        }
+
+        // ── stat cards ─────────────────────────────────────────────────────
+        function _attStatCardsHtml(total, present, late, absent, pctPresent) {
+            // mini bar chart (decorative; reflects nothing sensitive — shows a
+            // light "last 14 days" trend bar pattern)
+            const bars = [];
+            for (let i = 0; i < 14; i++) {
+                const h = 30 + ((i * 37 + 11) % 60);
+                const strong = i % 3 === 0;
+                bars.push(`<span class="attx-bar ${strong ? "strong" : ""}" style="height:${h}%"></span>`);
+            }
+            const presentCard = `
+                <div class="attx-stat attx-stat--plain">
+                    <div class="attx-stat-top">
+                        <span class="attx-stat-label">Present</span>
+                        <span class="attx-stat-ic present"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                    </div>
+                    <div class="attx-stat-main"><span class="attx-stat-num present">${pctPresent}%</span></div>
+                    <div class="attx-stat-sub">${present + late} student${(present+late)!==1?"s":""} present</div>
+                </div>`;
+            return `
+                <div class="attx-stat attx-stat--plain">
+                    <div class="attx-stat-top">
+                        <span class="attx-stat-label">Total Students</span>
+                        <span class="attx-stat-ic neutral"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3.2" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="17" cy="8.5" r="2.6" stroke="currentColor" stroke-width="1.7"/><path d="M16 14.2c2.6.2 4.5 2.1 4.5 4.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
+                    </div>
+                    <div class="attx-stat-main"><span class="attx-stat-num">${total}</span></div>
+                    <div class="attx-stat-sub">All enrolled students</div>
+                </div>
+                ${presentCard}
+                <div class="attx-stat attx-stat--absent">
+                    <div class="attx-stat-top">
+                        <span class="attx-stat-label">Absent</span>
+                        <span class="attx-stat-ic absent"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3.2" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M16 8l4 4M20 8l-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+                    </div>
+                    <div class="attx-stat-main"><span class="attx-stat-num absent">${absent}</span></div>
+                    <div class="attx-stat-sub">${absent} student${absent!==1?"s":""} absent</div>
+                </div>
+                <div class="attx-stat attx-stat--chart">
+                    <div class="attx-stat-top">
+                        <span class="attx-stat-label">Last 14 days</span>
+                        <span class="attx-stat-ic chart"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 20V10M9 20V5M14 20v-7M19 20V8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></span>
+                    </div>
+                    <div class="attx-bars">${bars.join("")}</div>
+                    <div class="attx-stat-sub">Average ${present+late}/${total}</div>
                 </div>`;
         }
 
-        function attShiftStrip(delta) {
-            const base = _attStripAnchor || getTodayStr();
-            const d = new Date(base + "T00:00:00");
-            d.setDate(d.getDate() + delta * 7);
-            _attStripAnchor = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-            const mount = document.getElementById("att-lv-datestrip-mount");
-            if (mount) mount.innerHTML = _attDateStripHtml();
-        }
+        // ── student rows with 3-way status pills ───────────────────────────
+        function _attRenderStudentTable() {
+            const rowsEl  = document.getElementById("attx-rows");
+            const emptyEl = document.getElementById("attx-empty");
+            if (!rowsEl) return;
 
-        async function attPickStripDate(iso) {
-            if (_attIsFutureDate(iso)) return;
-            _attStripAnchor = iso;
-            _attSetDateValue(iso, false);
-            await _attLoadRecords();
-            _attStatusByRoll = {};
-            _attFilteredStudents.forEach(s => {
-                if (!s.roll_number) return;
-                const rec = _attExistingRecords[s.roll_number];
-                if (rec) _attStatusByRoll[s.roll_number] = rec;
-            });
-            _attRenderListView();
+            const isEditable = _attIsEditableDate();
+
+            if (!_attFilteredStudents.length) {
+                rowsEl.innerHTML = "";
+                if (emptyEl) emptyEl.style.display = "block";
+                return;
+            }
+            if (emptyEl) emptyEl.style.display = "none";
+
+            rowsEl.innerHTML = _attFilteredStudents.map(s => {
+                const roll   = s.roll_number || "";
+                const name   = s.name || roll || "—";
+                const status = _attListStatus[roll] || "";
+                const color  = _attAvatarColor(roll || name);
+                const safeRoll = roll.replace(/'/g,"\\'");
+
+                function pill(kind, label, svg) {
+                    const active = status === kind;
+                    const dis = isEditable ? "" : "disabled";
+                    return `<button class="attx-pill attx-pill--${kind} ${active ? "is-active" : ""}" ${dis}
+                        onclick="attSetStatus('${safeRoll}','${kind}')" aria-pressed="${active}">
+                        ${svg}<span>${label}</span></button>`;
+                }
+                const presentPill = pill("present","Present",`<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`);
+                const latePill    = pill("late","Late",`<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.9"/><path d="M12 8v4l3 2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>`);
+                const absentPill  = pill("absent","Absent",`<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`);
+
+                return `<div class="attx-row" data-roll="${roll}">
+                    <div class="attx-row-student">
+                        <span class="attx-avatar" style="--avatar-color:${color}">${_attInitials(name)}</span>
+                        <span class="attx-row-info">
+                            <span class="attx-row-name">${name}</span>
+                            <span class="attx-row-roll">${roll || "—"}</span>
+                        </span>
+                    </div>
+                    <div class="attx-row-status">${presentPill}${latePill}${absentPill}</div>
+                </div>`;
+            }).join("");
         }
 
         function _attInitials(name) {
@@ -1608,110 +1614,158 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
         }
 
-        const ATT_AVATAR_COLORS = ["#6366f1","#0ea5e9","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6"];
+        const ATT_AVATAR_COLORS = ["#10b981","#14b8a6","#3b82f6","#8b5cf6","#f59e0b","#ec4899","#6366f1","#0ea5e9"];
         function _attAvatarColor(seed) {
             let h = 0;
             for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
             return ATT_AVATAR_COLORS[h % ATT_AVATAR_COLORS.length];
         }
 
-        // ── tap a Present/Late/Absent button on a row: sets that row's status
-        //    locally, re-renders, then persists immediately via the mark API ──
-        async function attSetRowStatus(roll, status) {
-            if (!roll || !_attIsEditableDate()) return;
-            const prevStatus = _attStatusByRoll[roll] || "";
-            if (prevStatus === status) return; // already set, no-op
+        // ── refresh the header subtitle, stat cards & saved-line in place ───
+        function _attRefreshSummary() {
+            const total   = _attFilteredStudents.length;
+            const present = _attCountStatus("present");
+            const late    = _attCountStatus("late");
+            const absent  = _attCountStatus("absent");
+            const marked  = present + late + absent;
+            const pct     = total > 0 ? Math.round(((present + late) / total) * 100) : 0;
 
-            _attStatusByRoll[roll] = status;
-            if (status === "present") _attSelectedRolls.add(roll);
-            else _attSelectedRolls.delete(roll);
-
-            _attRenderListView();
-            await _attPersistStatus([roll], status);
+            const sub = document.getElementById("attx-subtitle");
+            if (sub) sub.textContent = `${pct}% present · ${marked}/${total} marked`;
+            const stats = document.getElementById("attx-stats");
+            if (stats) stats.innerHTML = _attStatCardsHtml(total, present, late, absent, pct);
+            const saved = document.getElementById("attx-saved");
+            if (saved) saved.innerHTML = _attSavedLabel();
         }
 
-        // ── header action: mark every visible student present in one tap ────
+        // ── set a single student's status → auto-saves to backend ──────────
+        async function attSetStatus(roll, status) {
+            if (!roll) return;
+            if (!_attIsEditableDate()) {
+                showErrorModal("Attendance can only be marked for today. Past dates are view-only.");
+                return;
+            }
+            // Toggle off if tapping the already-active status → "unmark".
+            const current = _attListStatus[roll];
+            const next = current === status ? "" : status;
+
+            // Optimistic UI update.
+            if (next) _attListStatus[roll] = next; else delete _attListStatus[roll];
+            _attRenderStudentTable();
+            _attRefreshSummary();
+
+            try {
+                await _attSaveStatus(roll, next);
+                _attExistingRecords[roll] = next || undefined;
+                if (!next) delete _attExistingRecords[roll];
+                _attLastSaved = Date.now();
+                const saved = document.getElementById("attx-saved");
+                if (saved) saved.innerHTML = _attSavedLabel();
+            } catch (e) {
+                // Roll back on failure.
+                if (current) _attListStatus[roll] = current; else delete _attListStatus[roll];
+                _attRenderStudentTable();
+                _attRefreshSummary();
+                showErrorModal(e.message || "Failed to save attendance");
+            }
+        }
+
+        // Resolve the class_id for the current class (cached per list view).
+        let _attResolvedClassId = null;
+        let _attResolvedClassName = null;
+        async function _attGetClassId() {
+            if (_attResolvedClassId !== null && _attResolvedClassName === _attCurrentClass) return _attResolvedClassId;
+            let class_id = 0;
+            try {
+                const cr = await fetch(`${API_BASE}/api/admin/classes`, { credentials: "include", cache: "no-store" });
+                if (cr.ok) {
+                    const classes = await cr.json();
+                    const match = classes.find(c => c.name === _attCurrentClass);
+                    if (match) class_id = match.id;
+                }
+            } catch (_) {}
+            _attResolvedClassId = class_id;
+            _attResolvedClassName = _attCurrentClass;
+            return class_id;
+        }
+
+        // Persist a single status to the backend mark endpoint.
+        async function _attSaveStatus(roll, status) {
+            const date = _attSelectedDateIso();
+            const class_id = await _attGetClassId();
+            // When un-setting, mark as "absent" fallback is NOT desired; the backend
+            // has no "delete" — so we send an explicit status. If "" (unmark), we
+            // simply send absent? No — to keep semantics clean we send the status
+            // and treat empty as a no-op delete by sending status "unmarked".
+            const sendStatus = status || "unmarked";
+            const r = await fetch(`${API_BASE}/api/admin/attendance/mark`, {
+                method: "POST", credentials: "include", cache: "no-store",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ class_id, batch_id: null, date, roll_numbers: [roll], status: sendStatus }),
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(data.error || "Failed to save");
+        }
+
+        // ── "Mark all present" — sets everyone to present + saves to backend ──
         async function attMarkAllPresent() {
             if (!_attIsEditableDate()) {
                 showErrorModal("Attendance can only be marked for today. Past dates are view-only.");
                 return;
             }
-            if (!_attFilteredStudents.length) {
-                showErrorModal("No students to mark.");
-                return;
-            }
-
-            const btn = document.getElementById("att-lv-markall-btn");
-            if (btn) { btn.disabled = true; }
+            if (!_attFilteredStudents.length) { showErrorModal("No students to mark."); return; }
 
             const rolls = _attFilteredStudents.map(s => s.roll_number).filter(Boolean);
-            rolls.forEach(roll => { _attStatusByRoll[roll] = "present"; });
-            _attSelectedRolls = new Set(rolls);
-            _attRenderListView();
+            const prev = { ..._attListStatus };
+
+            // Optimistic update.
+            rolls.forEach(r => { _attListStatus[r] = "present"; });
+            _attRenderStudentTable();
+            _attRefreshSummary();
+
+            const btn = document.getElementById("attx-markall");
+            if (btn) btn.disabled = true;
 
             try {
-                await _attPersistStatus(rolls, "present");
-                attShowSuccessPopup(rolls.length, 0);
-            } finally {
-                const freshBtn = document.getElementById("att-lv-markall-btn");
-                if (freshBtn) freshBtn.disabled = false;
-            }
-        }
-
-        // ── shared persistence: resolves class_id, POSTs the status group,
-        //    and syncs _attExistingRecords so other views (cards) stay accurate ──
-        async function _attPersistStatus(rolls, status) {
-            if (!rolls.length) return;
-            const dateInput = document.getElementById("att-date");
-            const date = dateInput ? dateInput.value : getTodayStr();
-
-            try {
-                let class_id = 0;
-                try {
-                    const cr = await fetch(`${API_BASE}/api/admin/classes`, { credentials: "include", cache: "no-store" });
-                    if (cr.ok) {
-                        const classes = await cr.json();
-                        const match = classes.find(c => c.name === _attCurrentClass);
-                        if (match) class_id = match.id;
-                    }
-                } catch (_) {}
-
+                const date = _attSelectedDateIso();
+                const class_id = await _attGetClassId();
                 const r = await fetch(`${API_BASE}/api/admin/attendance/mark`, {
                     method: "POST", credentials: "include", cache: "no-store",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ class_id, batch_id: null, date, roll_numbers: rolls, status }),
+                    body: JSON.stringify({ class_id, batch_id: null, date, roll_numbers: rolls, status: "present" }),
                 });
                 const data = await r.json().catch(() => ({}));
                 if (!r.ok) throw new Error(data.error || "Failed");
-
-                rolls.forEach(roll => { _attExistingRecords[roll] = status; });
+                rolls.forEach(rl => { _attExistingRecords[rl] = "present"; });
+                _attLastSaved = Date.now();
+                const saved = document.getElementById("attx-saved");
+                if (saved) saved.innerHTML = _attSavedLabel();
             } catch (e) {
-                showErrorModal(e.message || "Failed to save attendance");
+                _attListStatus = prev;
+                _attRenderStudentTable();
+                _attRefreshSummary();
+                showErrorModal(e.message || "Failed to mark all present");
+            } finally {
+                if (btn) btn.disabled = !_attIsEditableDate();
             }
         }
 
-        // ── custom success popup for attendance marking ──
-        function attShowSuccessPopup(presentCount, absentCount) {
-            const textEl = document.getElementById("attSuccessModalText");
-            if (textEl) {
-                textEl.textContent = absentCount > 0
-                    ? `${presentCount} student${presentCount !== 1 ? "s" : ""} marked present, ${absentCount} marked absent.`
-                    : `${presentCount} student${presentCount !== 1 ? "s" : ""} marked present.`;
-            }
-            openModal("attSuccessModal");
-        }
-
-        // ── show/hide flat table UI (legacy table elements; unused by the new
-        //    list view, kept so class/section card views remain unaffected) ──
+        // ── show/hide legacy flat table UI (kept so card views still work) ──
         function _attToggleFlatUI(show) {
             const tableWrap = document.getElementById("att-student-table");
             const searchEl  = document.getElementById("att-search");
             const statsBar  = document.querySelector("#section-attendance .stu-stats-bar");
             const bulkBar   = document.getElementById("att-bulk-bar");
+            const loadingEl = document.getElementById("att-loading");
+            const emptyEl   = document.getElementById("att-empty");
+            // The redesigned list renders its own panel, so the legacy flat
+            // table & bulk-bar stay hidden at all times now.
             if (tableWrap && tableWrap.parentElement) tableWrap.parentElement.style.display = "none";
             if (searchEl && searchEl.closest(".stu-toolbar")) searchEl.closest(".stu-toolbar").style.display = "none";
             if (statsBar) statsBar.style.display = "none";
             if (bulkBar) bulkBar.style.display = "none";
+            if (loadingEl) loadingEl.style.display = "none";
+            if (emptyEl) emptyEl.style.display = "none";
         }
 
         // ── filter (search within list view) ──────────────────────────────
@@ -1725,9 +1779,15 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                 if (q && !(s.name||"").toLowerCase().includes(q) && !(s.roll_number||"").toLowerCase().includes(q)) return false;
                 return true;
             });
-            _attRenderListView();
+            _attRenderStudentTable();
+            _attRefreshSummary();
         }
 
+
+        // Backward-compat: the legacy hidden bulk-bar button still references
+        // attMarkSelected(). That bar is permanently hidden in the redesigned
+        // list view, but keep a safe alias so a stray call can't throw.
+        function attMarkSelected() { attMarkAllPresent(); }
 
         async function openManageClassesModal() {
             openModal("manageClassesModal");
