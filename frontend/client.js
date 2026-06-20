@@ -1385,37 +1385,6 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
 
             return `
             <section class="attx" aria-label="Attendance for ${eyebrow}">
-                <header class="attx-head">
-                    <div class="attx-head-left">
-                        <button class="attx-crumb-back" onclick="_attShowSectionCards('${className.replace(/'/g,"\\'")}' )" aria-label="Back to sections">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                        </button>
-                        <div>
-                            <div class="attx-eyebrow"><span class="attx-eyebrow-dot"></span>${eyebrow.toUpperCase()}</div>
-                            <h1 class="attx-title">Attendance</h1>
-                            <p class="attx-subtitle" id="attx-subtitle">${pctPresent}% present · ${marked}/${total} marked</p>
-                        </div>
-                    </div>
-                    <button class="attx-markall ${isEditable ? "" : "is-disabled"}" id="attx-markall" onclick="attOpenMarkModal()" ${isEditable ? "" : "disabled"}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                        Mark Attendance
-                    </button>
-                </header>
-
-                ${_attDayStripHtml(iso)}
-
-                <div class="attx-daterow">
-                    <div class="attx-daterow-left">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="16" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-                        <span>${longDate}</span>
-                    </div>
-                    <div class="attx-saved" id="attx-saved">${_attSavedLabel()}</div>
-                </div>
-
-                <div class="attx-stats" id="attx-stats">
-                    ${_attStatCardsHtml(total, present, late, absent, pctPresent)}
-                </div>
-
                 <section class="attx-panel">
                     <div class="attx-panel-head">
                         <h2 class="attx-panel-title">Students <span class="attx-panel-count">(${total})</span></h2>
@@ -1436,6 +1405,13 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                         <p>No students in this section yet.</p>
                     </div>
                 </section>
+
+                <div style="padding:16px 0 8px">
+                    <button class="attx-markall ${isEditable ? "" : "is-disabled"}" id="attx-markall" onclick="attOpenMarkModal()" ${isEditable ? "" : "disabled"} style="width:100%;justify-content:center">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        Mark Attendance
+                    </button>
+                </div>
             </section>`;
         }
 
