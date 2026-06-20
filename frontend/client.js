@@ -1306,37 +1306,7 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             _attSyncDateLabel();
         }
 
-        // ══════════════════════════════════════════════════════════════════
-        // LEVEL 3 : Student list — flat list with 3-way Present/Late/Absent.
-        // Redesigned to match the reference UI. Still fully wired to the real
-        // backend (/api/admin/attendance/{records,mark}). Setting a status on a
-        // student auto-saves immediately (no separate "mark" step needed).
-        // The card system (class cards → section cards) above is unchanged.
-        // ══════════════════════════════════════════════════════════════════
-
-        // Per-roll status for the currently-shown list. Mirrors _attExistingRecords
-        // but is the live working copy for this section's list view.
-        let _attListStatus = {};   // { roll_number: "present" | "late" | "absent" }
-        let _attLastSaved  = null; // timestamp of last successful save (for "Last saved" line)
-
-        const MONTH_FULL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-        const WEEKDAY_FULL = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-        const WEEKDAY_ABBR = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-        const MONTH_ABBR = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-
-        function _attIsoToDate(iso) {
-            const [y, m, d] = (iso || getTodayStr()).split("-").map(Number);
-            return new Date(y, (m || 1) - 1, d || 1);
-        }
-        function _attDateToIso(dt) {
-            return dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
-        }
-        function _attAddDays(iso, delta) {
-            const dt = _attIsoToDate(iso);
-            dt.setDate(dt.getDate() + delta);
-            return _attDateToIso(dt);
-        }
-
+        // ── LEVEL 3 : Student list with checkboxes ─────────────────────────
         function _attShowStudentList(className, section) {
             _attCloseCalendar();
             _attView = "list";
@@ -1350,237 +1320,43 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             const students  = byClass[className] || [];
             const bySection = _attGroupBySection(students);
             _attFilteredStudents = bySection[section] || [];
+            // Pre-select whoever is already marked present for the current date
+            _attSelectedRolls = new Set(
+                _attFilteredStudents
+                    .filter(s => _attExistingRecords[s.roll_number] === "present")
+                    .map(s => s.roll_number)
+            );
 
-            // Seed the working status map from whatever the backend already has.
-            _attListStatus = {};
-            _attFilteredStudents.forEach(s => {
-                const r = s.roll_number;
-                if (r && _attExistingRecords[r]) _attListStatus[r] = _attExistingRecords[r];
-            });
+            _attToggleFlatUI(true);
 
-            // Hide the legacy flat table/toolbar/bulk-bar — this redesigned view
-            // renders its own panel inside #att-cards-wrap.
-            _attToggleFlatUI(false);
+            // Update stat counters
+            _attRefreshStats();
 
-            wrap.innerHTML = _attBuildListView(className, section);
-            _attBindDayStrip();
-            _attRenderStudentTable();
-        }
-
-        // Build the entire student-list view markup (header → day strip → date row
-        // → stat cards → students panel).
-        function _attBuildListView(className, section) {
-            const iso       = _attSelectedDateIso();
-            const dateObj   = _attIsoToDate(iso);
-            const total     = _attFilteredStudents.length;
-            const present   = _attCountStatus("present");
-            const late      = _attCountStatus("late");
-            const absent    = _attCountStatus("absent");
-            const marked    = present + late + absent;
-            const pctPresent = total > 0 ? Math.round(((present + late) / total) * 100) : 0;
             const isEditable = _attIsEditableDate();
 
-            const eyebrow = `${className} · Section ${section}`;
-            const longDate = `${WEEKDAY_FULL[dateObj.getDay()]}, ${dateObj.getDate()} ${MONTH_FULL[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
-
-            return `
-            <section class="attx" aria-label="Attendance for ${eyebrow}">
-                <section class="attx-panel">
-                    <div class="attx-panel-head">
-                        <h2 class="attx-panel-title">Students <span class="attx-panel-count">(${total})</span></h2>
-                        <div class="attx-legend">
-                            <span class="attx-legend-item"><span class="attx-legend-dot present"></span>Present</span>
-                            <span class="attx-legend-item"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v4l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Late</span>
-                            <span class="attx-legend-item"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Absent</span>
-                        </div>
-                    </div>
-                    <div class="attx-thead">
-                        <span>Student</span>
-                        <span class="attx-thead-status">Status</span>
-                    </div>
-                    <div class="attx-rows" id="attx-rows"></div>
-                    <div class="attx-empty" id="attx-empty" style="display:none">
-                        <div class="attx-empty-icon">${ATT_CAP_ICON}</div>
-                        <h3>No students found</h3>
-                        <p>No students in this section yet.</p>
-                    </div>
-                </section>
-
-                <div style="padding:16px 0 8px">
-                    <button class="attx-markall ${isEditable ? "" : "is-disabled"}" id="attx-markall" onclick="attOpenMarkModal()" ${isEditable ? "" : "disabled"} style="width:100%;justify-content:center">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                        Mark Attendance
+            wrap.innerHTML = `
+                ${_attDateWidgetHtml()}
+                <div class="att-breadcrumb">
+                    <button class="att-back-btn" onclick="_attShowSectionCards('${className.replace(/'/g,"\\'")}' )">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        Back
                     </button>
+                    <span class="att-crumb-trail"><span class="att-crumb-sep">/</span><span class="att-crumb-current">${className} · Section ${section}</span><span class="att-crumb-sep">·</span>${_attFilteredStudents.length} Student${_attFilteredStudents.length !== 1 ? "s" : ""}</span>
                 </div>
-            </section>`;
-        }
-
-        function _attCountStatus(status) {
-            return _attFilteredStudents.filter(s => s.roll_number && _attListStatus[s.roll_number] === status).length;
-        }
-
-        function _attSavedLabel() {
-            if (!_attLastSaved) return `<span class="attx-saved-muted">Not saved yet</span>`;
-            const secs = Math.round((Date.now() - _attLastSaved) / 1000);
-            let txt = "just now";
-            if (secs >= 60) { const m = Math.floor(secs/60); txt = m + (m === 1 ? " min ago" : " mins ago"); }
-            return `Last saved ${txt} <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="var(--success)"/><path d="M8 12.5l2.5 2.5L16 9" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-        }
-
-        // ── horizontal day / week strip ────────────────────────────────────
-        function _attDayStripHtml(selectedIso) {
-            const todayIso = getTodayStr();
-            // Center the selected day; show 3 before + selected + 3 after (7 cols).
-            const days = [];
-            for (let i = -3; i <= 3; i++) days.push(_attAddDays(selectedIso, i));
-
-            const cols = days.map(iso => {
-                const dt = _attIsoToDate(iso);
-                const isSel    = iso === selectedIso;
-                const isFuture = iso > todayIso;
-                const isToday  = iso === todayIso;
-                const hasMark  = !!_attExistingRecords[iso]; // not per-day but kept for dot; see below
-                // Dot indicator: show a small dot when that date has saved records.
-                // We can't cheaply know per-date totals here, so show a subtle dot
-                // for past/today dates that are not the selected one.
-                const showDot = !isSel && !isFuture;
-                return `
-                <button class="attx-day ${isSel ? "is-sel" : ""} ${isFuture ? "is-future" : ""}"
-                    ${isFuture ? "disabled" : `data-iso="${iso}"`}
-                    aria-label="${WEEKDAY_FULL[dt.getDay()]} ${dt.getDate()}">
-                    <span class="attx-day-wd">${WEEKDAY_ABBR[dt.getDay()]}</span>
-                    <span class="attx-day-num">${dt.getDate()}</span>
-                    ${isSel ? `<span class="attx-day-mon">${MONTH_ABBR[dt.getMonth()]} ${dt.getFullYear()}</span>` : (showDot ? `<span class="attx-day-dot"></span>` : `<span class="attx-day-dot-gap"></span>`)}
-                </button>`;
-            }).join("");
-
-            return `
-            <div class="attx-daystrip">
-                <button class="attx-day-nav" id="attx-day-prev" aria-label="Previous week">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </button>
-                <div class="attx-days">${cols}</div>
-                <button class="attx-day-nav" id="attx-day-next" aria-label="Next week">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </button>
-            </div>`;
-        }
-
-        function _attBindDayStrip() {
-            const wrap = document.getElementById("att-cards-wrap");
-            if (!wrap) return;
-            wrap.querySelectorAll(".attx-day[data-iso]").forEach(btn => {
-                btn.addEventListener("click", () => _attGoToDate(btn.getAttribute("data-iso")));
-            });
-            const prev = document.getElementById("attx-day-prev");
-            const next = document.getElementById("attx-day-next");
-            if (prev) prev.addEventListener("click", () => _attGoToDate(_attAddDays(_attSelectedDateIso(), -7)));
-            if (next) next.addEventListener("click", () => {
-                const target = _attAddDays(_attSelectedDateIso(), 7);
-                if (!_attIsFutureDate(target)) _attGoToDate(target);
-                else _attGoToDate(getTodayStr());
-            });
-        }
-
-        async function _attGoToDate(iso) {
-            if (!iso || _attIsFutureDate(iso)) return;
-            _attSetDateValue(iso, false);
-            await _attLoadRecords();
-            // Re-render the list for the new date (stays in list view).
-            _attShowStudentList(_attCurrentClass, _attCurrentSection);
-        }
-
-        // ── stat cards ─────────────────────────────────────────────────────
-        function _attStatCardsHtml(total, present, late, absent, pctPresent) {
-            // mini bar chart (decorative; reflects nothing sensitive — shows a
-            // light "last 14 days" trend bar pattern)
-            const bars = [];
-            for (let i = 0; i < 14; i++) {
-                const h = 30 + ((i * 37 + 11) % 60);
-                const strong = i % 3 === 0;
-                bars.push(`<span class="attx-bar ${strong ? "strong" : ""}" style="height:${h}%"></span>`);
-            }
-            const presentCard = `
-                <div class="attx-stat attx-stat--plain">
-                    <div class="attx-stat-top">
-                        <span class="attx-stat-label">Present</span>
-                        <span class="attx-stat-ic present"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                ${isEditable ? `
+                <div class="att-list-toolbar">
+                    <div class="att-list-actions">
+                        <button class="att-link-btn" onclick="attSelectAll()">Select all</button>
+                        <button class="att-link-btn" onclick="attClearSelection()">Clear</button>
                     </div>
-                    <div class="attx-stat-main"><span class="attx-stat-num present">${pctPresent}%</span></div>
-                    <div class="attx-stat-sub">${present + late} student${(present+late)!==1?"s":""} present</div>
-                </div>`;
-            return `
-                <div class="attx-stat attx-stat--plain">
-                    <div class="attx-stat-top">
-                        <span class="attx-stat-label">Total Students</span>
-                        <span class="attx-stat-ic neutral"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3.2" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="17" cy="8.5" r="2.6" stroke="currentColor" stroke-width="1.7"/><path d="M16 14.2c2.6.2 4.5 2.1 4.5 4.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
-                    </div>
-                    <div class="attx-stat-main"><span class="attx-stat-num">${total}</span></div>
-                    <div class="attx-stat-sub">All enrolled students</div>
-                </div>
-                ${presentCard}
-                <div class="attx-stat attx-stat--absent">
-                    <div class="attx-stat-top">
-                        <span class="attx-stat-label">Absent</span>
-                        <span class="attx-stat-ic absent"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3.2" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M16 8l4 4M20 8l-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
-                    </div>
-                    <div class="attx-stat-main"><span class="attx-stat-num absent">${absent}</span></div>
-                    <div class="attx-stat-sub">${absent} student${absent!==1?"s":""} absent</div>
-                </div>
-                <div class="attx-stat attx-stat--chart">
-                    <div class="attx-stat-top">
-                        <span class="attx-stat-label">Last 14 days</span>
-                        <span class="attx-stat-ic chart"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 20V10M9 20V5M14 20v-7M19 20V8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></span>
-                    </div>
-                    <div class="attx-bars">${bars.join("")}</div>
-                    <div class="attx-stat-sub">Average ${present+late}/${total}</div>
-                </div>`;
-        }
+                </div>` : `
+                <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;margin-bottom:4px;background:var(--bg-input);border:1px solid var(--border);border-radius:10px;font-size:0.8rem;color:var(--text-muted);font-weight:600">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="flex:0 0 auto"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 8v5l3 2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Viewing past attendance — read only. Switch to today to mark attendance.
+                </div>`}`;
 
-        // ── student rows with 3-way status pills ───────────────────────────
-        function _attRenderStudentTable() {
-            const rowsEl  = document.getElementById("attx-rows");
-            const emptyEl = document.getElementById("attx-empty");
-            if (!rowsEl) return;
-
-            const isEditable = _attIsEditableDate();
-
-            if (!_attFilteredStudents.length) {
-                rowsEl.innerHTML = "";
-                if (emptyEl) emptyEl.style.display = "block";
-                return;
-            }
-            if (emptyEl) emptyEl.style.display = "none";
-
-            rowsEl.innerHTML = _attFilteredStudents.map(s => {
-                const roll   = s.roll_number || "";
-                const name   = s.name || roll || "—";
-                const status = _attListStatus[roll] || "";
-                const color  = _attAvatarColor(roll || name);
-                const safeRoll = roll.replace(/'/g,"\\'");
-
-                function pill(kind, label, svg) {
-                    const active = status === kind;
-                    const dis = isEditable ? "" : "disabled";
-                    return `<button class="attx-pill attx-pill--${kind} ${active ? "is-active" : ""}" ${dis}
-                        onclick="attSetStatus('${safeRoll}','${kind}')" aria-pressed="${active}">
-                        ${svg}<span>${label}</span></button>`;
-                }
-                const presentPill = pill("present","Present",`<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`);
-                const latePill    = pill("late","Late",`<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.9"/><path d="M12 8v4l3 2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>`);
-                const absentPill  = pill("absent","Absent",`<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`);
-
-                return `<div class="attx-row" data-roll="${roll}">
-                    <div class="attx-row-student">
-                        <span class="attx-avatar" style="--avatar-color:${color}">${_attInitials(name)}</span>
-                        <span class="attx-row-info">
-                            <span class="attx-row-name">${name}</span>
-                            <span class="attx-row-roll">${roll || "—"}</span>
-                        </span>
-                    </div>
-                    <div class="attx-row-status">${presentPill}${latePill}${absentPill}</div>
-                </div>`;
-            }).join("");
+            _attSyncDateLabel();
+            _attRenderStudentTable();
         }
 
         function _attInitials(name) {
@@ -1590,182 +1366,192 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
         }
 
-        const ATT_AVATAR_COLORS = ["#10b981","#14b8a6","#3b82f6","#8b5cf6","#f59e0b","#ec4899","#6366f1","#0ea5e9"];
+        const ATT_AVATAR_COLORS = ["#6366f1","#0ea5e9","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6"];
         function _attAvatarColor(seed) {
             let h = 0;
             for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
             return ATT_AVATAR_COLORS[h % ATT_AVATAR_COLORS.length];
         }
 
-        // ── refresh the header subtitle, stat cards & saved-line in place ───
-        function _attRefreshSummary() {
-            const total   = _attFilteredStudents.length;
-            const present = _attCountStatus("present");
-            const late    = _attCountStatus("late");
-            const absent  = _attCountStatus("absent");
-            const marked  = present + late + absent;
-            const pct     = total > 0 ? Math.round(((present + late) / total) * 100) : 0;
+        function _attRenderStudentTable() {
+            // The table is the existing #att-student-table — we render into #att-student-tbody
+            const tbody  = document.getElementById("att-student-tbody");
+            const emptyEl = document.getElementById("att-empty");
+            if (!tbody) return;
 
-            const sub = document.getElementById("attx-subtitle");
-            if (sub) sub.textContent = `${pct}% present · ${marked}/${total} marked`;
-            const stats = document.getElementById("attx-stats");
-            if (stats) stats.innerHTML = _attStatCardsHtml(total, present, late, absent, pct);
-            const saved = document.getElementById("attx-saved");
-            if (saved) saved.innerHTML = _attSavedLabel();
+            const isEditable = _attIsEditableDate();
+
+            if (!_attFilteredStudents.length) {
+                if (emptyEl) emptyEl.style.display = "block";
+                tbody.innerHTML = "";
+                const bulkBar = document.getElementById("att-bulk-bar");
+                if (bulkBar) bulkBar.style.display = "none";
+                return;
+            }
+            if (emptyEl) emptyEl.style.display = "none";
+
+            const bulkBar = document.getElementById("att-bulk-bar");
+            if (bulkBar) bulkBar.style.display = isEditable ? "flex" : "none";
+
+            tbody.innerHTML = _attFilteredStudents.map(s => {
+                const roll    = s.roll_number || "";
+                const selected = _attSelectedRolls.has(roll);
+                const status  = _attExistingRecords[roll] || "";
+                let badge = `<span class="att-status-pill unmarked">Not marked</span>`;
+                if (status === "present") badge = `<span class="att-status-pill present">● Present</span>`;
+                else if (status === "absent") badge = `<span class="att-status-pill absent">● Absent</span>`;
+                const name = s.name || roll || "—";
+                const avatarColor = _attAvatarColor(roll || name);
+                const rowClick = isEditable ? `onclick="attToggleSelect('${roll.replace(/'/g,"\\'")}')"` : "";
+                const checkboxHtml = isEditable
+                    ? `<span class="att-checkbox ${selected ? "checked" : ""}" style="flex:0 0 auto">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                       </span>`
+                    : "";
+                return `<tr class="att-row" ${rowClick}
+                        style="${isEditable ? "cursor:pointer;" : "cursor:default;"}${selected && isEditable ? "background:color-mix(in srgb, var(--accent) 10%, transparent)" : ""}">
+                    <td colspan="2" style="padding:12px 14px;box-sizing:border-box">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-width:0">
+                            <div class="att-row-name" style="min-width:0;flex:1 1 auto;overflow:hidden">
+                                ${checkboxHtml}
+                                <span class="att-avatar" style="--avatar-color:${avatarColor};flex:0 0 auto">${_attInitials(name)}</span>
+                                <span style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span>
+                            </div>
+                            <div style="flex:0 0 auto">${badge}</div>
+                        </div>
+                    </td>
+                </tr>`;
+            }).join("");
+
+            _attRefreshStats();
         }
 
-        // ── set a single student's status → auto-saves to backend ──────────
-        async function attSetStatus(roll, status) {
-            if (!roll) return;
+        function _attRefreshStats() {
+            const presentEl = document.getElementById("att-bulk-present-count");
+            const absentEl  = document.getElementById("att-bulk-absent-count");
+            if (!presentEl || !absentEl) return;
+            const total = _attFilteredStudents.length;
+            const present = _attFilteredStudents.filter(s => s.roll_number && _attSelectedRolls.has(s.roll_number)).length;
+            presentEl.textContent = present;
+            absentEl.textContent = Math.max(total - present, 0);
+        }
+
+        // ── selection: tapping a row toggles whether it's selected (no API call yet) ──
+        function attToggleSelect(roll) {
+            if (!roll || !_attIsEditableDate()) return;
+            if (_attSelectedRolls.has(roll)) {
+                _attSelectedRolls.delete(roll);
+            } else {
+                _attSelectedRolls.add(roll);
+            }
+            _attRenderStudentTable();
+        }
+
+        function attSelectAll() {
+            if (!_attIsEditableDate()) return;
+            _attFilteredStudents.forEach(s => { if (s.roll_number) _attSelectedRolls.add(s.roll_number); });
+            _attRenderStudentTable();
+        }
+
+        function attClearSelection() {
+            if (!_attIsEditableDate()) return;
+            _attSelectedRolls = new Set();
+            _attRenderStudentTable();
+        }
+
+        // ── bulk action: selected students → present, everyone else in this list → absent ──
+        async function attMarkSelected() {
             if (!_attIsEditableDate()) {
                 showErrorModal("Attendance can only be marked for today. Past dates are view-only.");
                 return;
             }
-            // Toggle off if tapping the already-active status → "unmark".
-            const current = _attListStatus[roll];
-            const next = current === status ? "" : status;
-
-            // Optimistic UI update.
-            if (next) _attListStatus[roll] = next; else delete _attListStatus[roll];
-            _attRenderStudentTable();
-            _attRefreshSummary();
-
-            try {
-                await _attSaveStatus(roll, next);
-                _attExistingRecords[roll] = next || undefined;
-                if (!next) delete _attExistingRecords[roll];
-                _attLastSaved = Date.now();
-                const saved = document.getElementById("attx-saved");
-                if (saved) saved.innerHTML = _attSavedLabel();
-            } catch (e) {
-                // Roll back on failure.
-                if (current) _attListStatus[roll] = current; else delete _attListStatus[roll];
-                _attRenderStudentTable();
-                _attRefreshSummary();
-                showErrorModal(e.message || "Failed to save attendance");
-            }
-        }
-
-        // Resolve the class_id for the current class (cached per list view).
-        let _attResolvedClassId = null;
-        let _attResolvedClassName = null;
-        async function _attGetClassId() {
-            if (_attResolvedClassId !== null && _attResolvedClassName === _attCurrentClass) return _attResolvedClassId;
-            let class_id = 0;
-            try {
-                const cr = await fetch(`${API_BASE}/api/admin/classes`, { credentials: "include", cache: "no-store" });
-                if (cr.ok) {
-                    const classes = await cr.json();
-                    const match = classes.find(c => c.name === _attCurrentClass);
-                    if (match) class_id = match.id;
-                }
-            } catch (_) {}
-            _attResolvedClassId = class_id;
-            _attResolvedClassName = _attCurrentClass;
-            return class_id;
-        }
-
-        // Persist a single status to the backend mark endpoint.
-        async function _attSaveStatus(roll, status) {
-            const date = _attSelectedDateIso();
-            const class_id = await _attGetClassId();
-            // When un-setting, mark as "absent" fallback is NOT desired; the backend
-            // has no "delete" — so we send an explicit status. If "" (unmark), we
-            // simply send absent? No — to keep semantics clean we send the status
-            // and treat empty as a no-op delete by sending status "unmarked".
-            const sendStatus = status || "unmarked";
-            const r = await fetch(`${API_BASE}/api/admin/attendance/mark`, {
-                method: "POST", credentials: "include", cache: "no-store",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ class_id, batch_id: null, date, roll_numbers: [roll], status: sendStatus }),
-            });
-            const data = await r.json().catch(() => ({}));
-            if (!r.ok) throw new Error(data.error || "Failed to save");
-        }
-
-        // ── "Mark Attendance" modal ──────────────────────────────────────────
-        let _attBulkStatus = "present";
-
-        function attOpenMarkModal() {
-            if (!_attIsEditableDate()) {
-                showErrorModal("Attendance can only be marked for today. Past dates are view-only.");
+            if (!_attFilteredStudents.length) {
+                showErrorModal("No students to mark.");
                 return;
             }
-            if (!_attFilteredStudents.length) { showErrorModal("No students to mark."); return; }
-            // Reset to present each time modal opens
-            _attBulkStatus = "present";
-            const opts = document.querySelectorAll(".attx-status-opt");
-            opts.forEach(o => {
-                o.classList.remove("is-sel");
-                if (o.dataset.status === "present") o.classList.add("is-sel");
+
+            const presentRolls = [];
+            const absentRolls  = [];
+            _attFilteredStudents.forEach(s => {
+                const roll = s.roll_number;
+                if (!roll) return;
+                if (_attSelectedRolls.has(roll)) presentRolls.push(roll);
+                else absentRolls.push(roll);
             });
-            openModal("attMarkModal");
-        }
 
-        function attSelectBulkStatus(btn, status) {
-            _attBulkStatus = status;
-            document.querySelectorAll(".attx-status-opt").forEach(o => o.classList.remove("is-sel"));
-            if (btn) btn.classList.add("is-sel");
-        }
+            const dateInput = document.getElementById("att-date");
+            const date      = dateInput ? dateInput.value : getTodayStr();
 
-        async function attMarkAllBulk() {
-            closeModal("attMarkModal");
-            if (!_attFilteredStudents.length) return;
-
-            const status = _attBulkStatus || "present";
-            const rolls = _attFilteredStudents.map(s => s.roll_number).filter(Boolean);
-            const prev = { ..._attListStatus };
-
-            rolls.forEach(r => { _attListStatus[r] = status; });
-            _attRenderStudentTable();
-            _attRefreshSummary();
-
-            const btn = document.getElementById("attx-markall");
+            const btn     = document.getElementById("att-mark-btn");
+            const spinner = document.getElementById("att-mark-btn-spinner");
+            const icon    = document.getElementById("att-mark-btn-icon");
+            const label   = document.getElementById("att-mark-btn-label");
             if (btn) btn.disabled = true;
+            if (spinner) spinner.style.display = "inline-block";
+            if (icon) icon.style.display = "none";
+            if (label) label.textContent = "Marking attendance…";
 
             try {
-                const date = _attSelectedDateIso();
-                const class_id = await _attGetClassId();
-                const r = await fetch(`${API_BASE}/api/admin/attendance/mark`, {
-                    method: "POST", credentials: "include", cache: "no-store",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ class_id, batch_id: null, date, roll_numbers: rolls, status }),
-                });
-                const data = await r.json().catch(() => ({}));
-                if (!r.ok) throw new Error(data.error || "Failed");
-                rolls.forEach(rl => { _attExistingRecords[rl] = status; });
-                _attLastSaved = Date.now();
-                const saved = document.getElementById("attx-saved");
-                if (saved) saved.innerHTML = _attSavedLabel();
-            } catch (e) {
-                _attListStatus = prev;
+                // Resolve class_id from the current class name
+                let class_id = 0;
+                try {
+                    const cr = await fetch(`${API_BASE}/api/admin/classes`, { credentials: "include", cache: "no-store" });
+                    if (cr.ok) {
+                        const classes = await cr.json();
+                        const match = classes.find(c => c.name === _attCurrentClass);
+                        if (match) class_id = match.id;
+                    }
+                } catch (_) {}
+
+                async function markGroup(rolls, status) {
+                    if (!rolls.length) return;
+                    const r = await fetch(`${API_BASE}/api/admin/attendance/mark`, {
+                        method:"POST", credentials:"include", cache:"no-store",
+                        headers:{"Content-Type":"application/json"},
+                        body: JSON.stringify({ class_id, batch_id:null, date, roll_numbers:rolls, status }),
+                    });
+                    const data = await r.json().catch(() => ({}));
+                    if (!r.ok) throw new Error(data.error || "Failed");
+                }
+
+                await markGroup(presentRolls, "present");
+                await markGroup(absentRolls, "absent");
+
+                presentRolls.forEach(roll => { _attExistingRecords[roll] = "present"; });
+                absentRolls.forEach(roll => { _attExistingRecords[roll] = "absent"; });
+
+                _attSelectedRolls = new Set(presentRolls);
                 _attRenderStudentTable();
-                _attRefreshSummary();
+                attShowSuccessPopup(presentRolls.length, absentRolls.length);
+            } catch(e) {
                 showErrorModal(e.message || "Failed to mark attendance");
             } finally {
-                if (btn) btn.disabled = !_attIsEditableDate();
+                if (btn) btn.disabled = false;
+                if (spinner) spinner.style.display = "none";
+                if (icon) icon.style.display = "";
+                if (label) label.textContent = "Mark Attendance";
             }
         }
 
-        // kept for backward-compat (legacy bulk bar)
-        async function attMarkAllPresent() { _attBulkStatus = "present"; await attMarkAllBulk(); }
+        // ── custom success popup for attendance marking ──
+        function attShowSuccessPopup(presentCount, absentCount) {
+            const textEl = document.getElementById("attSuccessModalText");
+            if (textEl) {
+                textEl.textContent = `${presentCount} student${presentCount !== 1 ? "s" : ""} marked present, ${absentCount} marked absent.`;
+            }
+            openModal("attSuccessModal");
+        }
 
-        // ── show/hide legacy flat table UI (kept so card views still work) ──
+        // ── show/hide flat table UI ────────────────────────────────────────
         function _attToggleFlatUI(show) {
             const tableWrap = document.getElementById("att-student-table");
             const searchEl  = document.getElementById("att-search");
             const statsBar  = document.querySelector("#section-attendance .stu-stats-bar");
             const bulkBar   = document.getElementById("att-bulk-bar");
-            const loadingEl = document.getElementById("att-loading");
-            const emptyEl   = document.getElementById("att-empty");
-            // The redesigned list renders its own panel, so the legacy flat
-            // table & bulk-bar stay hidden at all times now.
-            if (tableWrap && tableWrap.parentElement) tableWrap.parentElement.style.display = "none";
-            if (searchEl && searchEl.closest(".stu-toolbar")) searchEl.closest(".stu-toolbar").style.display = "none";
-            if (statsBar) statsBar.style.display = "none";
-            if (bulkBar) bulkBar.style.display = "none";
-            if (loadingEl) loadingEl.style.display = "none";
-            if (emptyEl) emptyEl.style.display = "none";
+            if (tableWrap && tableWrap.parentElement) tableWrap.parentElement.style.display = show ? "" : "none";
+            if (searchEl && searchEl.closest(".stu-toolbar")) searchEl.closest(".stu-toolbar").style.display = show ? "" : "none";
+            if (statsBar) statsBar.style.display = show ? "" : "none";
+            if (!show && bulkBar) bulkBar.style.display = "none";
         }
 
         // ── filter (search within list view) ──────────────────────────────
@@ -1780,14 +1566,9 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                 return true;
             });
             _attRenderStudentTable();
-            _attRefreshSummary();
         }
 
-
-        // Backward-compat: the legacy hidden bulk-bar button still references
-        // attMarkSelected(). That bar is permanently hidden in the redesigned
-        // list view, but keep a safe alias so a stray call can't throw.
-        function attMarkSelected() { attMarkAllPresent(); }
+        // (legacy single-tap toggle removed — replaced by select + attMarkSelected)
 
         async function openManageClassesModal() {
             openModal("manageClassesModal");
