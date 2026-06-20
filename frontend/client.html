@@ -1325,14 +1325,6 @@
 
         <!-- ATTENDANCE -->
         <div class="section" id="section-attendance">
-            <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
-                <div>
-                    <h1>Attendance</h1>
-                    <p>Mark and manage student attendance</p>
-                </div>
-
-            </div>
-
             <!-- Hidden date store (always today; no visible date picker) -->
             <input type="hidden" id="att-date" value="">
 
@@ -1609,6 +1601,28 @@
             .attx-markall:active:not(:disabled) { transform:translateY(0); }
             .attx-markall:disabled, .attx-markall.is-disabled { opacity:0.45; cursor:not-allowed; box-shadow:none; }
 
+            /* bulk mark attendance: status selector + button */
+            .attx-markbulk-wrap {
+                display:flex; flex-direction:column; align-items:flex-end; gap:8px;
+            }
+            .attx-markbulk-wrap.is-disabled { opacity:0.45; pointer-events:none; }
+            .attx-status-selector {
+                display:flex; gap:4px; background:var(--bg-input);
+                border:1.5px solid var(--border); border-radius:999px; padding:3px;
+            }
+            .attx-status-opt {
+                display:flex; align-items:center; gap:5px;
+                padding:5px 13px; border-radius:999px; border:none;
+                background:transparent; color:var(--text-muted); font-size:0.78rem;
+                font-weight:600; cursor:pointer; transition:background .15s, color .15s;
+                white-space:nowrap;
+            }
+            .attx-status-opt:hover:not(:disabled) { color:var(--text); background:var(--border); }
+            .attx-status-opt.is-sel[data-status="present"] { background:var(--success); color:#fff; }
+            .attx-status-opt.is-sel[data-status="late"]    { background:#f59e0b; color:#fff; }
+            .attx-status-opt.is-sel[data-status="absent"]  { background:var(--error); color:#fff; }
+            .attx-status-dot { width:8px; height:8px; border-radius:50%; background:var(--success); display:inline-block; }
+
             /* day strip */
             .attx-daystrip {
                 display:flex; align-items:stretch; gap:8px; padding:10px;
@@ -1771,7 +1785,10 @@
             @media (max-width: 560px) {
                 .attx-title { font-size:1.5rem; }
                 .attx-markall { width:100%; justify-content:center; }
-                .attx-head { gap:12px; }
+                .attx-head { gap:12px; flex-wrap:wrap; }
+                .attx-markbulk-wrap { width:100%; align-items:stretch; }
+                .attx-status-selector { justify-content:center; }
+                .attx-status-opt { flex:1; justify-content:center; }
                 .attx-day-num { font-size:1.05rem; }
                 .attx-day { min-height:66px; padding:8px 2px 6px; }
                 .attx-day-nav { width:30px; }
