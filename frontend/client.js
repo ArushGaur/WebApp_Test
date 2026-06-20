@@ -603,17 +603,16 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
         /* ══════════════════════════════════════════════════════════════════
            NAVIGATION
         ══════════════════════════════════════════════════════════════════ */
-        // Drawer navigation: attendance gets a dedicated path (forces the
-        // section active directly); everything else goes through the
-        // shared showSection() defined below in this same file.
+        // Override drawerNav for attendance since shared showSection is intercepted
+        const _origDrawerNav = typeof drawerNav === "function" ? drawerNav : null;
         function drawerNav(name) {
             console.log("[nav] drawerNav called with:", name);
             if (name === "attendance") {
                 navAttendance();
                 return;
             }
-            closeMobileDrawer();
-            if (typeof showSection === "function") showSection(name);
+            if (_origDrawerNav) _origDrawerNav(name);
+            else if (typeof showSection === "function") { closeMobileDrawer(); showSection(name); }
         }
 
         function navAttendance() {
@@ -635,7 +634,6 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
 
         function showSection(name, push = true) {
             console.log("[nav] showSection called with name:", name);
-            if (typeof _attCloseCalendar === "function") _attCloseCalendar();
             document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
             document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
             const sec = document.getElementById(`section-${name}`);
@@ -846,19 +844,6 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
         }
 
-        // ── attendance can only be marked/edited for TODAY. Past dates are
-        //    view-only; future dates can't be selected at all. ──────────────
-        function _attSelectedDateIso() {
-            const hidden = document.getElementById("att-date");
-            return (hidden && hidden.value) ? hidden.value : getTodayStr();
-        }
-        function _attIsEditableDate() {
-            return _attSelectedDateIso() === getTodayStr();
-        }
-        function _attIsFutureDate(iso) {
-            return iso > getTodayStr();
-        }
-
         /* ── custom date picker ────────────────────────────────────────────
            Replaces the native <input type="date"> with a click-anywhere
            popup calendar. The ISO value (yyyy-mm-dd) lives in the hidden
@@ -877,37 +862,13 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             if (triggerChange) attOnDateChange();
         }
 
-        // The popup is a single persistent node appended directly to <body>.
-        // Appending it to body (rather than nesting it inside the repeatedly
-        // re-rendered #att-cards-wrap) means it's immune to any transformed/
-        // overflow ancestor that would otherwise break `position:fixed`
-        // coordinates, and a very high z-index keeps it above the bulk
-        // action bar at the bottom of the student list.
-        function _attGetCalendarPopup() {
-            let popup = document.getElementById("att-cal-popup");
-            if (!popup) {
-                popup = document.createElement("div");
-                popup.id = "att-cal-popup";
-                popup.style.cssText = "display:none;position:fixed;z-index:99999;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;box-shadow:0 16px 40px rgba(0,0,0,0.28);padding:14px;width:260px;max-width:calc(100vw - 24px)";
-                document.body.appendChild(popup);
-            }
-            return popup;
-        }
-
-        function _attCloseCalendar() {
-            const popup = document.getElementById("att-cal-popup");
-            if (popup) popup.style.display = "none";
-            document.removeEventListener("click", _attCalOutsideClick);
-            window.removeEventListener("resize", _attRepositionOpenCalendar);
-        }
-
         function attToggleCalendar(e) {
             if (e) e.stopPropagation();
-            const popup = _attGetCalendarPopup();
+            const popup = document.getElementById("att-cal-popup");
             const wrap  = document.getElementById("att-date-wrap");
             if (!popup || !wrap) return;
             const isOpen = popup.style.display !== "none";
-            if (isOpen) { _attCloseCalendar(); return; }
+            if (isOpen) { popup.style.display = "none"; return; }
             const hidden = document.getElementById("att-date");
             const base = (hidden && hidden.value) ? hidden.value : getTodayStr();
             const [y, m] = base.split("-").map(Number);
@@ -933,12 +894,10 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             popup.style.width = popW + "px";
             const rect = wrap.getBoundingClientRect();
 
-            // Align left edge with the wrap element; fallback to right-align if it overflows
-            let left = rect.left;
-            if (left + popW > vw - margin) left = vw - margin - popW;
+            let left = rect.right - popW;
             if (left < margin) left = margin;
+            if (left + popW > vw - margin) left = vw - margin - popW;
 
-            // Measure real height now that popup is visible (display:block was set before this call)
             const popH = popup.offsetHeight || 320;
             let top = rect.bottom + 6;
             if (top + popH > vh - margin) {
@@ -965,9 +924,10 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                 window.removeEventListener("resize", _attRepositionOpenCalendar);
                 return;
             }
-            if (popup.contains(e.target)) return;
             if (wrap && !wrap.contains(e.target)) {
-                _attCloseCalendar();
+                popup.style.display = "none";
+                document.removeEventListener("click", _attCalOutsideClick);
+                window.removeEventListener("resize", _attRepositionOpenCalendar);
             }
         }
 
@@ -976,15 +936,10 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             if (_attCalViewMonth < 0) { _attCalViewMonth = 11; _attCalViewYear--; }
             if (_attCalViewMonth > 11) { _attCalViewMonth = 0; _attCalViewYear++; }
             _attRenderCalendar();
-            // Month length can change (28-31 days), which changes popup
-            // height — reposition so it stays anchored under the pill.
-            const wrap = document.getElementById("att-date-wrap");
-            const popup = document.getElementById("att-cal-popup");
-            if (wrap && popup) _attPositionCalendar(wrap, popup);
         }
 
         function _attRenderCalendar() {
-            const popup = _attGetCalendarPopup();
+            const popup = document.getElementById("att-cal-popup");
             if (!popup) return;
             const hidden  = document.getElementById("att-date");
             const selIso  = hidden ? hidden.value : "";
@@ -1001,14 +956,9 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
                 const iso = `${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
                 const isSel   = iso === selIso;
                 const isToday = iso === todayIso;
-                const isFuture = iso > todayIso;
                 let bg = "transparent", color = "var(--text)", fw = "500", border = "1.5px solid transparent";
                 if (isSel)        { bg = "var(--accent)"; color = "#fff"; fw = "700"; }
                 else if (isToday) { border = "1.5px solid var(--accent)"; fw = "700"; }
-                if (isFuture) {
-                    cells += `<div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:0.82rem;font-weight:500;color:var(--text-muted);opacity:0.35;cursor:not-allowed">${day}</div>`;
-                    continue;
-                }
                 cells += `<div onclick="event.stopPropagation();_attPickDate('${iso}')"
                     style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;cursor:pointer;font-size:0.82rem;font-weight:${fw};color:${color};background:${bg};border:${border};transition:background 0.12s"
                     onmouseover="if('${isSel}'!=='true')this.style.background='var(--bg-input)'"
@@ -1032,9 +982,11 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
         }
 
         function _attPickDate(iso) {
-            if (_attIsFutureDate(iso)) return;
             _attSetDateValue(iso, true);
-            _attCloseCalendar();
+            const popup = document.getElementById("att-cal-popup");
+            if (popup) popup.style.display = "none";
+            document.removeEventListener("click", _attCalOutsideClick);
+            window.removeEventListener("resize", _attRepositionOpenCalendar);
         }
 
         // ── date changed: reload records for new date, stay on current view ──
@@ -1157,26 +1109,8 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             return map;
         }
 
-        // ── small ring showing present/total proportion on a card ───────────
-        function _attRingSvg(present, total, color) {
-            const pct = total > 0 ? present / total : 0;
-            const r = 17, c = 2 * Math.PI * r;
-            const dash = c * pct;
-            return `<svg class="att-card-ring" width="44" height="44" viewBox="0 0 44 44">
-                <circle cx="22" cy="22" r="${r}" fill="none" stroke="var(--border)" stroke-width="4"/>
-                <circle cx="22" cy="22" r="${r}" fill="none" stroke="${color}" stroke-width="4"
-                    stroke-dasharray="${dash} ${c - dash}" stroke-linecap="round"
-                    transform="rotate(-90 22 22)"/>
-                <text x="22" y="26" text-anchor="middle" font-size="11" font-weight="800" fill="var(--text)" font-family="'Outfit',sans-serif">${present}/${total}</text>
-            </svg>`;
-        }
-
-        const ATT_CAP_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 3l10 5-10 5L2 8l10-5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M6 11v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>`;
-        const ATT_FOLDER_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>`;
-
         // ── LEVEL 1 : Class Cards ──────────────────────────────────────────
         function _attShowClassCards() {
-            _attCloseCalendar();
             _attView = "classes";
             _attCurrentClass = null;
             _attCurrentSection = null;
@@ -1194,37 +1128,32 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             if (!classes.length) {
                 wrap.innerHTML = `
                     ${_attDateWidgetHtml()}
-                    <div class="att-empty-state">
-                        <div class="att-empty-icon">${ATT_CAP_ICON}</div>
-                        <h3>No students found</h3>
-                        <p>Add students to the portal first.</p>
+                    <div class="att-empty-card">
+                        <div style="font-size:2.6rem;margin-bottom:10px">📋</div>
+                        <h3 style="margin:0 0 6px">No Students Found</h3>
+                        <p style="margin:0;font-size:0.88rem">Add students to the portal first.</p>
                     </div>`;
                 _attSyncDateLabel();
                 return;
             }
 
             wrap.innerHTML = `
-                ${_attDateWidgetHtml()}
-                <div class="att-eyebrow">Class Cards <span class="att-eyebrow-count">${classes.length}</span></div>
-                <div class="att-card-grid">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:16px;flex-wrap:wrap">
+                    <div class="att-toplabel" style="margin-bottom:0">Class Cards</div>
+                    ${_attDateWidgetHtml()}
+                </div>
+                <div class="att-grid">
                     ${classes.map((cls, i) => {
                         const studs   = byClass[cls];
                         const color   = colors[i % colors.length];
                         const present = studs.filter(s => _attExistingRecords[s.roll_number] === "present").length;
-                        const marked  = studs.filter(s => _attExistingRecords[s.roll_number]).length;
-                        let statusHtml = `<span class="att-card-status none">Not marked yet</span>`;
-                        if (marked > 0 && marked === studs.length) statusHtml = `<span class="att-card-status done">All marked</span>`;
-                        else if (marked > 0) statusHtml = `<span class="att-card-status partial">${marked}/${studs.length} marked</span>`;
-                        return `<div class="att-card" style="--card-color:${color}" tabindex="0" role="button"
-                            onclick="_attShowSectionCards('${cls.replace(/'/g,"\\'")}')"
-                            onkeydown="if(event.key==='Enter')this.click()">
-                            <div class="att-card-top">
-                                <div class="att-card-icon">${ATT_CAP_ICON}</div>
-                                ${marked > 0 ? _attRingSvg(present, studs.length, color) : ""}
-                            </div>
+                        const pct     = studs.length ? Math.round((present / studs.length) * 100) : 0;
+                        return `<div class="att-card" style="--att-color:${color}" onclick="_attShowSectionCards('${cls.replace(/'/g,"\'")}')">
+                            <div class="att-avatar">🎓</div>
                             <div class="att-card-title">${cls}</div>
                             <div class="att-card-sub">${studs.length} Student${studs.length !== 1 ? "s" : ""}</div>
-                            ${statusHtml}
+                            <div class="att-card-progress"><div class="att-card-progress-fill" style="width:${pct}%"></div></div>
+                            <div class="att-card-presence"><b>${present}</b> / ${studs.length} present</div>
                         </div>`;
                     }).join("")}
                 </div>`;
@@ -1233,15 +1162,11 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
 
         // ── shared markup for the date-picker widget shown above the class cards ──
         function _attDateWidgetHtml() {
-            return `<div style="display:flex;justify-content:flex-start;margin-bottom:18px">
-                <div class="att-marking-date" id="att-date-wrap" onclick="attToggleCalendar(event)" style="position:relative">
-                    <div id="att-date-display" class="att-date-pill">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="16" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-                        <span id="att-date-label">--/--/----</span>
-                        <svg class="att-date-cal-icon" width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    </div>
-                </div>
-            </div>`;
+            return `<div class="att-date-pill" id="att-date-wrap" onclick="attToggleCalendar(event)" style="position:relative">
+                    <span class="att-cal-icon">📅</span>
+                    <span id="att-date-label">--/--/----</span>
+                    <div id="att-cal-popup" style="display:none;position:fixed;z-index:200;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,0.18);padding:14px;width:260px;max-width:calc(100vw - 24px)"></div>
+                </div>`;
         }
 
         // ── keep the visible date label in sync with the hidden #att-date value ──
@@ -1256,7 +1181,6 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
 
         // ── LEVEL 2 : Section Cards ────────────────────────────────────────
         function _attShowSectionCards(className) {
-            _attCloseCalendar();
             _attView = "sections";
             _attCurrentClass   = className;
             _attCurrentSection = null;
@@ -1273,42 +1197,29 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             _attToggleFlatUI(false);
 
             wrap.innerHTML = `
-                ${_attDateWidgetHtml()}
-                <div class="att-breadcrumb">
-                    <button class="att-back-btn" onclick="_attShowClassCards()">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                        Classes
-                    </button>
-                    <span class="att-crumb-trail"><span class="att-crumb-sep">/</span><span class="att-crumb-current">${className}</span><span class="att-crumb-sep">·</span>${sections.length} Section${sections.length !== 1 ? "s" : ""}</span>
+                <div class="att-crumb-bar">
+                    <button class="att-back-btn" onclick="_attShowClassCards()">← Back To Classes</button>
+                    <span class="att-crumb-label"><b>${className}</b> · Sections</span>
                 </div>
-                <div class="att-card-grid">
+                <div class="att-grid">
                     ${sections.map((sec, i) => {
                         const studs   = bySection[sec];
                         const color   = colors[i % colors.length];
                         const present = studs.filter(s => _attExistingRecords[s.roll_number] === "present").length;
-                        const marked  = studs.filter(s => _attExistingRecords[s.roll_number]).length;
-                        let statusHtml = `<span class="att-card-status none">Not marked yet</span>`;
-                        if (marked > 0 && marked === studs.length) statusHtml = `<span class="att-card-status done">All marked</span>`;
-                        else if (marked > 0) statusHtml = `<span class="att-card-status partial">${marked}/${studs.length} marked</span>`;
-                        return `<div class="att-card" style="--card-color:${color}" tabindex="0" role="button"
-                            onclick="_attShowStudentList('${className.replace(/'/g,"\\'")}','${sec.replace(/'/g,"\\'")}' )"
-                            onkeydown="if(event.key==='Enter')this.click()">
-                            <div class="att-card-top">
-                                <div class="att-card-icon">${ATT_FOLDER_ICON}</div>
-                                ${marked > 0 ? _attRingSvg(present, studs.length, color) : ""}
-                            </div>
+                        const pct     = studs.length ? Math.round((present / studs.length) * 100) : 0;
+                        return `<div class="att-card" style="--att-color:${color}" onclick="_attShowStudentList('${className.replace(/'/g,"\'")}','${sec.replace(/'/g,"\'")}' )">
+                            <div class="att-avatar">${(sec || "?").charAt(0).toUpperCase()}</div>
                             <div class="att-card-title">Section ${sec}</div>
                             <div class="att-card-sub">${studs.length} Student${studs.length !== 1 ? "s" : ""}</div>
-                            ${statusHtml}
+                            <div class="att-card-progress"><div class="att-card-progress-fill" style="width:${pct}%"></div></div>
+                            <div class="att-card-presence"><b>${present}</b> / ${studs.length} present</div>
                         </div>`;
                     }).join("")}
                 </div>`;
-            _attSyncDateLabel();
         }
 
         // ── LEVEL 3 : Student list with checkboxes ─────────────────────────
         function _attShowStudentList(className, section) {
-            _attCloseCalendar();
             _attView = "list";
             _attCurrentClass   = className;
             _attCurrentSection = section;
@@ -1332,45 +1243,13 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             // Update stat counters
             _attRefreshStats();
 
-            const isEditable = _attIsEditableDate();
-
             wrap.innerHTML = `
-                ${_attDateWidgetHtml()}
-                <div class="att-breadcrumb">
-                    <button class="att-back-btn" onclick="_attShowSectionCards('${className.replace(/'/g,"\\'")}' )">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                        Back
-                    </button>
-                    <span class="att-crumb-trail"><span class="att-crumb-sep">/</span><span class="att-crumb-current">${className} · Section ${section}</span><span class="att-crumb-sep">·</span>${_attFilteredStudents.length} Student${_attFilteredStudents.length !== 1 ? "s" : ""}</span>
-                </div>
-                ${isEditable ? `
-                <div class="att-list-toolbar">
-                    <div class="att-list-actions">
-                        <button class="att-link-btn" onclick="attSelectAll()">Select all</button>
-                        <button class="att-link-btn" onclick="attClearSelection()">Clear</button>
-                    </div>
-                </div>` : `
-                <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;margin-bottom:4px;background:var(--bg-input);border:1px solid var(--border);border-radius:10px;font-size:0.8rem;color:var(--text-muted);font-weight:600">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="flex:0 0 auto"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 8v5l3 2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    Viewing past attendance — read only. Switch to today to mark attendance.
-                </div>`}`;
+                <div class="att-crumb-bar">
+                    <button class="att-back-btn" onclick="_attShowSectionCards('${className.replace(/'/g,"\'")}' )">← Back</button>
+                    <span class="att-crumb-label">Section <b>${section}</b> · ${_attFilteredStudents.length} Students</span>
+                </div>`;
 
-            _attSyncDateLabel();
             _attRenderStudentTable();
-        }
-
-        function _attInitials(name) {
-            const parts = (name || "").trim().split(/\s+/).filter(Boolean);
-            if (!parts.length) return "?";
-            if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-            return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-        }
-
-        const ATT_AVATAR_COLORS = ["#6366f1","#0ea5e9","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6"];
-        function _attAvatarColor(seed) {
-            let h = 0;
-            for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-            return ATT_AVATAR_COLORS[h % ATT_AVATAR_COLORS.length];
         }
 
         function _attRenderStudentTable() {
@@ -1378,8 +1257,6 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             const tbody  = document.getElementById("att-student-tbody");
             const emptyEl = document.getElementById("att-empty");
             if (!tbody) return;
-
-            const isEditable = _attIsEditableDate();
 
             if (!_attFilteredStudents.length) {
                 if (emptyEl) emptyEl.style.display = "block";
@@ -1391,54 +1268,41 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             if (emptyEl) emptyEl.style.display = "none";
 
             const bulkBar = document.getElementById("att-bulk-bar");
-            if (bulkBar) bulkBar.style.display = isEditable ? "flex" : "none";
+            if (bulkBar) bulkBar.style.display = "block";
 
             tbody.innerHTML = _attFilteredStudents.map(s => {
                 const roll    = s.roll_number || "";
+                const name    = s.name || roll || "—";
                 const selected = _attSelectedRolls.has(roll);
                 const status  = _attExistingRecords[roll] || "";
-                let badge = `<span class="att-status-pill unmarked">Not marked</span>`;
-                if (status === "present") badge = `<span class="att-status-pill present">● Present</span>`;
-                else if (status === "absent") badge = `<span class="att-status-pill absent">● Absent</span>`;
-                const name = s.name || roll || "—";
-                const avatarColor = _attAvatarColor(roll || name);
-                const rowClick = isEditable ? `onclick="attToggleSelect('${roll.replace(/'/g,"\\'")}')"` : "";
-                const checkboxHtml = isEditable
-                    ? `<span class="att-checkbox ${selected ? "checked" : ""}" style="flex:0 0 auto">
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                       </span>`
-                    : "";
-                return `<tr class="att-row" ${rowClick}
-                        style="${isEditable ? "cursor:pointer;" : "cursor:default;"}${selected && isEditable ? "background:color-mix(in srgb, var(--accent) 10%, transparent)" : ""}">
-                    <td colspan="2" style="padding:12px 14px;box-sizing:border-box">
-                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-width:0">
-                            <div class="att-row-name" style="min-width:0;flex:1 1 auto;overflow:hidden">
-                                ${checkboxHtml}
-                                <span class="att-avatar" style="--avatar-color:${avatarColor};flex:0 0 auto">${_attInitials(name)}</span>
-                                <span style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span>
-                            </div>
-                            <div style="flex:0 0 auto">${badge}</div>
-                        </div>
-                    </td>
-                </tr>`;
+                let badge = `<span class="att-badge unmarked">Not marked</span>`;
+                if (status === "present") badge = `<span class="att-badge present">● Present</span>`;
+                else if (status === "absent") badge = `<span class="att-badge absent">● Absent</span>`;
+                const initial = name.trim().charAt(0).toUpperCase() || "?";
+                return `<div class="att-row${selected ? " selected" : ""}" onclick="attToggleSelect('${roll.replace(/'/g,"\\'")}')">
+                    <div class="att-row-name">
+                        <span class="att-checkbox">${selected ? "✓" : ""}</span>
+                        <span class="att-avatar-sm">${initial}</span>
+                        <span class="att-row-name-text">${name}</span>
+                    </div>
+                    <div>${badge}</div>
+                </div>`;
             }).join("");
 
             _attRefreshStats();
         }
 
         function _attRefreshStats() {
-            const presentEl = document.getElementById("att-bulk-present-count");
-            const absentEl  = document.getElementById("att-bulk-absent-count");
-            if (!presentEl || !absentEl) return;
-            const total = _attFilteredStudents.length;
-            const present = _attFilteredStudents.filter(s => s.roll_number && _attSelectedRolls.has(s.roll_number)).length;
-            presentEl.textContent = present;
-            absentEl.textContent = Math.max(total - present, 0);
+            const summary = document.getElementById("att-mark-summary");
+            if (!summary) return;
+            const total    = _attFilteredStudents.length;
+            const selected = _attSelectedRolls.size;
+            summary.textContent = `${selected} of ${total} selected as present — the rest will be marked absent`;
         }
 
         // ── selection: tapping a row toggles whether it's selected (no API call yet) ──
         function attToggleSelect(roll) {
-            if (!roll || !_attIsEditableDate()) return;
+            if (!roll) return;
             if (_attSelectedRolls.has(roll)) {
                 _attSelectedRolls.delete(roll);
             } else {
@@ -1448,23 +1312,17 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
         }
 
         function attSelectAll() {
-            if (!_attIsEditableDate()) return;
             _attFilteredStudents.forEach(s => { if (s.roll_number) _attSelectedRolls.add(s.roll_number); });
             _attRenderStudentTable();
         }
 
         function attClearSelection() {
-            if (!_attIsEditableDate()) return;
             _attSelectedRolls = new Set();
             _attRenderStudentTable();
         }
 
         // ── bulk action: selected students → present, everyone else in this list → absent ──
         async function attMarkSelected() {
-            if (!_attIsEditableDate()) {
-                showErrorModal("Attendance can only be marked for today. Past dates are view-only.");
-                return;
-            }
             if (!_attFilteredStudents.length) {
                 showErrorModal("No students to mark.");
                 return;
@@ -1484,11 +1342,9 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
 
             const btn     = document.getElementById("att-mark-btn");
             const spinner = document.getElementById("att-mark-btn-spinner");
-            const icon    = document.getElementById("att-mark-btn-icon");
             const label   = document.getElementById("att-mark-btn-label");
             if (btn) btn.disabled = true;
             if (spinner) spinner.style.display = "inline-block";
-            if (icon) icon.style.display = "none";
             if (label) label.textContent = "Marking attendance…";
 
             try {
@@ -1528,17 +1384,16 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
             } finally {
                 if (btn) btn.disabled = false;
                 if (spinner) spinner.style.display = "none";
-                if (icon) icon.style.display = "";
-                if (label) label.textContent = "Mark Attendance";
+                if (label) label.textContent = "✅ Mark Attendance";
             }
         }
 
         // ── custom success popup for attendance marking ──
         function attShowSuccessPopup(presentCount, absentCount) {
-            const textEl = document.getElementById("attSuccessModalText");
-            if (textEl) {
-                textEl.textContent = `${presentCount} student${presentCount !== 1 ? "s" : ""} marked present, ${absentCount} marked absent.`;
-            }
+            const presentEl = document.getElementById("attSuccessPresentCount");
+            const absentEl  = document.getElementById("attSuccessAbsentCount");
+            if (presentEl) presentEl.textContent = presentCount;
+            if (absentEl) absentEl.textContent = absentCount;
             openModal("attSuccessModal");
         }
 
