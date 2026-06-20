@@ -38,14 +38,33 @@
 
     <!-- MOBILE DRAWER -->
     <div id="mobileDrawer">
-        <div class="drawer-item" id="drawer-manageQuestions" onclick="drawerNav('manageQuestions')"><span>📋</span>
-            Question Library</div>
-        <div class="drawer-item" id="drawer-students" onclick="drawerNav('students')"><span>👥</span> Students</div>
-        <div class="drawer-item" id="drawer-attendance" onclick="drawerNav('attendance')"><span>📋</span> Attendance</div>
-        <div class="drawer-item" onclick="toggleTheme(); closeMobileDrawer()"><span id="drawerThemeIcon">☀️</span><span
-                id="drawerThemeLabel">Light Mode</span></div>
-        <div class="drawer-item danger" onclick="confirmLogout()"><span>🚪</span> Logout</div>
+        <div class="drawer-nav-items">
+            <div class="drawer-item" id="drawer-manageQuestions" onclick="drawerNav('manageQuestions')"><span>📋</span>
+                Question Library</div>
+            <div class="drawer-item" id="drawer-students" onclick="drawerNav('students')"><span>👥</span> Students</div>
+            <div class="drawer-item" id="drawer-attendance" onclick="drawerNav('attendance')"><span>📋</span> Attendance</div>
+        </div>
+        <div class="drawer-footer">
+            <div class="drawer-item" onclick="toggleTheme(); closeMobileDrawer()"><span id="drawerThemeIcon">☀️</span><span
+                    id="drawerThemeLabel">Light Mode</span></div>
+            <div class="drawer-item danger" onclick="confirmLogout()"><span>🚪</span> Logout</div>
+        </div>
     </div>
+
+    <style>
+        /* Make the mobile drawer a column flexbox so the footer (theme + logout)
+           can be pinned to the bottom, mirroring the desktop sidebar-footer. */
+        #mobileDrawer { display: flex; flex-direction: column; }
+        #mobileDrawer .drawer-nav-items { display: flex; flex-direction: column; }
+        #mobileDrawer .drawer-footer {
+            margin-top: auto;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+        }
+        /* Slightly larger, more legible drawer text/icons (not huge — just a bump) */
+        #mobileDrawer .drawer-item { font-size: 1.05rem; }
+        #mobileDrawer .drawer-item span:first-child { font-size: 1.15rem; }
+    </style>
 
     <!-- ════════════════════════════════════════════════════════════════════
          ROLE SELECTION  —  shown FIRST. Teacher → admin login; Student → test portal.
