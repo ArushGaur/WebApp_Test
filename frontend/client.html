@@ -37,34 +37,32 @@
     <div id="mobileDrawerOverlay" onclick="closeMobileDrawer()"></div>
 
     <!-- MOBILE DRAWER -->
-    <div id="mobileDrawer">
-        <div class="drawer-nav-items">
+    <style>
+        #mobileDrawer .drawer-item {
+            font-size: 0.92rem !important;
+            font-weight: 600 !important;
+            padding: 13px 18px !important;
+            gap: 12px !important;
+            display: flex !important;
+            align-items: center !important;
+        }
+        #mobileDrawer .drawer-item span:first-child {
+            font-size: 1.05rem !important;
+        }
+    </style>
+    <div id="mobileDrawer" style="display:flex;flex-direction:column">
+        <div id="mobileDrawerNavGroup" style="display:flex;flex-direction:column">
             <div class="drawer-item" id="drawer-manageQuestions" onclick="drawerNav('manageQuestions')"><span>📋</span>
                 Question Library</div>
             <div class="drawer-item" id="drawer-students" onclick="drawerNav('students')"><span>👥</span> Students</div>
-            <div class="drawer-item" id="drawer-attendance" onclick="drawerNav('attendance')"><span>📋</span> Attendance</div>
+            <div class="drawer-item" id="drawer-attendance" onclick="drawerNav('attendance')"><span>📅</span> Attendance</div>
         </div>
-        <div class="drawer-footer">
+        <div id="mobileDrawerBottomGroup" style="display:flex;flex-direction:column;margin-top:auto">
             <div class="drawer-item" onclick="toggleTheme(); closeMobileDrawer()"><span id="drawerThemeIcon">☀️</span><span
                     id="drawerThemeLabel">Light Mode</span></div>
             <div class="drawer-item danger" onclick="confirmLogout()"><span>🚪</span> Logout</div>
         </div>
     </div>
-
-    <style>
-        /* Make the mobile drawer a column flexbox so the footer (theme + logout)
-           can be pinned to the bottom, mirroring the desktop sidebar-footer. */
-        #mobileDrawer { display: flex; flex-direction: column; }
-        #mobileDrawer .drawer-nav-items { display: flex; flex-direction: column; }
-        #mobileDrawer .drawer-footer {
-            margin-top: auto;
-            padding-top: 10px;
-            border-top: 1px solid var(--border);
-        }
-        /* Slightly larger, more legible drawer text/icons (not huge — just a bump) */
-        #mobileDrawer .drawer-item { font-size: 1.05rem; }
-        #mobileDrawer .drawer-item span:first-child { font-size: 1.15rem; }
-    </style>
 
     <!-- ════════════════════════════════════════════════════════════════════
          ROLE SELECTION  —  shown FIRST. Teacher → admin login; Student → test portal.
@@ -309,7 +307,7 @@
         <div class="nav-group-label">Data</div> -->
         <div class="nav-item" onclick="showSection('students')" id="nav-students"><span class="nav-icon">👥</span><span
                 class="nav-label">Students</span></div>
-        <div class="nav-item" onclick="navAttendance()" id="nav-attendance"><span class="nav-icon">📋</span><span
+        <div class="nav-item" onclick="navAttendance()" id="nav-attendance"><span class="nav-icon">📅</span><span
                 class="nav-label">Attendance</span></div>
         <!-- <div class="nav-item" onclick="showSection('applications')" id="nav-applications"><span
                 class="nav-icon">📋</span><span class="nav-label">Applications</span></div>
@@ -1328,12 +1326,9 @@
         <!-- ATTENDANCE -->
         <div class="section" id="section-attendance">
             <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
-                <div style="display:flex;align-items:center;gap:14px">
-                    <div class="att-header-icon">🗓️</div>
-                    <div>
-                        <h1>Attendance</h1>
-                        <p>Mark and manage student attendance</p>
-                    </div>
+                <div>
+                    <h1>Attendance</h1>
+                    <p>Mark and manage student attendance</p>
                 </div>
 
             </div>
@@ -1342,122 +1337,403 @@
             <input type="hidden" id="att-date" value="">
 
             <!-- Loading -->
-            <div id="att-loading" class="att-loading" style="display:none">
-                <span class="att-spin" style="width:20px;height:20px;border:3px solid var(--border);border-top-color:var(--accent)"></span>
-                <span>Loading students…</span>
+            <div id="att-loading" style="display:none;text-align:center;padding:60px 20px;color:var(--text-muted)">
+                <div class="att-loading-spinner" aria-hidden="true"></div>
+                <div style="margin-top:14px;font-size:0.86rem;font-weight:600">Loading students…</div>
             </div>
 
-            <!-- List -->
-            <div class="table-wrap" style="display:none">
-                <div id="att-student-table" class="att-list">
-                    <div class="att-list-header">
-                        <span>Name</span>
-                        <span>Status</span>
-                    </div>
-                    <div id="att-student-tbody" class="att-list-body"></div>
+            <!-- Table -->
+            <div class="table-wrap att-table-wrap" style="display:none">
+                <table id="att-student-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="att-student-tbody"></tbody>
+                </table>
+            </div>
+            <div id="att-empty" class="att-empty-state" style="display:none">
+                <div class="att-empty-icon">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
+                        <path d="M9 11l3 3L22 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity="0.35"/>
+                        <path d="M21 12v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
                 </div>
-            </div>
-            <div id="att-empty" class="att-empty-card" style="display:none">
-                <div style="font-size:2.6rem;margin-bottom:10px">📋</div>
-                <h3 style="margin:0 0 6px">No Students Found</h3>
-                <p style="margin:0;font-size:0.88rem">No students match your search or filter.</p>
-            </div>
-
-            <!-- Single action: mark attendance -->
-            <div id="att-bulk-bar" style="display:none;margin-top:20px">
-                <div id="att-mark-summary" class="att-mark-summary"></div>
-                <button class="att-mark-btn" id="att-mark-btn" onclick="attMarkSelected()">
-                    <span id="att-mark-btn-spinner" class="att-spin" style="display:none;width:16px;height:16px;border-radius:50%;border:2.5px solid rgba(255,255,255,0.4);border-top-color:#fff"></span>
-                    <span id="att-mark-btn-label">✅ Mark Attendance</span>
-                </button>
+                <h3>No students found</h3>
+                <p>No students match your search or filter.</p>
             </div>
 
         </div>
 
         <!-- Custom attendance success popup -->
         <div class="modal-overlay" id="attSuccessModal" style="z-index:1300">
-            <div class="modal-box att-success-box" style="text-align:center;max-width:320px">
-                <div id="att-success-icon" class="att-success-icon">✓</div>
-                <h3 style="margin:0 0 6px">Attendance Marked</h3>
-                <p style="margin:0 0 16px;color:var(--text-muted);font-size:0.84rem">Here's how today's roll call landed.</p>
-                <div class="att-success-stats">
-                    <div class="att-success-chip present"><strong id="attSuccessPresentCount">0</strong> Present</div>
-                    <div class="att-success-chip absent"><strong id="attSuccessAbsentCount">0</strong> Absent</div>
-                </div>
-                <button class="btn btn-primary btn-full" onclick="closeModal('attSuccessModal')" style="margin-top:18px">OK</button>
+            <div class="modal-box" style="text-align:center;max-width:320px">
+                <div id="att-success-icon" style="width:56px;height:56px;border-radius:50%;background:rgba(16,185,129,0.12);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:1.8rem;color:#10b981">✓</div>
+                <h3 style="margin:0 0 8px">Attendance Marked</h3>
+                <p id="attSuccessModalText" style="margin:0 0 18px;color:var(--text-muted);font-size:0.88rem">Done.</p>
+                <button class="btn btn-primary btn-full" onclick="closeModal('attSuccessModal')">OK</button>
             </div>
         </div>
 
         <style>
+            /* ── Attendance module — visual refresh ─────────────────────────── */
             @keyframes att-spin-anim { to { transform: rotate(360deg); } }
-            @keyframes att-pop-in { 0%{ transform:scale(0.6); opacity:0 } 100%{ transform:scale(1); opacity:1 } }
-            .att-spin { animation: att-spin-anim 0.7s linear infinite; }
+            .att-spin {
+                display: inline-block; width: 14px; height: 14px; border-radius: 50%;
+                border: 2px solid rgba(255,255,255,0.35); border-top-color: #fff;
+                animation: att-spin-anim 0.7s linear infinite;
+            }
+            .att-loading-spinner {
+                width: 30px; height: 30px; margin: 0 auto; border-radius: 50%;
+                border: 3px solid var(--border); border-top-color: var(--accent);
+                animation: att-spin-anim 0.8s linear infinite;
+            }
 
-            /* header */
-            #section-attendance .att-header-icon{width:46px;height:46px;border-radius:13px;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:1.35rem;flex-shrink:0;box-shadow:0 6px 16px rgba(99,102,241,0.30)}
+            #section-attendance { overflow-x: hidden; max-width: 100%; box-sizing: border-box; }
+            #att-cards-wrap { animation: attFadeIn 0.22s ease both; }
+            @keyframes attFadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
 
-            /* breadcrumb */
-            #section-attendance .att-crumb-bar{display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}
-            #section-attendance .att-back-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;background:var(--bg-card);border:1.5px solid var(--border);border-radius:11px;color:var(--text);cursor:pointer;font-size:0.84rem;font-weight:700;font-family:inherit;transition:all 0.15s ease}
-            #section-attendance .att-back-btn:hover{border-color:var(--accent);color:var(--accent);transform:translateX(-2px)}
-            #section-attendance .att-crumb-label{font-size:0.84rem;color:var(--text-muted);font-weight:600;display:flex;align-items:center;gap:6px}
-            #section-attendance .att-crumb-label b{color:var(--text);font-weight:700}
+            /* date control */
+            .att-date-pill {
+                display:flex; align-items:center; gap:10px; padding:9px 14px;
+                background:var(--bg-card); border:1.5px solid var(--border); border-radius:11px;
+                color:var(--text); font-size:0.85rem; font-weight:600; cursor:pointer;
+                user-select:none; transition:border-color .15s, box-shadow .15s; min-width:150px;
+            }
+            .att-date-pill:hover { border-color:var(--accent); box-shadow:0 2px 10px rgba(0,0,0,0.06); }
+            .att-date-pill svg { opacity:0.55; flex-shrink:0; }
+            .att-date-pill .att-date-cal-icon { margin-left:auto; }
 
-            /* section label above card grids */
-            #section-attendance .att-toplabel{font-size:0.76rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:14px}
+            /* eyebrow label above card grids */
+            .att-eyebrow {
+                font-size: 0.74rem; font-weight: 700; color: var(--text-muted);
+                text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 14px;
+                display:flex; align-items:center; gap:8px;
+            }
+            .att-eyebrow .att-eyebrow-count {
+                background:var(--bg-input); color:var(--text-muted); border-radius:99px;
+                padding:1px 8px; font-size:0.72rem; font-weight:700; letter-spacing:0;
+            }
 
-            /* date pill */
-            #section-attendance .att-date-pill{display:inline-flex;align-items:center;gap:10px;padding:8px 14px 8px 8px;background:var(--bg-card);border:1.5px solid var(--border);border-radius:12px;cursor:pointer;transition:all 0.15s ease;font-weight:700;color:var(--text);font-size:0.84rem;box-shadow:0 1px 2px rgba(15,23,42,0.04)}
-            #section-attendance .att-date-pill:hover{border-color:var(--accent)}
-            #section-attendance .att-date-pill .att-cal-icon{width:28px;height:28px;border-radius:9px;background:rgba(99,102,241,0.14);color:#6366f1;display:flex;align-items:center;justify-content:center;font-size:0.92rem;flex-shrink:0}
+            /* breadcrumb row */
+            .att-breadcrumb { display:flex; align-items:center; gap:8px; margin-bottom:18px; flex-wrap:nowrap; overflow:hidden; }
+            .att-back-btn {
+                display:inline-flex; align-items:center; gap:6px; padding:7px 13px 7px 10px;
+                background:var(--bg-input); border:1.5px solid var(--border); border-radius:9px;
+                color:var(--text); cursor:pointer; font-size:0.83rem; font-weight:600;
+                font-family:inherit; transition:border-color .15s, background .15s;
+                white-space:nowrap; flex-shrink:0;
+            }
+            .att-back-btn:hover { border-color:var(--accent); color:var(--accent); }
+            .att-crumb-trail { font-size:0.84rem; color:var(--text-muted); font-weight:600; display:flex; align-items:center; gap:6px; flex-wrap:nowrap; overflow:hidden; min-width:0; }
+            .att-crumb-trail .att-crumb-sep { opacity:0.5; flex-shrink:0; }
+            .att-crumb-trail .att-crumb-current { color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
             /* card grid */
-            #section-attendance .att-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:16px}
-            #section-attendance .att-card{background:var(--bg-card);border:1.5px solid var(--border);border-radius:16px;padding:22px 18px 20px;cursor:pointer;text-align:center;position:relative;overflow:hidden;transition:transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;box-shadow:0 1px 3px rgba(15,23,42,0.05)}
-            #section-attendance .att-card::before{content:"";position:absolute;top:0;left:0;right:0;height:4px;background:var(--att-color,#6366f1)}
-            #section-attendance .att-card:hover{transform:translateY(-4px);box-shadow:0 14px 30px rgba(15,23,42,0.12);border-color:var(--att-color,#6366f1)}
-            #section-attendance .att-avatar{width:50px;height:50px;border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:1.4rem;font-weight:800;background:color-mix(in srgb, var(--att-color,#6366f1) 14%, transparent);color:var(--att-color,#6366f1)}
-            #section-attendance .att-card-title{font-weight:800;font-size:1.04rem;color:var(--text);margin-bottom:3px}
-            #section-attendance .att-card-sub{font-size:0.79rem;color:var(--text-muted);margin-bottom:12px}
-            #section-attendance .att-card-progress{height:6px;border-radius:99px;background:var(--bg-input);overflow:hidden;margin-bottom:9px}
-            #section-attendance .att-card-progress-fill{height:100%;border-radius:99px;background:var(--att-color,#10b981);transition:width 0.3s ease}
-            #section-attendance .att-card-presence{font-size:0.75rem;font-weight:700;color:var(--text-muted)}
-            #section-attendance .att-card-presence b{color:var(--att-color,#10b981)}
+            .att-card-grid {
+                display:grid; grid-template-columns:repeat(auto-fill,minmax(196px,1fr)); gap:16px;
+            }
+            .att-card {
+                position:relative; background:var(--bg-card); border:1.5px solid var(--border);
+                border-radius:16px; padding:20px 18px; cursor:pointer; text-align:left;
+                transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+                overflow:hidden;
+            }
+            .att-card:hover { transform:translateY(-3px); box-shadow:0 10px 28px rgba(0,0,0,0.10); border-color:var(--card-color, var(--accent)); }
+            .att-card:focus-visible { outline:2px solid var(--card-color, var(--accent)); outline-offset:2px; }
+            .att-card::before {
+                content:""; position:absolute; top:0; left:0; right:0; height:3px;
+                background:var(--card-color, var(--accent));
+            }
+            .att-card-top { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:14px; }
+            .att-card-icon {
+                width:42px; height:42px; border-radius:11px; display:flex; align-items:center; justify-content:center;
+                background:color-mix(in srgb, var(--card-color, var(--accent)) 14%, transparent);
+                color:var(--card-color, var(--accent)); flex-shrink:0;
+            }
+            .att-card-ring { flex-shrink:0; }
+            .att-card-title { font-weight:800; font-size:1rem; color:var(--text); margin-bottom:3px; line-height:1.25; }
+            .att-card-sub { font-size:0.79rem; color:var(--text-muted); margin-bottom:10px; }
+            .att-card-status {
+                display:inline-flex; align-items:center; gap:5px; font-size:0.74rem; font-weight:700;
+                padding:3px 9px; border-radius:99px;
+            }
+            .att-card-status.done { background:rgba(16,185,129,0.12); color:#10b981; }
+            .att-card-status.partial { background:rgba(245,158,11,0.12); color:#f59e0b; }
+            .att-card-status.none { background:var(--bg-input); color:var(--text-muted); }
+
+            /* empty state */
+            .att-empty-state { text-align:center; padding:64px 20px; color:var(--text-muted); }
+            .att-empty-icon {
+                width:64px; height:64px; margin:0 auto 16px; border-radius:50%;
+                background:var(--bg-input); display:flex; align-items:center; justify-content:center;
+                color:var(--text-muted);
+            }
+            .att-empty-state h3 { margin:0 0 6px; color:var(--text); font-size:1rem; }
+            .att-empty-state p { margin:0; font-size:0.86rem; }
 
             /* student list */
-            #section-attendance .att-list-header{display:grid;grid-template-columns:1fr 110px;padding:0 16px 8px;font-size:0.71rem;font-weight:800;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-muted)}
-            #section-attendance .att-list-body{display:flex;flex-direction:column;gap:8px}
-            #section-attendance .att-row{display:grid;grid-template-columns:1fr 110px;align-items:center;background:var(--bg-card);border:1.5px solid var(--border);border-radius:14px;padding:12px 16px;cursor:pointer;transition:all 0.15s ease}
-            #section-attendance .att-row:hover{border-color:var(--accent)}
-            #section-attendance .att-row.selected{border-color:var(--accent);background:rgba(99,102,241,0.06)}
-            #section-attendance .att-row-name{display:flex;align-items:center;gap:12px;font-weight:650;color:var(--text);font-size:0.91rem;min-width:0}
-            #section-attendance .att-row-name span.att-row-name-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-            #section-attendance .att-checkbox{width:20px;height:20px;border-radius:6px;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:0.7rem;color:#fff;flex-shrink:0;transition:all 0.15s ease;background:transparent}
-            #section-attendance .att-row.selected .att-checkbox{background:var(--accent);border-color:var(--accent)}
-            #section-attendance .att-avatar-sm{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.74rem;font-weight:800;color:#fff;flex-shrink:0;background:linear-gradient(135deg,#6366f1,#8b5cf6)}
-            #section-attendance .att-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:99px;font-size:0.73rem;font-weight:700;white-space:nowrap}
-            #section-attendance .att-badge.present{background:rgba(16,185,129,0.13);color:#10b981}
-            #section-attendance .att-badge.absent{background:rgba(239,68,68,0.13);color:#ef4444}
-            #section-attendance .att-badge.unmarked{background:var(--bg-input);color:var(--text-muted)}
+            .att-table-wrap { overflow-x: hidden !important; max-width: 100%; box-sizing: border-box; }
+            .att-table-wrap table { border-collapse:separate; border-spacing:0; width:100%; max-width:100%; min-width:0 !important; table-layout:fixed; }
+            .att-table-wrap thead th:first-child { width:auto; }
+            .att-table-wrap thead th:last-child { width:100px; }
+            .att-table-wrap td, .att-table-wrap th { padding:12px 16px; box-sizing:border-box; }
+            .att-table-wrap th:last-child,
+            .att-table-wrap td:last-child { white-space:nowrap; text-align:right; padding-right:14px; }
+            .att-table-wrap td[colspan] { white-space:normal !important; text-align:left !important; }
+            .att-row { cursor:pointer; transition:background .12s; }
+            .att-row:hover { background:var(--bg-input); }
+            .att-row-name { display:flex; align-items:center; gap:12px; }
+            @media (max-width: 400px) {
+                .att-table-wrap thead th:last-child { width:82px; }
+                .att-table-wrap td, .att-table-wrap th { padding:10px 10px; }
+            }
+            .att-avatar {
+                width:30px; height:30px; border-radius:50%; flex-shrink:0;
+                display:flex; align-items:center; justify-content:center;
+                font-size:0.72rem; font-weight:800; color:#fff;
+                background:var(--avatar-color, var(--accent));
+            }
+            .att-checkbox {
+                width:19px; height:19px; border-radius:6px; flex-shrink:0;
+                border:1.5px solid var(--border); display:flex; align-items:center; justify-content:center;
+                transition:background .12s, border-color .12s; color:#fff;
+            }
+            .att-checkbox svg { opacity:0; transition:opacity .1s; }
+            .att-checkbox.checked { background:var(--accent); border-color:var(--accent); }
+            .att-checkbox.checked svg { opacity:1; }
+            .att-status-pill {
+                display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:99px;
+                font-size:0.74rem; font-weight:700;
+            }
+            .att-status-pill.present { background:rgba(16,185,129,0.12); color:#10b981; }
+            .att-status-pill.absent { background:rgba(239,68,68,0.12); color:#ef4444; }
+            .att-status-pill.unmarked { background:var(--bg-input); color:var(--text-muted); font-weight:600; }
 
-            /* mark attendance button */
-            #section-attendance .att-mark-summary{text-align:center;font-size:0.8rem;color:var(--text-muted);font-weight:600;margin-bottom:10px}
-            #section-attendance .att-mark-btn{width:100%;padding:15px 18px;border:none;border-radius:14px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;font-weight:800;font-size:0.94rem;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;box-shadow:0 8px 20px rgba(16,185,129,0.28);transition:transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;font-family:inherit}
-            #section-attendance .att-mark-btn:hover{transform:translateY(-2px);box-shadow:0 12px 26px rgba(16,185,129,0.34)}
-            #section-attendance .att-mark-btn:disabled{opacity:0.65;cursor:not-allowed;transform:none}
+            /* list toolbar (select all / clear) */
+            .att-list-toolbar {
+                display:flex; align-items:center; justify-content:space-between; gap:12px;
+                margin-bottom:12px; flex-wrap:wrap;
+            }
+            .att-list-actions { display:flex; align-items:center; gap:8px; }
+            .att-link-btn {
+                background:none; border:none; padding:5px 9px; border-radius:7px;
+                color:var(--accent); font-size:0.78rem; font-weight:700; cursor:pointer; font-family:inherit;
+                transition:background .12s;
+            }
+            .att-link-btn:hover { background:var(--bg-input); }
 
-            /* loading / empty */
-            #section-attendance .att-loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:50px 20px;color:var(--text-muted);font-size:0.86rem;font-weight:600}
-            #section-attendance .att-empty-card{text-align:center;padding:50px 24px;border:1.5px dashed var(--border);border-radius:16px;background:var(--bg-card);color:var(--text-muted)}
+            /* sticky bulk action bar */
+            .att-bulk-bar {
+                margin-top:18px; display:flex; align-items:center; justify-content:space-between;
+                gap:14px; padding:12px 16px; background:var(--bg-card); border:1.5px solid var(--border);
+                border-radius:14px; flex-wrap:wrap; position:sticky; bottom:12px; box-shadow:0 8px 24px rgba(0,0,0,0.08);
+            }
+            .att-bulk-summary { font-size:0.83rem; color:var(--text-muted); font-weight:600; display:flex; align-items:center; gap:6px; }
+            .att-bulk-sep { opacity:0.4; margin:0 2px; }
+            .att-bulk-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+            .att-bulk-dot.present { background:#10b981; }
+            .att-bulk-dot.absent { background:#ef4444; }
+            .att-mark-btn {
+                padding:11px 22px; font-size:0.86rem; font-weight:700; background:#10b981; border-color:#10b981;
+                display:flex; align-items:center; justify-content:center; gap:9px; border-radius:10px;
+            }
 
-            /* success popup */
-            #attSuccessModal .att-success-icon{width:60px;height:60px;border-radius:50%;background:rgba(16,185,129,0.12);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:1.9rem;color:#10b981;animation:att-pop-in 0.25s ease}
-            #attSuccessModal .att-success-stats{display:flex;gap:10px;justify-content:center}
-            #attSuccessModal .att-success-chip{padding:9px 16px;border-radius:12px;font-size:0.84rem;font-weight:700}
-            #attSuccessModal .att-success-chip.present{background:rgba(16,185,129,0.12);color:#10b981}
-            #attSuccessModal .att-success-chip.absent{background:rgba(239,68,68,0.12);color:#ef4444}
+            @media (max-width: 520px) {
+                .att-card-grid { grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; }
+                .att-bulk-bar { flex-direction:column; align-items:stretch; }
+                .att-mark-btn { width:100%; }
+                .att-breadcrumb { gap:6px; }
+                .att-back-btn { font-size:0.79rem; padding:6px 10px 6px 8px; }
+                .att-crumb-trail { font-size:0.79rem; }
+            }
+
+            /* ══════════════════════════════════════════════════════════════
+               STUDENT LIST VIEW — redesigned to match reference UI
+               (class cards / section cards above are untouched)
+               ══════════════════════════════════════════════════════════════ */
+            .att-lv-header {
+                display:flex; align-items:flex-start; justify-content:space-between;
+                gap:16px; flex-wrap:wrap; margin-bottom:18px;
+            }
+            .att-lv-eyebrow {
+                display:flex; align-items:center; gap:8px; font-size:0.74rem; font-weight:700;
+                color:#10b981; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;
+            }
+            .att-lv-eyebrow-dot { width:7px; height:7px; border-radius:50%; background:#10b981; flex-shrink:0; }
+            .att-lv-title { font-size:1.5rem; font-weight:800; color:var(--text); margin:0 0 4px; line-height:1.2; }
+            .att-lv-sub { font-size:0.86rem; color:var(--text-muted); margin:0; }
+            .att-lv-back {
+                display:inline-flex; align-items:center; gap:6px; padding:7px 13px 7px 10px;
+                background:var(--bg-input); border:1.5px solid var(--border); border-radius:9px;
+                color:var(--text); cursor:pointer; font-size:0.8rem; font-weight:600;
+                font-family:inherit; transition:border-color .15s, color .15s; margin-bottom:10px;
+            }
+            .att-lv-back:hover { border-color:var(--accent); color:var(--accent); }
+            .att-lv-markall {
+                display:inline-flex; align-items:center; gap:8px; padding:11px 18px;
+                background:#0f6b3f; border:none; border-radius:11px; color:#fff;
+                font-size:0.86rem; font-weight:700; cursor:pointer; font-family:inherit;
+                transition:background .15s, transform .15s; white-space:nowrap; flex-shrink:0;
+            }
+            .att-lv-markall:hover { background:#0c5933; }
+            .att-lv-markall:active { transform:scale(0.98); }
+            .att-lv-markall:disabled { opacity:0.6; cursor:not-allowed; }
+            .att-lv-markall svg { flex-shrink:0; }
+
+            /* date strip */
+            .att-lv-datestrip {
+                background:var(--bg-card); border:1.5px solid var(--border); border-radius:16px;
+                margin-bottom:20px; overflow:hidden;
+            }
+            .att-lv-datestrip-row {
+                display:flex; align-items:stretch; gap:0; padding:14px 12px;
+            }
+            .att-lv-datenav {
+                flex:0 0 auto; width:34px; height:34px; border-radius:9px;
+                border:1.5px solid var(--border); background:var(--bg-card);
+                display:flex; align-items:center; justify-content:center; cursor:pointer;
+                color:var(--text); transition:border-color .15s, background .15s; align-self:center;
+            }
+            .att-lv-datenav:hover { border-color:var(--accent); background:var(--bg-input); }
+            .att-lv-days {
+                flex:1 1 auto; display:grid; grid-template-columns:repeat(7,1fr); gap:6px; padding:0 10px;
+            }
+            .att-lv-day {
+                display:flex; flex-direction:column; align-items:center; justify-content:center;
+                gap:2px; padding:9px 4px; border-radius:11px; cursor:pointer; text-align:center;
+                background:transparent; border:1.5px solid transparent; transition:background .15s, border-color .15s;
+                min-width:0;
+            }
+            .att-lv-day:hover { background:var(--bg-input); }
+            .att-lv-day-name { font-size:0.74rem; font-weight:600; color:var(--text-muted); }
+            .att-lv-day-num { font-size:1.15rem; font-weight:800; color:var(--text); line-height:1.15; }
+            .att-lv-day-mon { font-size:0.66rem; font-weight:600; color:var(--text-muted); visibility:hidden; height:0; }
+            .att-lv-day-dot { width:5px; height:5px; border-radius:50%; background:#10b981; margin-top:1px; }
+            .att-lv-day-dot.placeholder { visibility:hidden; }
+            .att-lv-day.is-today {
+                background:#0f6b3f; border-color:#0f6b3f;
+            }
+            .att-lv-day.is-today .att-lv-day-name,
+            .att-lv-day.is-today .att-lv-day-num,
+            .att-lv-day.is-today .att-lv-day-mon { color:#fff; }
+            .att-lv-day.is-today .att-lv-day-mon { visibility:visible; height:auto; }
+            .att-lv-day.is-today .att-lv-day-dot { background:#fff; }
+            .att-lv-day.is-future { opacity:0.4; cursor:not-allowed; }
+            .att-lv-datestrip-foot {
+                display:flex; align-items:center; justify-content:space-between; gap:10px;
+                padding:11px 18px; border-top:1.5px solid var(--border); font-size:0.82rem;
+                color:var(--text-muted); font-weight:600; flex-wrap:wrap;
+            }
+            .att-lv-datestrip-foot-left { display:flex; align-items:center; gap:7px; }
+            .att-lv-savedtag { display:flex; align-items:center; gap:6px; color:var(--text-muted); }
+            .att-lv-savedtag svg { color:#10b981; }
+
+            /* stat cards */
+            .att-lv-stats {
+                display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:22px;
+            }
+            .att-lv-stat {
+                border-radius:15px; border:1.5px solid var(--border); padding:16px;
+                background:var(--bg-card); min-width:0;
+            }
+            .att-lv-stat.tone-neutral { background:color-mix(in srgb, #64748b 8%, var(--bg-card)); border-color:color-mix(in srgb, #64748b 18%, var(--border)); }
+            .att-lv-stat.tone-green   { background:color-mix(in srgb, #10b981 8%, var(--bg-card));  border-color:color-mix(in srgb, #10b981 20%, var(--border)); }
+            .att-lv-stat.tone-red     { background:color-mix(in srgb, #ef4444 7%, var(--bg-card));  border-color:color-mix(in srgb, #ef4444 18%, var(--border)); }
+            .att-lv-stat.tone-blue    { background:color-mix(in srgb, #6366f1 7%, var(--bg-card));  border-color:color-mix(in srgb, #6366f1 18%, var(--border)); }
+            .att-lv-stat-top { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; }
+            .att-lv-stat-icon {
+                width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0;
+            }
+            .att-lv-stat.tone-neutral .att-lv-stat-icon { background:color-mix(in srgb, #64748b 16%, transparent); color:#64748b; }
+            .att-lv-stat.tone-green   .att-lv-stat-icon { background:color-mix(in srgb, #10b981 16%, transparent); color:#10b981; }
+            .att-lv-stat.tone-red     .att-lv-stat-icon { background:color-mix(in srgb, #ef4444 16%, transparent); color:#ef4444; }
+            .att-lv-stat.tone-blue    .att-lv-stat-icon { background:color-mix(in srgb, #6366f1 16%, transparent); color:#6366f1; }
+            .att-lv-stat-label { font-size:0.78rem; font-weight:700; color:var(--text-muted); }
+            .att-lv-stat-delta {
+                font-size:0.68rem; font-weight:800; padding:2px 7px; border-radius:99px; display:inline-flex; align-items:center; gap:2px;
+            }
+            .att-lv-stat-delta.up   { background:rgba(16,185,129,0.14); color:#0e9f6e; }
+            .att-lv-stat-delta.down { background:rgba(239,68,68,0.14); color:#ef4444; }
+            .att-lv-stat-value { font-size:1.7rem; font-weight:800; color:var(--text); line-height:1.1; margin-bottom:4px; }
+            .att-lv-stat-foot { font-size:0.78rem; color:var(--text-muted); font-weight:600; }
+            .att-lv-spark { display:flex; align-items:flex-end; gap:2.5px; height:30px; margin-bottom:8px; }
+            .att-lv-spark-bar { flex:1 1 auto; min-width:3px; border-radius:2px; background:color-mix(in srgb, #6366f1 35%, transparent); }
+            .att-lv-spark-bar.is-high { background:#6366f1; }
+
+            /* student list panel */
+            .att-lv-panel {
+                background:var(--bg-card); border:1.5px solid var(--border); border-radius:16px; overflow:hidden;
+            }
+            .att-lv-panel-head {
+                display:flex; align-items:center; justify-content:space-between; gap:12px;
+                padding:16px 20px; flex-wrap:wrap; border-bottom:1.5px solid var(--border);
+            }
+            .att-lv-panel-title { font-size:1.02rem; font-weight:800; color:var(--text); margin:0; }
+            .att-lv-legend { display:flex; align-items:center; gap:16px; font-size:0.78rem; font-weight:600; color:var(--text-muted); flex-wrap:wrap; }
+            .att-lv-legend-item { display:flex; align-items:center; gap:5px; }
+            .att-lv-legend-dot { width:7px; height:7px; border-radius:50%; }
+            .att-lv-legend-dot.present { background:#10b981; }
+            .att-lv-legend-dot.late { background:#f59e0b; }
+            .att-lv-legend-dot.absent { background:#ef4444; }
+            .att-lv-colheads {
+                display:flex; align-items:center; justify-content:space-between; gap:12px;
+                padding:11px 20px; font-size:0.74rem; font-weight:700; color:var(--text-muted);
+                text-transform:uppercase; letter-spacing:0.04em; border-bottom:1.5px solid var(--border);
+            }
+            .att-lv-rows { display:flex; flex-direction:column; }
+            .att-lv-row {
+                display:flex; align-items:center; justify-content:space-between; gap:12px;
+                padding:13px 20px; border-bottom:1px solid var(--border); flex-wrap:wrap;
+            }
+            .att-lv-row:last-child { border-bottom:none; }
+            .att-lv-row-student { display:flex; align-items:center; gap:12px; min-width:0; flex:1 1 220px; }
+            .att-lv-avatar {
+                width:34px; height:34px; border-radius:50%; flex-shrink:0; display:flex; align-items:center;
+                justify-content:center; font-size:0.72rem; font-weight:800; color:#fff;
+                background:var(--avatar-color, var(--accent));
+            }
+            .att-lv-row-name { min-width:0; }
+            .att-lv-row-name-text { font-size:0.9rem; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+            .att-lv-row-roll { font-size:0.76rem; color:var(--text-muted); font-weight:600; }
+            .att-lv-row-actions { display:flex; align-items:center; gap:8px; flex:0 0 auto; flex-wrap:nowrap; }
+            .att-lv-statusbtn {
+                display:inline-flex; align-items:center; gap:5px; padding:7px 13px; border-radius:9px;
+                font-size:0.78rem; font-weight:700; cursor:pointer; font-family:inherit;
+                border:1.5px solid var(--border); background:var(--bg-card); color:var(--text-muted);
+                transition:transform .1s, box-shadow .15s; white-space:nowrap;
+            }
+            .att-lv-statusbtn:hover { transform:translateY(-1px); }
+            .att-lv-statusbtn svg { flex-shrink:0; }
+            .att-lv-statusbtn.present { color:#0e9f6e; border-color:color-mix(in srgb, #10b981 30%, var(--border)); background:color-mix(in srgb, #10b981 8%, var(--bg-card)); }
+            .att-lv-statusbtn.present.is-active { background:#10b981; border-color:#10b981; color:#fff; box-shadow:0 4px 12px rgba(16,185,129,0.28); }
+            .att-lv-statusbtn.late { color:#b45309; border-color:color-mix(in srgb, #f59e0b 35%, var(--border)); background:color-mix(in srgb, #f59e0b 8%, var(--bg-card)); }
+            .att-lv-statusbtn.late.is-active { background:#f59e0b; border-color:#f59e0b; color:#fff; box-shadow:0 4px 12px rgba(245,158,11,0.28); }
+            .att-lv-statusbtn.absent { color:#dc2626; border-color:color-mix(in srgb, #ef4444 30%, var(--border)); background:color-mix(in srgb, #ef4444 8%, var(--bg-card)); }
+            .att-lv-statusbtn.absent.is-active { background:#ef4444; border-color:#ef4444; color:#fff; box-shadow:0 4px 12px rgba(239,68,68,0.28); }
+            .att-lv-readonly-tag {
+                display:flex; align-items:center; gap:7px; padding:10px 18px; margin:0 20px 16px;
+                background:var(--bg-input); border:1px solid var(--border); border-radius:10px;
+                font-size:0.8rem; color:var(--text-muted); font-weight:600;
+            }
+
+            @media (max-width: 880px) {
+                .att-lv-stats { grid-template-columns:repeat(2,1fr); }
+            }
+            @media (max-width: 640px) {
+                .att-lv-days { grid-template-columns:repeat(7,minmax(40px,1fr)); overflow-x:auto; }
+                .att-lv-colheads { display:none; }
+                .att-lv-row-actions { width:100%; justify-content:flex-start; }
+                .att-lv-markall { width:100%; justify-content:center; }
+                .att-lv-header { flex-direction:column; }
+            }
+            @media (max-width: 480px) {
+                .att-lv-stats { grid-template-columns:1fr 1fr; }
+                .att-lv-statusbtn { padding:7px 10px; font-size:0.74rem; }
+            }
         </style>
-
 
 
         <!-- Manage Classes Modal -->
