@@ -603,16 +603,19 @@ console.log("CLIENT_JS_VERSION: DEBUG_BUILD_v3");
         /* ══════════════════════════════════════════════════════════════════
            NAVIGATION
         ══════════════════════════════════════════════════════════════════ */
-        // Override drawerNav for attendance since shared showSection is intercepted
-        const _origDrawerNav = typeof drawerNav === "function" ? drawerNav : null;
+        // Override drawerNav for attendance since shared showSection is intercepted.
+        // NOTE: we do NOT try to capture/call a "previous" drawerNav here — due to
+        // function-declaration hoisting, `drawerNav` already refers to THIS function
+        // by the time any line in this script runs, so capturing it would just create
+        // infinite self-recursion (stack overflow) for every non-attendance section.
         function drawerNav(name) {
             console.log("[nav] drawerNav called with:", name);
             if (name === "attendance") {
                 navAttendance();
                 return;
             }
-            if (_origDrawerNav) _origDrawerNav(name);
-            else if (typeof showSection === "function") { closeMobileDrawer(); showSection(name); }
+            if (typeof closeMobileDrawer === "function") closeMobileDrawer();
+            if (typeof showSection === "function") showSection(name);
         }
 
         function navAttendance() {
