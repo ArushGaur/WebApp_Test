@@ -37,22 +37,32 @@
     <div id="mobileDrawerOverlay" onclick="closeMobileDrawer()"></div>
 
     <!-- MOBILE DRAWER -->
+    <style>
+        #mobileDrawer .drawer-item {
+            font-size: 0.92rem !important;
+            font-weight: 600 !important;
+            padding: 13px 18px !important;
+            gap: 12px !important;
+            display: flex !important;
+            align-items: center !important;
+        }
+        #mobileDrawer .drawer-item span:first-child {
+            font-size: 1.05rem !important;
+        }
+    </style>
     <div id="mobileDrawer" style="display:flex;flex-direction:column">
         <div id="mobileDrawerNavGroup" style="display:flex;flex-direction:column">
-            <div class="drawer-group-label">Workspace</div>
             <div class="drawer-item" id="drawer-manageQuestions" onclick="drawerNav('manageQuestions')"><span>📋</span>
                 Question Library</div>
             <div class="drawer-item" id="drawer-students" onclick="drawerNav('students')"><span>👥</span> Students</div>
             <div class="drawer-item" id="drawer-attendance" onclick="drawerNav('attendance')"><span>📅</span> Attendance</div>
         </div>
         <div id="mobileDrawerBottomGroup" style="display:flex;flex-direction:column;margin-top:auto">
-            <div class="drawer-group-label">System</div>
             <div class="drawer-item" onclick="toggleTheme(); closeMobileDrawer()"><span id="drawerThemeIcon">☀️</span><span
                     id="drawerThemeLabel">Light Mode</span></div>
             <div class="drawer-item danger" onclick="confirmLogout()"><span>🚪</span> Logout</div>
         </div>
     </div>
-
 
     <!-- ════════════════════════════════════════════════════════════════════
          ROLE SELECTION  —  shown FIRST. Teacher → admin login; Student → test portal.
@@ -92,23 +102,22 @@
 
             <div class="role-choices">
                 <button type="button" class="role-choice-btn" onclick="selectRole('teacher')">
-                    <span class="role-choice-emoji">◧</span>
+                    <span class="role-choice-emoji">🧑‍🏫</span>
                     <span class="role-choice-text">
-                        <span class="role-choice-title">Instructor Console</span>
-                        <span class="role-choice-sub">Manage question library, students &amp; analytics</span>
+                        <span class="role-choice-title">Teacher</span>
+                        <span class="role-choice-sub">Manage the question library &amp; students</span>
                     </span>
                     <span class="role-choice-arrow">→</span>
                 </button>
                 <button type="button" class="role-choice-btn" onclick="selectRole('student')">
-                    <span class="role-choice-emoji">◉</span>
+                    <span class="role-choice-emoji">🎓</span>
                     <span class="role-choice-text">
-                        <span class="role-choice-title">Student Terminal</span>
-                        <span class="role-choice-sub">Take assigned tests &amp; view your results</span>
+                        <span class="role-choice-title">Student</span>
+                        <span class="role-choice-sub">Take your assigned tests &amp; view results</span>
                     </span>
                     <span class="role-choice-arrow">→</span>
                 </button>
             </div>
-
 
             <!-- Lets the user log out of the current institute and sign in with
                  a different Institute ID + passcode. Hidden by default; shown
@@ -283,14 +292,23 @@
                 <h3>Grip Physics</h3><span>Client Panel</span>
             </div>
         </div>
-        <div class="nav-group-label">Academic Core</div>
+        <!-- <div class="nav-group-label">Overview</div>
+        <div class="nav-item active" onclick="showSection('dashboard')" id="nav-dashboard"><span
+                class="nav-icon">📊</span><span class="nav-label">Dashboard</span></div>
+        <div class="nav-group-label">Content</div>
+        <div class="nav-item" onclick="showSection('addQuestion')" id="nav-addQuestion"><span
+                class="nav-icon">➕</span><span class="nav-label">Add Question</span></div>
+        <div class="nav-item" onclick="showSection('importQuestion')" id="nav-importQuestion"><span
+                class="nav-icon">📷</span><span class="nav-label">Import Questions</span></div> -->
         <div class="nav-item active" onclick="showSection('manageQuestions')" id="nav-manageQuestions"><span
                 class="nav-icon">📋</span><span class="nav-label">Question Library</span></div>
+        <!-- <div class="nav-item" onclick="showSection('starQuiz')" id="nav-starQuiz"><span class="nav-icon">⭐</span><span
+                class="nav-label">STAR Quiz</span></div>
+        <div class="nav-group-label">Data</div> -->
         <div class="nav-item" onclick="showSection('students')" id="nav-students"><span class="nav-icon">👥</span><span
                 class="nav-label">Students</span></div>
         <div class="nav-item" onclick="navAttendance()" id="nav-attendance"><span class="nav-icon">📅</span><span
                 class="nav-label">Attendance</span></div>
-
         <!-- <div class="nav-item" onclick="showSection('applications')" id="nav-applications"><span
                 class="nav-icon">📋</span><span class="nav-label">Applications</span></div>
         <div class="nav-item" onclick="showSection('migrate')" id="nav-migrate"><span class="nav-icon">🔧</span><span
@@ -1307,14 +1325,6 @@
 
         <!-- ATTENDANCE -->
         <div class="section" id="section-attendance">
-            <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
-                <div>
-                    <h1>Attendance</h1>
-                    <p>Mark and manage student attendance</p>
-                </div>
-
-            </div>
-
             <!-- Hidden date store (always today; no visible date picker) -->
             <input type="hidden" id="att-date" value="">
 
@@ -1548,6 +1558,250 @@
                 .att-breadcrumb { gap:6px; }
                 .att-back-btn { font-size:0.79rem; padding:6px 10px 6px 8px; }
                 .att-crumb-trail { font-size:0.79rem; }
+            }
+
+            /* ════════════════════════════════════════════════════════════
+               ATTX — redesigned Level-3 student list (matches reference UI).
+               Uses theme tokens so it adapts to both dark & light themes.
+               Only affects the student-list view; card system is untouched.
+            ════════════════════════════════════════════════════════════ */
+            .attx { animation: attFadeIn 0.22s ease both; }
+            .attx * { box-sizing: border-box; }
+
+            /* header */
+            .attx-head {
+                display:flex; align-items:flex-start; justify-content:space-between;
+                gap:16px; flex-wrap:wrap; margin-bottom:18px;
+            }
+            .attx-head-left { display:flex; align-items:flex-start; gap:12px; min-width:0; }
+            .attx-crumb-back {
+                width:36px; height:36px; flex:0 0 auto; margin-top:4px;
+                display:flex; align-items:center; justify-content:center;
+                background:var(--bg-input); border:1.5px solid var(--border);
+                border-radius:10px; color:var(--text); cursor:pointer; transition:var(--transition);
+            }
+            .attx-crumb-back:hover { border-color:var(--accent); color:var(--accent); }
+            .attx-eyebrow {
+                display:flex; align-items:center; gap:7px;
+                font-size:0.72rem; font-weight:800; letter-spacing:0.06em;
+                color:var(--success); margin-bottom:4px;
+            }
+            .attx-eyebrow-dot { width:7px; height:7px; border-radius:50%; background:var(--success); flex:0 0 auto; }
+            .attx-title { font-size:1.9rem; font-weight:800; color:var(--text); margin:0 0 3px; line-height:1.1; }
+            .attx-subtitle { margin:0; font-size:0.88rem; color:var(--text-muted); font-weight:500; }
+
+            .attx-markall {
+                display:inline-flex; align-items:center; gap:8px; flex:0 0 auto;
+                padding:11px 18px; border-radius:11px; border:none; cursor:pointer;
+                background:var(--success); color:#fff; font-family:inherit;
+                font-size:0.88rem; font-weight:700; transition:filter .15s, transform .12s, opacity .15s;
+                box-shadow:0 4px 14px color-mix(in srgb, var(--success) 35%, transparent);
+            }
+            .attx-markall:hover:not(:disabled) { filter:brightness(1.06); transform:translateY(-1px); }
+            .attx-markall:active:not(:disabled) { transform:translateY(0); }
+            .attx-markall:disabled, .attx-markall.is-disabled { opacity:0.45; cursor:not-allowed; box-shadow:none; }
+
+            /* bulk mark attendance: status selector + button */
+            .attx-markbulk-wrap {
+                display:flex; flex-direction:column; align-items:flex-end; gap:8px;
+            }
+            .attx-markbulk-wrap.is-disabled { opacity:0.45; pointer-events:none; }
+            .attx-status-selector {
+                display:flex; gap:4px; background:var(--bg-input);
+                border:1.5px solid var(--border); border-radius:999px; padding:3px;
+            }
+            .attx-status-opt {
+                display:flex; align-items:center; gap:5px;
+                padding:5px 13px; border-radius:999px; border:none;
+                background:transparent; color:var(--text-muted); font-size:0.78rem;
+                font-weight:600; cursor:pointer; transition:background .15s, color .15s;
+                white-space:nowrap;
+            }
+            .attx-status-opt:hover:not(:disabled) { color:var(--text); background:var(--border); }
+            .attx-status-opt.is-sel[data-status="present"] { background:var(--success); color:#fff; }
+            .attx-status-opt.is-sel[data-status="late"]    { background:#f59e0b; color:#fff; }
+            .attx-status-opt.is-sel[data-status="absent"]  { background:var(--error); color:#fff; }
+            .attx-status-dot { width:8px; height:8px; border-radius:50%; background:var(--success); display:inline-block; }
+
+            /* day strip */
+            .attx-daystrip {
+                display:flex; align-items:stretch; gap:8px; padding:10px;
+                background:var(--bg-card); border:1.5px solid var(--border);
+                border-radius:16px; margin-bottom:14px; box-shadow:var(--shadow-card);
+            }
+            .attx-day-nav {
+                width:40px; flex:0 0 auto; border:none; background:transparent; cursor:pointer;
+                color:var(--text-muted); border-radius:10px; display:flex; align-items:center; justify-content:center;
+                transition:background .15s, color .15s;
+            }
+            .attx-day-nav:hover { background:var(--bg-input); color:var(--text); }
+            .attx-days {
+                flex:1 1 auto; display:grid; grid-template-columns:repeat(7,1fr); gap:6px; min-width:0;
+            }
+            .attx-day {
+                display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:3px;
+                padding:10px 4px 8px; border:1.5px solid transparent; border-radius:12px;
+                background:transparent; cursor:pointer; font-family:inherit; color:var(--text);
+                transition:background .14s, border-color .14s, transform .12s; min-height:74px;
+            }
+            .attx-day:hover:not(.is-sel):not(:disabled) { background:var(--bg-input); }
+            .attx-day-wd { font-size:0.72rem; font-weight:700; color:var(--text-muted); letter-spacing:0.02em; }
+            .attx-day-num { font-size:1.25rem; font-weight:800; line-height:1; color:var(--text); }
+            .attx-day-mon { font-size:0.64rem; font-weight:700; color:rgba(255,255,255,0.85); margin-top:2px; }
+            .attx-day-dot { width:6px; height:6px; border-radius:50%; background:var(--success); margin-top:2px; }
+            .attx-day-dot-gap { height:6px; margin-top:2px; }
+            .attx-day.is-sel {
+                background:var(--success); border-color:var(--success);
+                box-shadow:0 6px 18px color-mix(in srgb, var(--success) 32%, transparent);
+            }
+            .attx-day.is-sel .attx-day-wd,
+            .attx-day.is-sel .attx-day-num { color:#fff; }
+            .attx-day.is-future { opacity:0.4; cursor:not-allowed; }
+            .attx-day.is-future .attx-day-dot, .attx-day.is-future .attx-day-dot-gap { display:none; }
+
+            /* date row */
+            .attx-daterow {
+                display:flex; align-items:center; justify-content:space-between; gap:12px;
+                padding:12px 16px; background:var(--bg-card); border:1.5px solid var(--border);
+                border-radius:14px; margin-bottom:18px; flex-wrap:wrap;
+            }
+            .attx-daterow-left { display:flex; align-items:center; gap:9px; font-size:0.88rem; font-weight:700; color:var(--text); }
+            .attx-daterow-left svg { color:var(--success); flex:0 0 auto; }
+            .attx-saved { display:flex; align-items:center; gap:6px; font-size:0.82rem; color:var(--text-muted); font-weight:600; }
+            .attx-saved svg { flex:0 0 auto; }
+            .attx-saved-muted { opacity:0.8; }
+
+            /* stat cards */
+            .attx-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:18px; }
+            .attx-stat {
+                padding:16px 17px; border-radius:16px; border:1.5px solid var(--border);
+                background:var(--bg-card); box-shadow:var(--shadow-card); min-width:0;
+            }
+            .attx-stat--absent { background:color-mix(in srgb, var(--error) 9%, var(--bg-card)); border-color:color-mix(in srgb, var(--error) 22%, var(--border)); }
+            .attx-stat--chart  { background:color-mix(in srgb, var(--accent) 9%, var(--bg-card)); border-color:color-mix(in srgb, var(--accent) 22%, var(--border)); }
+            .attx-stat-top { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
+            .attx-stat-label { font-size:0.8rem; font-weight:700; color:var(--text-muted); }
+            .attx-stat-ic {
+                width:30px; height:30px; flex:0 0 auto; border-radius:9px;
+                display:flex; align-items:center; justify-content:center;
+            }
+            .attx-stat-ic.neutral { background:color-mix(in srgb, var(--success) 14%, transparent); color:var(--success); }
+            .attx-stat-ic.present { background:color-mix(in srgb, var(--success) 14%, transparent); color:var(--success); }
+            .attx-stat-ic.absent  { background:color-mix(in srgb, var(--error) 15%, transparent); color:var(--error); }
+            .attx-stat-ic.chart   { background:color-mix(in srgb, var(--accent) 15%, transparent); color:var(--accent); }
+            .attx-stat-main { display:flex; align-items:baseline; gap:8px; margin-bottom:6px; }
+            .attx-stat-num { font-size:1.85rem; font-weight:800; color:var(--text); line-height:1; }
+            .attx-stat-num.present { color:var(--success); }
+            .attx-stat-num.absent  { color:var(--error); }
+            .attx-stat-sub { font-size:0.78rem; color:var(--text-muted); font-weight:500; }
+            .attx-bars { display:flex; align-items:flex-end; gap:3px; height:38px; margin-bottom:8px; }
+            .attx-bar { flex:1 1 auto; min-width:2px; border-radius:3px; background:color-mix(in srgb, var(--accent) 28%, transparent); }
+            .attx-bar.strong { background:var(--accent); }
+
+            /* students panel */
+            .attx-panel {
+                background:var(--bg-card); border:1.5px solid var(--border);
+                border-radius:18px; padding:6px 4px 8px; box-shadow:var(--shadow-card); overflow:hidden;
+            }
+            .attx-panel-head {
+                display:flex; align-items:center; justify-content:space-between; gap:12px;
+                padding:16px 18px 12px; flex-wrap:wrap;
+            }
+            .attx-panel-title { margin:0; font-size:1.05rem; font-weight:800; color:var(--text); }
+            .attx-panel-count { color:var(--text-muted); font-weight:700; }
+            .attx-legend { display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+            .attx-legend-item { display:flex; align-items:center; gap:5px; font-size:0.78rem; font-weight:600; color:var(--text-muted); }
+            .attx-legend-dot { width:8px; height:8px; border-radius:50%; }
+            .attx-legend-dot.present { background:var(--success); }
+            .attx-legend-item svg { opacity:0.8; }
+            .attx-legend-item:nth-child(2) svg { color:var(--accent-4, #f59e0b); }
+            .attx-legend-item:nth-child(3) svg { color:var(--error); }
+
+            .attx-thead {
+                display:flex; align-items:center; justify-content:space-between;
+                padding:8px 18px; font-size:0.74rem; font-weight:700; letter-spacing:0.04em;
+                text-transform:uppercase; color:var(--text-muted);
+                border-bottom:1px solid var(--border);
+            }
+            .attx-rows { display:flex; flex-direction:column; }
+            .attx-row {
+                display:flex; align-items:center; justify-content:space-between; gap:14px;
+                padding:11px 18px; border-bottom:1px solid var(--border); transition:background .12s;
+            }
+            .attx-row:last-child { border-bottom:none; }
+            .attx-row:hover { background:var(--bg-input); }
+            .attx-row-student { display:flex; align-items:center; gap:12px; min-width:0; flex:1 1 auto; }
+            .attx-avatar {
+                width:38px; height:38px; flex:0 0 auto; border-radius:50%;
+                display:flex; align-items:center; justify-content:center;
+                font-size:0.78rem; font-weight:800; color:#fff;
+                background:var(--avatar-color, var(--accent));
+            }
+            .attx-row-info { display:flex; flex-direction:column; gap:1px; min-width:0; }
+            .attx-row-name { font-size:0.92rem; font-weight:700; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+            .attx-row-roll { font-size:0.74rem; font-weight:600; color:var(--text-muted); letter-spacing:0.02em; }
+            .attx-row-status { display:flex; align-items:center; gap:7px; flex:0 0 auto; }
+
+            /* status pills */
+            .attx-pill {
+                display:inline-flex; align-items:center; gap:5px;
+                padding:6px 11px; border-radius:9px; cursor:pointer; font-family:inherit;
+                font-size:0.78rem; font-weight:700; border:1.5px solid var(--border);
+                background:var(--bg-input); color:var(--text-muted); transition:all .14s;
+            }
+            .attx-pill svg { opacity:0.85; }
+            .attx-pill:hover:not(:disabled):not(.is-active) { border-color:currentColor; }
+            .attx-pill:disabled { opacity:0.5; cursor:not-allowed; }
+            .attx-pill--present:hover:not(:disabled), .attx-pill--present.is-active { color:var(--success); }
+            .attx-pill--late:hover:not(:disabled),    .attx-pill--late.is-active    { color:var(--accent-4, #f59e0b); }
+            .attx-pill--absent:hover:not(:disabled),  .attx-pill--absent.is-active  { color:var(--error); }
+
+            .attx-pill--present.is-active {
+                background:color-mix(in srgb, var(--success) 14%, transparent);
+                border-color:color-mix(in srgb, var(--success) 55%, transparent); color:var(--success);
+            }
+            .attx-pill--late.is-active {
+                background:color-mix(in srgb, var(--accent-4, #f59e0b) 16%, transparent);
+                border-color:color-mix(in srgb, var(--accent-4, #f59e0b) 60%, transparent); color:var(--accent-4, #f59e0b);
+            }
+            .attx-pill--absent.is-active {
+                background:var(--error); border-color:var(--error); color:#fff;
+            }
+            .attx-pill--absent.is-active svg { opacity:1; }
+
+            /* empty state */
+            .attx-empty { text-align:center; padding:48px 20px; color:var(--text-muted); }
+            .attx-empty-icon {
+                width:56px; height:56px; margin:0 auto 14px; border-radius:50%;
+                background:var(--bg-input); display:flex; align-items:center; justify-content:center; color:var(--text-muted);
+            }
+            .attx-empty h3 { margin:0 0 5px; color:var(--text); font-size:0.98rem; }
+            .attx-empty p { margin:0; font-size:0.84rem; }
+
+            /* responsive */
+            @media (max-width: 920px) {
+                .attx-stats { grid-template-columns:repeat(2,1fr); }
+            }
+            @media (max-width: 560px) {
+                .attx-title { font-size:1.5rem; }
+                .attx-markall { width:100%; justify-content:center; }
+                .attx-head { gap:12px; flex-wrap:wrap; }
+                .attx-markbulk-wrap { width:100%; align-items:stretch; }
+                .attx-status-selector { justify-content:center; }
+                .attx-status-opt { flex:1; justify-content:center; }
+                .attx-day-num { font-size:1.05rem; }
+                .attx-day { min-height:66px; padding:8px 2px 6px; }
+                .attx-day-nav { width:30px; }
+                .attx-stats { grid-template-columns:1fr 1fr; gap:10px; }
+                .attx-stat-num { font-size:1.5rem; }
+                .attx-row { flex-direction:column; align-items:stretch; gap:10px; }
+                .attx-row-status { justify-content:space-between; }
+                .attx-pill { flex:1 1 auto; justify-content:center; }
+                .attx-legend { gap:10px; }
+            }
+            @media (max-width: 380px) {
+                .attx-pill span { display:none; }
+                .attx-pill { padding:7px 10px; }
             }
         </style>
 
@@ -3170,6 +3424,7 @@
         integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ=="
         data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}'
         crossorigin="anonymous"></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 
 </html>
