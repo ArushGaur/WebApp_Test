@@ -3509,3 +3509,301 @@ tr:hover td {
     #student-picker-modal { padding: 10px !important; }
     #student-picker-modal .modal-box { width: 100% !important; }
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   GP REFRESH — "Focused instrumentation" v2
+   Appended override layer. Tunes spacing, radii, rings, motion, and the
+   sidebar/drawer/login chrome without touching the underlying JS contract.
+   ════════════════════════════════════════════════════════════════════════ */
+
+:root {
+    --gp-radius-lg: 24px;
+    --gp-radius-xl: 32px;
+    --gp-ring: rgba(255, 255, 255, 0.06);
+    --gp-ring-strong: rgba(255, 255, 255, 0.10);
+    --gp-cyan: #22d3ee;
+    --gp-copper: #d97706;
+}
+[data-theme="light"] {
+    --gp-ring: rgba(20, 24, 38, 0.07);
+    --gp-ring-strong: rgba(20, 24, 38, 0.12);
+}
+
+/* ── Reduced-motion respect for our sweep ──────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+    .gp-sweep::before { animation: none !important; }
+}
+
+/* ── Login + role card chrome ──────────────────────────────────────── */
+.login-card,
+.role-card {
+    border-radius: var(--gp-radius-lg) !important;
+    box-shadow:
+        0 1px 0 var(--gp-ring) inset,
+        0 30px 80px -20px rgba(0, 0, 0, 0.55),
+        0 0 0 1px var(--gp-ring) !important;
+    background: linear-gradient(180deg, var(--bg-card) 0%, color-mix(in oklab, var(--bg-card) 92%, #000) 100%) !important;
+    padding: 36px 32px !important;
+    position: relative;
+    overflow: hidden;
+}
+.login-card::before,
+.role-card::before {
+    content: "";
+    position: absolute; inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, var(--gp-cyan) 50%, transparent 100%);
+    opacity: 0.55;
+    animation: gp-sweep 3.2s cubic-bezier(.16,1,.3,1) infinite;
+}
+@keyframes gp-sweep {
+    0%   { transform: translateX(-100%); opacity: 0; }
+    35%  { opacity: 0.65; }
+    100% { transform: translateX(100%); opacity: 0; }
+}
+
+.login-accent-bar { display: none !important; }
+
+.login-atom-icon {
+    width: 48px !important; height: 48px !important;
+    border-radius: 14px !important;
+    background: linear-gradient(135deg, var(--gp-copper) 0%, #b45309 100%) !important;
+    box-shadow: 0 8px 22px -8px rgba(217, 119, 6, 0.5) !important;
+}
+.login-brand-name {
+    font-size: 1.45rem !important;
+    letter-spacing: -0.02em !important;
+}
+.login-brand-sub {
+    color: var(--text-muted) !important;
+    font-size: 0.78rem !important;
+}
+
+.login-divider { opacity: 0.5; }
+
+.login-field-label {
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 0.66rem !important;
+    color: var(--text-muted) !important;
+    font-weight: 700;
+}
+.login-field-wrap {
+    background: var(--bg) !important;
+    border: 1px solid transparent !important;
+    box-shadow: 0 0 0 1px var(--gp-ring) inset;
+    border-radius: 12px !important;
+    transition: box-shadow 0.18s ease, background 0.18s ease;
+}
+.login-field-wrap:focus-within {
+    box-shadow: 0 0 0 2px var(--gp-cyan) inset !important;
+    background: var(--bg-input) !important;
+}
+.login-field-input {
+    font-family: var(--font-mono) !important;
+    font-size: 0.88rem !important;
+    letter-spacing: 0.02em;
+}
+
+.login-submit-btn {
+    background: var(--gp-cyan) !important;
+    color: #0b1218 !important;
+    border-radius: 12px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.02em;
+    box-shadow: 0 10px 24px -10px rgba(34, 211, 238, 0.6) !important;
+    transition: transform 0.12s ease, filter 0.18s ease, box-shadow 0.18s ease !important;
+}
+.login-submit-btn:hover:not(:disabled) { filter: brightness(1.05); }
+.login-submit-btn:active:not(:disabled) { transform: scale(0.98); }
+
+/* ── Role chooser refinement ───────────────────────────────────────── */
+.role-card { max-width: 520px !important; }
+.role-choices { gap: 12px !important; }
+.role-choice-btn {
+    border-radius: 18px !important;
+    background: var(--bg) !important;
+    border: 1px solid transparent !important;
+    box-shadow: 0 0 0 1px var(--gp-ring) inset;
+    padding: 18px 18px !important;
+    transition: box-shadow 0.18s ease, transform 0.18s ease;
+}
+.role-choice-btn:hover {
+    box-shadow: 0 0 0 1px var(--gp-cyan) inset !important;
+    transform: translateY(-1px);
+}
+.role-choice-btn:nth-child(2):hover {
+    box-shadow: 0 0 0 1px var(--gp-copper) inset !important;
+}
+.role-choice-emoji {
+    width: 44px !important; height: 44px !important;
+    border-radius: 12px !important;
+    background: color-mix(in oklab, var(--gp-cyan) 14%, transparent) !important;
+    color: var(--gp-cyan) !important;
+    font-size: 1.25rem !important;
+    display: grid !important; place-items: center;
+}
+.role-choice-btn:nth-child(2) .role-choice-emoji {
+    background: color-mix(in oklab, var(--gp-copper) 14%, transparent) !important;
+    color: var(--gp-copper) !important;
+}
+.role-choice-title { font-size: 0.98rem !important; letter-spacing: -0.01em; }
+.role-choice-sub { color: var(--text-muted) !important; }
+.role-choice-arrow { color: var(--text-dim) !important; }
+
+#switchInstituteBtn {
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 0.66rem !important;
+    background: transparent !important;
+    border: none !important;
+    color: var(--text-muted) !important;
+    margin-top: 18px !important;
+}
+#switchInstituteBtn:hover { color: var(--text) !important; }
+
+/* ── Sidebar: grouped nav, ring borders, cyan-tinted active ───────── */
+#sidebar {
+    width: 264px !important;
+    background: var(--bg-sidebar) !important;
+    border-right: 1px solid var(--gp-ring) !important;
+    padding: 22px 14px !important;
+}
+.sidebar-logo {
+    padding: 6px 10px 22px !important;
+    border-bottom: 1px solid var(--gp-ring);
+    margin-bottom: 18px !important;
+}
+.sidebar-logo-icon {
+    width: 34px !important; height: 34px !important;
+    border-radius: 10px !important;
+    background: linear-gradient(135deg, var(--gp-copper), #b45309) !important;
+}
+.sidebar-logo-text h3 { font-size: 0.95rem !important; letter-spacing: -0.01em; }
+.sidebar-logo-text span {
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    font-size: 0.6rem !important;
+    color: var(--gp-copper) !important;
+    font-weight: 700;
+}
+
+.nav-group-label {
+    display: block !important;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    font-size: 0.6rem !important;
+    color: var(--text-muted) !important;
+    padding: 14px 12px 8px !important;
+    font-weight: 700;
+}
+.nav-item {
+    border-radius: 10px !important;
+    padding: 10px 12px !important;
+    margin: 2px 0 !important;
+    font-size: 0.86rem !important;
+    color: var(--text-dim) !important;
+    transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+.nav-item:hover {
+    background: color-mix(in oklab, var(--gp-cyan) 6%, transparent) !important;
+    color: var(--text) !important;
+}
+.nav-item.active {
+    background: color-mix(in oklab, var(--gp-cyan) 10%, transparent) !important;
+    color: var(--gp-cyan) !important;
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--gp-cyan) 30%, transparent) inset !important;
+    border-left: none !important;
+    position: relative;
+    overflow: hidden;
+}
+.nav-item.active::before {
+    content: "";
+    position: absolute; inset: 0 0 auto 0; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gp-cyan), transparent);
+    animation: gp-sweep 2.6s cubic-bezier(.16,1,.3,1) infinite;
+}
+.nav-icon { font-size: 1rem !important; }
+
+.sidebar-footer {
+    margin-top: auto !important;
+    padding-top: 14px !important;
+    border-top: 1px solid var(--gp-ring) !important;
+}
+.theme-toggle {
+    border-radius: 10px !important;
+    background: color-mix(in oklab, var(--bg-hover) 60%, transparent) !important;
+    font-size: 0.78rem !important;
+    padding: 9px 12px !important;
+}
+
+/* ── Hamburger button: minimal two-bar mark ──────────────────────── */
+#mobileMenuBtn {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--gp-ring) !important;
+    border-radius: 12px !important;
+    width: 42px !important; height: 42px !important;
+    display: grid !important; place-items: center;
+    gap: 0 !important;
+    box-shadow: 0 4px 14px -6px rgba(0,0,0,0.5);
+}
+#mobileMenuBtn span {
+    display: block !important;
+    height: 2px !important;
+    border-radius: 2px !important;
+    background: var(--text-dim) !important;
+    margin: 2px 0 !important;
+}
+#mobileMenuBtn span:nth-child(1) { width: 18px !important; background: var(--gp-cyan) !important; }
+#mobileMenuBtn span:nth-child(2) { width: 14px !important; }
+#mobileMenuBtn span:nth-child(3) { display: none !important; }
+
+/* ── Mobile drawer: grouped layout, 44px tap, right-edge radius ──── */
+#mobileDrawer {
+    width: 280px !important;
+    background: var(--bg-sidebar) !important;
+    border-right: 1px solid var(--gp-ring) !important;
+    border-top-right-radius: var(--gp-radius-lg) !important;
+    border-bottom-right-radius: var(--gp-radius-lg) !important;
+    padding: 18px 12px !important;
+    box-shadow: 30px 0 60px -20px rgba(0,0,0,0.6);
+}
+#mobileDrawer .drawer-item {
+    border-radius: 10px !important;
+    min-height: 44px !important;
+    padding: 11px 14px !important;
+    font-size: 0.88rem !important;
+    color: var(--text-dim) !important;
+    margin: 2px 0 !important;
+}
+#mobileDrawer .drawer-item:hover,
+#mobileDrawer .drawer-item.active {
+    background: color-mix(in oklab, var(--gp-cyan) 10%, transparent) !important;
+    color: var(--gp-cyan) !important;
+}
+#mobileDrawer .drawer-group-label {
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    padding: 14px 14px 6px;
+    font-weight: 700;
+}
+#mobileDrawer .drawer-item.danger:hover {
+    background: color-mix(in oklab, var(--error) 12%, transparent) !important;
+    color: var(--error) !important;
+}
+
+/* ── Section / page-header polish (light touch — applies everywhere) */
+.page-header h1 { letter-spacing: -0.02em; }
+.section .card,
+.section .panel,
+.section table {
+    border-radius: var(--gp-radius-lg);
+}
+
+/* ── Tabular numerals everywhere mono is used ────────────────────── */
+.mono, code, kbd, .login-field-input,
+[class*="count"], [class*="num"] {
+    font-variant-numeric: tabular-nums;
+}
