@@ -9,7 +9,7 @@ const JSZip = require("jszip");
 const { db } = require("../config/db");
 const helpers = require("../utils/helpers");
 const { requireAdmin, sessionInstituteId } = require("../middleware/auth");
-const { loadQuestions, refreshCache, rebuildYearIndex, findQuestion } = require("../utils/questions");
+const { loadQuestions, refreshCache, findQuestion } = require("../utils/questions");
 
 const {
     Document, Packer, Paragraph, TextRun, ImageRun, Table, TableRow, TableCell,
