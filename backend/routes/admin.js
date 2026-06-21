@@ -4,7 +4,10 @@ const multer = require("multer");
 const { db } = require("../config/db");
 const helpers = require("../utils/helpers");
 const { requireAdmin, sessionInstituteId, getDefaultInstituteId } = require("../middleware/auth");
-const { loadQuestions, refreshCache, rebuildYearIndex, findQuestion, getQuestionCache } = require("../utils/questions");
+const {
+	loadQuestions, refreshCache, findQuestion, findQuestionsByPaper,
+	getChapterList, getTopicsForChapter, getQuestionCount, getQuestionCache,
+} = require("../utils/questions");
 const { normalizeQuestionRow, normalizeQuestion, normalizeStudentRow, parseCorrectIndexesFromQuestion, validateImageRegion } = helpers;
 const { uploadQuestionImages } = require("../services/cloudinary");
 
@@ -23,9 +26,7 @@ function extractYearFromQuestions(questions) {
 
 router.get("/api/chapters", async (req, res) => {
 	try {
-		const result = await db.execute("SELECT DISTINCT chapter FROM questions WHERE chapter IS NOT NULL AND chapter != ''");
-		const chapters = result.rows.map((r) => r.chapter).filter(Boolean).sort();
-		res.json(chapters);
+		res.json(getChapterList());
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
@@ -34,9 +35,29 @@ router.get("/api/chapters", async (req, res) => {
 router.get("/api/lectures/:chapter", async (req, res) => {
 	try {
 		const chapter = req.params.chapter;
-		const result = await db.execute({ sql: "SELECT lecture FROM questions WHERE chapter = ?", args: [chapter] });
-		const lectures = result.rows.map((r) => r.lecture).filter(Boolean).sort((a, b) => Number(a) - Number(b));
-		res.json(lectures);
+		const topics = getTopicsForChapter(chapter);
+		res.json(topics);
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+// Same data under its real name — prefer this in any new frontend code.
+router.get("/api/topics/:chapter", async (req, res) => {
+	try {
+		res.json(getTopicsForChapter(req.params.chapter));
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+// Distinct subjects present in the question bank (Physics/Chemistry/Maths/Biology).
+router.get("/api/subjects", requireAdmin, async (req, res) => {
+	try {
+		const result = await db.execute(
+			"SELECT DISTINCT subject FROM questions_v2 WHERE subject IS NOT NULL AND subject != '' ORDER BY subject"
+		);
+		res.json(result.rows.map((r) => r.subject));
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
@@ -45,10 +66,10 @@ router.get("/api/lectures/:chapter", async (req, res) => {
 router.get("/api/question/:chapter/:lecture", async (req, res) => {
 	try {
 		const rawChapter = decodeURIComponent(req.params.chapter || "");
-		const lecture = decodeURIComponent(req.params.lecture || "");
+		const topic = decodeURIComponent(req.params.lecture || "");
 		const chapter = (rawChapter === "_none_" || rawChapter === "") ? null : rawChapter;
-		const q = await findQuestion(chapter, lecture);
-		if (!q) return res.status(404).json({ error: "Lecture not found" });
+		const q = await findQuestion(chapter, topic);
+		if (!q) return res.status(404).json({ error: "Topic not found" });
 		res.json(q);
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
@@ -58,45 +79,42 @@ router.get("/api/question/:chapter/:lecture", async (req, res) => {
 
 router.post("/api/admin/add-question", requireAdmin, async (req, res) => {
 	try {
-		let { chapter, lecture, topic, questions, replace } = req.body || {};
-		if (!lecture || !Array.isArray(questions) || !questions.length) {
+		let { chapter, lecture, topic, questions } = req.body || {};
+		topic = topic ?? lecture; // accept either old (`lecture`) or new (`topic`) field name
+		if (!topic || !Array.isArray(questions) || !questions.length) {
 			return res.status(400).json({ error: "Missing" });
 		}
 
 		questions = questions.map(normalizeQuestion);
 		questions = await uploadQuestionImages(questions);
 
-		let existing;
-		if (chapter) {
-			const r = await db.execute({ sql: "SELECT * FROM questions WHERE chapter = ? AND lecture = ? LIMIT 1", args: [chapter, lecture] });
-			existing = r.rows[0] || null;
-		} else {
-			const r = await db.execute({ sql: "SELECT * FROM questions WHERE (chapter IS NULL OR chapter = '') AND lecture = ? LIMIT 1", args: [lecture] });
-			existing = r.rows[0] || null;
-		}
+		const now = Date.now();
+		let inserted = 0;
+		for (const q of questions) {
+			const subject = String(q.subject || "").trim();
+			const unit = String(q.unit || "").trim();
+			const year = q.year != null ? String(q.year).trim() : "";
+			const month = q.month != null ? String(q.month).trim() : "";
+			const day = q.day != null ? String(q.day).trim() : "";
+			const shift = q.shift != null ? String(q.shift).trim() : "";
+			const questionNumber = Number.isInteger(q.questionNumber) ? q.questionNumber : null;
+			const questionType = String(q.questionType || "MCQ").trim() || "MCQ";
 
-		if (existing) {
-			const oldQs = replace ? [] : (() => {
-				try { return JSON.parse(existing.questions_json || "[]"); } catch { return []; }
-			})();
-			const merged = [...oldQs, ...questions];
 			await db.execute({
-				sql: "UPDATE questions SET questions_json = ?, topic = ?, updated_at = ? WHERE id = ?",
-				args: [JSON.stringify(merged), topic || existing.topic || "", Date.now(), existing.id],
+				sql: `INSERT INTO questions_v2
+					(subject, unit, chapter, topic, year, month, day, shift,
+					 question_number, question_type, raw_json, created_at, updated_at)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				args: [
+					subject, unit, chapter || "", topic, year, month, day, shift,
+					questionNumber, questionType, JSON.stringify(q), now, now,
+				],
 			});
-			await rebuildYearIndex(existing.id, merged);
-			await refreshCache(chapter || null, lecture);
-			return res.json({ success: true, added: questions.length, total: merged.length });
+			inserted++;
 		}
 
-		const insertResult = await db.execute({
-			sql: "INSERT INTO questions (chapter, lecture, topic, questions_json, updated_at) VALUES (?, ?, ?, ?, ?)",
-			args: [chapter || null, lecture || "", topic || "", JSON.stringify(questions), Date.now()],
-		});
-		const newId = insertResult.lastInsertRowid ? Number(insertResult.lastInsertRowid) : null;
-		if (newId) await rebuildYearIndex(newId, questions);
-		await refreshCache(chapter || null, lecture);
-		res.json({ success: true, added: questions.length, total: questions.length });
+		await refreshCache(chapter || null, topic);
+		res.json({ success: true, added: inserted, total: inserted });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
@@ -147,45 +165,50 @@ router.post("/api/admin/student/:id/mark-cheater", requireAdmin, async (req, res
 
 router.get("/api/admin/questions", requireAdmin, async (req, res) => {
 	try {
-		const result = await db.execute("SELECT * FROM questions");
-		res.json(result.rows.map(normalizeQuestionRow));
+		const result = await db.execute("SELECT id, chapter, topic, raw_json, updated_at FROM questions_v2 ORDER BY chapter, topic, question_number, id");
+		const groups = {}; // key: chapter::topic
+		for (const row of result.rows) {
+			const key = `${row.chapter || ""}::${row.topic || ""}`;
+			if (!groups[key]) {
+				groups[key] = {
+					_id: null,
+					chapter: row.chapter || null,
+					lecture: row.topic || "", // backward-compat alias
+					topic: row.topic || "",
+					updatedAt: row.updated_at || 0,
+					questions: [],
+				};
+			}
+			let raw = {};
+			try { raw = JSON.parse(row.raw_json || "{}"); } catch { raw = {}; }
+			groups[key].questions.push(normalizeQuestion(raw, { preserveRaw: true }));
+			groups[key].updatedAt = Math.max(groups[key].updatedAt, row.updated_at || 0);
+		}
+		res.json(Object.values(groups));
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
 });
 
-// Lightweight metadata-only endpoint — no questions_json, fast for 20k questions
+// Lightweight metadata-only endpoint — no raw_json, fast even at 300k+ questions.
+// Just a GROUP BY on real indexed columns now: no LEFT JOIN through a separate
+// year-index table, no json_extract guesswork to find subject.
 router.get("/api/admin/questions-meta", requireAdmin, async (req, res) => {
 	try {
-		// Get all row metadata + question count from the year index
-		// For rows with no years, count is 0 from index but actual may be higher.
-		// We use a separate fast count query using JSON array length.
 		const result = await db.execute(
-			`SELECT q.id, q.chapter, q.lecture, q.topic, q.updated_at,
-		        json_extract(q.questions_json, '$[0].subject') AS subject,
-			        COUNT(qy.id) AS indexed_count
-			 FROM questions q
-			 LEFT JOIN question_years qy ON qy.row_id = q.id
-			 GROUP BY q.id
-			 ORDER BY q.chapter, CAST(q.lecture AS REAL)`
+			`SELECT chapter, topic, subject, MAX(updated_at) as updated_at, COUNT(*) as qcount
+			 FROM questions_v2
+			 GROUP BY chapter, topic
+			 ORDER BY chapter, topic`
 		);
-
-		// Also get actual question counts via a fast trick:
-		// json_array_length is available in SQLite/Turso
-		const countResult = await db.execute(
-			"SELECT id, json_array_length(questions_json) AS qcount FROM questions"
-		);
-		const countMap = {};
-		for (const r of countResult.rows) countMap[r.id] = Number(r.qcount) || 0;
-
-		const rows = result.rows.map(row => ({
-			_id: row.id,
+		const rows = result.rows.map((row) => ({
+			_id: null,
 			chapter: row.chapter || null,
-			lecture: row.lecture,
+			lecture: row.topic || "", // backward-compat alias
 			topic: row.topic || "",
 			subject: row.subject || null,
 			updatedAt: row.updated_at || 0,
-			questionCount: countMap[row.id] ?? Number(row.indexed_count) ?? 0,
+			questionCount: Number(row.qcount) || 0,
 			questions: null,     // not loaded — signals lazy-loadable
 			_metaOnly: true,
 		}));
@@ -195,14 +218,28 @@ router.get("/api/admin/questions-meta", requireAdmin, async (req, res) => {
 	}
 });
 
-// Fetch a single question row by id — used for on-demand loading
+// Fetch a single QUESTION by its questions_v2 row id (was: a whole topic's
+// array by row id — that concept doesn't exist any more, since each row IS
+// one question now). If you need a whole topic's questions, use
+// /api/question/:chapter/:lecture instead — same URL/shape as before.
 router.get("/api/admin/question-row/:id", requireAdmin, async (req, res) => {
 	try {
 		const id = Number(req.params.id);
 		if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
-		const result = await db.execute({ sql: "SELECT * FROM questions WHERE id = ? LIMIT 1", args: [id] });
+		const result = await db.execute({ sql: "SELECT * FROM questions_v2 WHERE id = ? LIMIT 1", args: [id] });
 		if (!result.rows.length) return res.status(404).json({ error: "Not found" });
-		res.json(normalizeQuestionRow(result.rows[0]));
+		const row = result.rows[0];
+		let raw = {};
+		try { raw = JSON.parse(row.raw_json || "{}"); } catch { raw = {}; }
+		res.json({
+			_id: row.id,
+			chapter: row.chapter || null,
+			topic: row.topic || "",
+			subject: row.subject || null,
+			year: row.year || null,
+			updatedAt: row.updated_at || 0,
+			question: normalizeQuestion(raw, { preserveRaw: true }),
+		});
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
@@ -214,11 +251,29 @@ router.get("/api/admin/questions-for-chapter/:chapter", requireAdmin, async (req
 		const chapter = decodeURIComponent(req.params.chapter || "");
 		let result;
 		if (chapter === "_none_" || chapter === "") {
-			result = await db.execute("SELECT * FROM questions WHERE chapter IS NULL OR chapter = ''");
+			result = await db.execute("SELECT id, chapter, topic, raw_json, updated_at FROM questions_v2 WHERE chapter IS NULL OR chapter = '' ORDER BY topic, question_number, id");
 		} else {
-			result = await db.execute({ sql: "SELECT * FROM questions WHERE chapter = ?", args: [chapter] });
+			result = await db.execute({ sql: "SELECT id, chapter, topic, raw_json, updated_at FROM questions_v2 WHERE chapter = ? ORDER BY topic, question_number, id", args: [chapter] });
 		}
-		res.json(result.rows.map(normalizeQuestionRow));
+		const groups = {};
+		for (const row of result.rows) {
+			const key = row.topic || "";
+			if (!groups[key]) {
+				groups[key] = {
+					_id: null,
+					chapter: row.chapter || null,
+					lecture: row.topic || "",
+					topic: row.topic || "",
+					updatedAt: row.updated_at || 0,
+					questions: [],
+				};
+			}
+			let raw = {};
+			try { raw = JSON.parse(row.raw_json || "{}"); } catch { raw = {}; }
+			groups[key].questions.push(normalizeQuestion(raw, { preserveRaw: true }));
+			groups[key].updatedAt = Math.max(groups[key].updatedAt, row.updated_at || 0);
+		}
+		res.json(Object.values(groups));
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
@@ -228,30 +283,14 @@ router.delete("/api/admin/question/:chapter/:lecture", requireAdmin, async (req,
 	try {
 		const chapter = decodeURIComponent(req.params.chapter || "");
 		const rawLecture = decodeURIComponent(req.params.lecture || "");
-		const lecture = rawLecture === "_none_" ? "" : rawLecture;
-		// Fetch the row id before deleting so we can clean question_years
-		let toDelete;
+		const topic = rawLecture === "_none_" ? "" : rawLecture;
+
 		if (chapter && chapter !== "_none_") {
-			toDelete = await db.execute({ sql: "SELECT id FROM questions WHERE lecture = ? AND chapter = ?", args: [lecture, chapter] });
+			await db.execute({ sql: "DELETE FROM questions_v2 WHERE topic = ? AND chapter = ?", args: [topic, chapter] });
 		} else {
-			toDelete = await db.execute({ sql: "SELECT id FROM questions WHERE lecture = ? AND (chapter IS NULL OR chapter = '')", args: [lecture] });
+			await db.execute({ sql: "DELETE FROM questions_v2 WHERE topic = ? AND (chapter IS NULL OR chapter = '')", args: [topic] });
 		}
-		for (const r of toDelete.rows) {
-			await db.execute({ sql: "DELETE FROM question_years WHERE row_id = ?", args: [r.id] });
-		}
-		// Fix: use precise chapter match to avoid deleting from unrelated chapters
-		if (chapter && chapter !== "_none_") {
-			await db.execute({
-				sql: "DELETE FROM questions WHERE lecture = ? AND chapter = ?",
-				args: [lecture, chapter],
-			});
-		} else {
-			await db.execute({
-				sql: "DELETE FROM questions WHERE lecture = ? AND (chapter IS NULL OR chapter = '')",
-				args: [lecture],
-			});
-		}
-		delete getQuestionCache()[`${chapter === "_none_" ? "" : chapter}::${lecture}`];
+		await refreshCache(chapter === "_none_" ? "" : chapter, topic);
 		res.json({ success: true });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
@@ -262,35 +301,49 @@ router.put("/api/admin/question/:chapter/:lecture", requireAdmin, async (req, re
 	try {
 		const rawChapter = decodeURIComponent(req.params.chapter || "");
 		const rawLecture = decodeURIComponent(req.params.lecture || "");
-		const lecture = rawLecture === "_none_" ? "" : rawLecture;
+		const oldTopic = rawLecture === "_none_" ? "" : rawLecture;
 		const { chapter, topic, questions } = req.body || {};
 
 		if (!Array.isArray(questions)) return res.status(400).json({ error: "Questions array is required." });
 
-		const chapterForMatch = (rawChapter === "_none_" || rawChapter === "") ? null : rawChapter;
-		const chapterForSave = (chapter === "_none_" || chapter === "") ? null : (chapter ?? chapterForMatch);
-
-		let existing;
-		if (chapterForMatch) {
-			const r = await db.execute({ sql: "SELECT * FROM questions WHERE chapter = ? AND lecture = ? LIMIT 1", args: [chapterForMatch, lecture] });
-			existing = r.rows[0] || null;
-		} else {
-			const r = await db.execute({ sql: "SELECT * FROM questions WHERE (chapter IS NULL OR chapter = '') AND lecture = ? LIMIT 1", args: [lecture] });
-			existing = r.rows[0] || null;
-		}
-
-		if (!existing) return res.status(404).json({ error: "Lecture not found." });
+		const chapterForMatch = (rawChapter === "_none_" || rawChapter === "") ? "" : rawChapter;
+		const chapterForSave = (chapter === "_none_" || chapter === "" || chapter === undefined) ? chapterForMatch : chapter;
+		const topicForSave = topic || oldTopic;
 
 		// Manual edit: preserve raw text so removing $ delimiters is honoured.
 		let normalizedQuestions = questions.map((q) => normalizeQuestion(q, { preserveRaw: true }));
 		normalizedQuestions = await uploadQuestionImages(normalizedQuestions);
+
 		await db.execute({
-			sql: "UPDATE questions SET chapter = ?, topic = ?, questions_json = ?, updated_at = ? WHERE id = ?",
-			args: [chapterForSave, topic || existing.topic || "", JSON.stringify(normalizedQuestions), Date.now(), existing.id],
+			sql: "DELETE FROM questions_v2 WHERE chapter = ? AND topic = ?",
+			args: [chapterForMatch, oldTopic],
 		});
 
-		await rebuildYearIndex(existing.id, normalizedQuestions);
-		await refreshCache(chapterForSave, lecture);
+		const now = Date.now();
+		for (const q of normalizedQuestions) {
+			await db.execute({
+				sql: `INSERT INTO questions_v2
+					(subject, unit, chapter, topic, year, month, day, shift,
+					 question_number, question_type, raw_json, created_at, updated_at)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				args: [
+					String(q.subject || "").trim(), String(q.unit || "").trim(),
+					chapterForSave, topicForSave,
+					q.year != null ? String(q.year).trim() : "",
+					q.month != null ? String(q.month).trim() : "",
+					q.day != null ? String(q.day).trim() : "",
+					q.shift != null ? String(q.shift).trim() : "",
+					Number.isInteger(q.questionNumber) ? q.questionNumber : null,
+					String(q.questionType || "MCQ").trim() || "MCQ",
+					JSON.stringify(q), now, now,
+				],
+			});
+		}
+
+		await refreshCache(chapterForMatch, oldTopic);
+		if (chapterForSave !== chapterForMatch || topicForSave !== oldTopic) {
+			await refreshCache(chapterForSave, topicForSave);
+		}
 		res.json({ success: true, updated: normalizedQuestions.length });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
@@ -305,31 +358,14 @@ router.post("/api/admin/mass-delete", requireAdmin, async (req, res) => {
 		let deleted = 0;
 		for (const it of items) {
 			const chapter = it?.chapter || null;
-			const lecture = it?.lecture;
-			if (lecture == null) continue;
-			// Clean year index before deleting rows
-			let toDelete;
+			const topic = it?.topic ?? it?.lecture;
+			if (topic == null) continue;
 			if (chapter) {
-				toDelete = await db.execute({ sql: "SELECT id FROM questions WHERE lecture = ? AND chapter = ?", args: [lecture, chapter] });
+				await db.execute({ sql: "DELETE FROM questions_v2 WHERE topic = ? AND chapter = ?", args: [topic, chapter] });
 			} else {
-				toDelete = await db.execute({ sql: "SELECT id FROM questions WHERE lecture = ? AND (chapter IS NULL OR chapter = '')", args: [lecture] });
+				await db.execute({ sql: "DELETE FROM questions_v2 WHERE topic = ? AND (chapter IS NULL OR chapter = '')", args: [topic] });
 			}
-			for (const r of toDelete.rows) {
-				await db.execute({ sql: "DELETE FROM question_years WHERE row_id = ?", args: [r.id] });
-			}
-			// Use separate query paths — SQL NULL = NULL is always false, so chapter = ? with null never matches
-			if (chapter) {
-				await db.execute({
-					sql: "DELETE FROM questions WHERE lecture = ? AND chapter = ?",
-					args: [lecture, chapter],
-				});
-			} else {
-				await db.execute({
-					sql: "DELETE FROM questions WHERE lecture = ? AND (chapter IS NULL OR chapter = '')",
-					args: [lecture],
-				});
-			}
-			delete getQuestionCache()[`${chapter || ""}::${lecture}`];
+			await refreshCache(chapter || "", topic);
 			deleted++;
 		}
 		res.json({ success: true, deleted });
@@ -344,7 +380,7 @@ router.post("/api/admin/rename-chapter", requireAdmin, async (req, res) => {
 		const { oldName, newName } = req.body || {};
 		if (!oldName || !newName) return res.status(400).json({ error: "Missing old or new chapter name." });
 
-		const qr = await db.execute({ sql: "UPDATE questions SET chapter = ? WHERE chapter = ?", args: [newName, oldName] });
+		const qr = await db.execute({ sql: "UPDATE questions_v2 SET chapter = ? WHERE chapter = ?", args: [newName, oldName] });
 		const sr = await db.execute({ sql: "UPDATE students SET chapter = ? WHERE chapter = ?", args: [newName, oldName] });
 		const ar = await db.execute({ sql: "UPDATE attempts SET chapter = ? WHERE chapter = ?", args: [newName, oldName] });
 		const total = (qr.rowsAffected || 0) + (sr.rowsAffected || 0) + (ar.rowsAffected || 0);
@@ -371,9 +407,9 @@ router.post("/api/admin/rename-topic", requireAdmin, async (req, res) => {
 		if (!oldName || !newName) return res.status(400).json({ error: "Missing old or new topic name." });
 		let result;
 		if (chapter) {
-			result = await db.execute({ sql: "UPDATE questions SET topic = ? WHERE topic = ? AND chapter = ?", args: [newName, oldName, chapter] });
+			result = await db.execute({ sql: "UPDATE questions_v2 SET topic = ? WHERE topic = ? AND chapter = ?", args: [newName, oldName, chapter] });
 		} else {
-			result = await db.execute({ sql: "UPDATE questions SET topic = ? WHERE topic = ?", args: [newName, oldName] });
+			result = await db.execute({ sql: "UPDATE questions_v2 SET topic = ? WHERE topic = ?", args: [newName, oldName] });
 		}
 		if (!result.rowsAffected) return res.status(404).json({ error: "Topic not found." });
 		await loadQuestions();
@@ -384,19 +420,13 @@ router.post("/api/admin/rename-topic", requireAdmin, async (req, res) => {
 });
 
 
-// ── NEW: Year index endpoints ──────────────────────────────────────────────
-// Returns [{year, count}] sorted descending — no JSON parsing, instant.
-//
-// COUNT(DISTINCT row_id || ':' || question_index) guards against duplicate
-// index rows (same question indexed more than once) inflating the per-year
-// number. The authoritative per-question count for a year is still produced by
-// /api/admin/questions-by-year (which reads the live questions_json), so even
-// if this fast count drifts slightly the paper view itself stays correct and
-// self-heals the index on open.
+// ── Year index endpoints ────────────────────────────────────────────────────
+// `year` is now a real column on questions_v2, so this is a plain GROUP BY —
+// no separate question_years table to keep in sync.
 router.get("/api/admin/year-counts", requireAdmin, async (req, res) => {
 	try {
 		const result = await db.execute(
-			"SELECT year, COUNT(DISTINCT row_id || ':' || question_index) as count FROM question_years GROUP BY year ORDER BY year DESC"
+			"SELECT year, COUNT(*) as count FROM questions_v2 WHERE year IS NOT NULL AND year != '' GROUP BY year ORDER BY year DESC"
 		);
 		res.json(result.rows.map(r => ({ year: r.year, count: Number(r.count) })));
 	} catch (e) {
@@ -404,82 +434,36 @@ router.get("/api/admin/year-counts", requireAdmin, async (req, res) => {
 	}
 });
 
-// Returns all questions belonging to a specific year.
-// Only loads rows that actually contain a question from that year.
-//
-// IMPORTANT — why this no longer trusts qy.question_index blindly:
-// The old implementation returned exactly one question per question_years row,
-// picked by allQs[qy.question_index]. Whenever a lecture's questions_json was
-// later edited (questions inserted / removed / reordered) without a perfectly
-// matching reindex, that cached index pointed at the wrong array slot — or at
-// nothing — so the paper-wise view showed an arbitrary subset (e.g. 0, 2 or 5
-// questions) instead of the real count. We now treat questions_json as the
-// source of truth: for every row the year-index says contains this year, we
-// re-scan the live array and return EVERY question whose own `year` matches.
-// The index is still used purely as a fast pre-filter so we don't parse all
-// rows. We also opportunistically self-heal the question_years rows so future
-// requests stay consistent.
+// THE ACTUAL SPEED FIX: `year` is a real indexed column on questions_v2 now,
+// so this is a plain WHERE — no JOIN, no parsing/looping through every
+// question in unrelated topics, no separate index table that can drift
+// out of sync. This is what used to be slow; now it's exactly as fast as
+// the chapter/topic browsing queries.
 router.get("/api/admin/questions-by-year/:year", requireAdmin, async (req, res) => {
 	try {
 		const year = decodeURIComponent(req.params.year || "").trim();
 		if (!year) return res.status(400).json({ error: "Year required" });
 
-		// Distinct rows the index believes contain this year (fast pre-filter).
 		const result = await db.execute({
-			sql: `SELECT DISTINCT q.id, q.chapter, q.lecture, q.topic, q.questions_json
-			      FROM questions q
-			      JOIN question_years qy ON qy.row_id = q.id
-			      WHERE qy.year = ?
-			      ORDER BY q.chapter, q.lecture`,
-			args: [year]
+			sql: `SELECT id, chapter, topic, raw_json
+			      FROM questions_v2
+			      WHERE year = ?
+			      ORDER BY chapter, topic, question_number, id`,
+			args: [year],
 		});
 
-		const questions = [];
-		const rowsNeedingReindex = [];
-
-		for (const row of result.rows) {
-			let allQs = [];
-			try { allQs = JSON.parse(row.questions_json || "[]"); } catch { allQs = []; }
-			if (!Array.isArray(allQs)) continue;
-
-			let matchedInRow = 0;
-			for (let qi = 0; qi < allQs.length; qi++) {
-				const raw = allQs[qi];
-				if (!raw) continue;
-				const qYear = raw.year != null ? String(raw.year).trim() : "";
-				if (qYear !== year) continue;
-				const q = normalizeQuestion(raw, { preserveRaw: true });
-				if (!q) continue;
-				matchedInRow++;
-				questions.push({
-					rowId: row.id,
-					chapter: row.chapter || null,
-					lecture: row.lecture,
-					topic: row.topic || "",
-					questionIndex: qi,
-					question: q
-				});
-			}
-
-			// If the index disagreed with the live array (row matched by the
-			// index but no question in it actually carries this year), flag it
-			// so we can drop the stale index rows below.
-			if (matchedInRow === 0) rowsNeedingReindex.push(row.id);
-		}
-
-		// Self-heal: rebuild the year index for any rows whose live questions_json
-		// no longer agrees with question_years. Best-effort — never blocks the
-		// response, and only touches rows we actually detected as stale.
-		if (rowsNeedingReindex.length && typeof rebuildYearIndex === "function") {
-			for (const rowId of rowsNeedingReindex) {
-				try {
-					const r = await db.execute({ sql: "SELECT questions_json FROM questions WHERE id = ? LIMIT 1", args: [rowId] });
-					let liveQs = [];
-					try { liveQs = JSON.parse(r.rows[0]?.questions_json || "[]"); } catch { liveQs = []; }
-					await rebuildYearIndex(rowId, Array.isArray(liveQs) ? liveQs : []);
-				} catch (_) { /* non-fatal */ }
-			}
-		}
+		const questions = result.rows.map((row) => {
+			let raw = {};
+			try { raw = JSON.parse(row.raw_json || "{}"); } catch { raw = {}; }
+			return {
+				rowId: row.id,
+				chapter: row.chapter || null,
+				lecture: row.topic || "", // backward-compat alias
+				topic: row.topic || "",
+				questionIndex: 0, // no longer meaningful — one question per row now
+				question: normalizeQuestion(raw, { preserveRaw: true }),
+			};
+		});
 
 		res.json({ year, count: questions.length, questions });
 	} catch (e) {
@@ -487,86 +471,50 @@ router.get("/api/admin/questions-by-year/:year", requireAdmin, async (req, res) 
 	}
 });
 
-// Trigger a manual full reindex of question_years (admin utility / recovery)
-router.post("/api/admin/rebuild-year-index", requireAdmin, async (req, res) => {
+// NEW: general paper-wise search — subject + year (+ optionally chapter/
+// month/day/shift). Prefer this in new frontend code over the year-only
+// route above, since real papers are identified by subject AND year.
+router.get("/api/admin/questions-by-paper", requireAdmin, async (req, res) => {
 	try {
-		const allRows = await db.execute("SELECT id, questions_json FROM questions");
-		await db.execute("DELETE FROM question_years");
-		let indexed = 0;
-		for (const row of allRows.rows) {
-			try {
-				const questions = JSON.parse(row.questions_json || "[]");
-				if (!Array.isArray(questions)) continue;
-				for (let i = 0; i < questions.length; i++) {
-					const year = questions[i]?.year ? String(questions[i].year).trim() : null;
-					if (year) {
-						await db.execute({
-							sql: "INSERT INTO question_years (row_id, year, question_index) VALUES (?, ?, ?)",
-							args: [row.id, year, i]
-						});
-						indexed++;
-					}
-				}
-			} catch (_) { }
-		}
-		res.json({ success: true, indexed, rows: allRows.rows.length });
+		const { subject, year, chapter, month, day, shift } = req.query;
+		const results = await findQuestionsByPaper({ subject, year, chapter, month, day, shift });
+		res.json({ count: results.length, questions: results });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
+});
+
+// rebuild-year-index — NO LONGER NEEDED. There is no separate index table
+// to rebuild now that `year` is a real column. Kept as a no-op so any old
+// frontend "rebuild index" button doesn't 404 — safe to delete once you've
+// updated the frontend to stop calling it.
+router.post("/api/admin/rebuild-year-index", requireAdmin, async (req, res) => {
+	res.json({ success: true, indexed: 0, rows: 0, note: "No-op: questions_v2 has no separate year index to rebuild." });
 });
 
 router.post("/api/admin/reload-cache", requireAdmin, async (req, res) => {
 	try {
 		await loadQuestions();
-		res.json({ success: true, cached: Object.keys(getQuestionCache()).length });
+		res.json({ success: true, chapters: getChapterList().length });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
 });
 
+// /api/admin/migrate (GET+POST) — these detected corrupted questions_json
+// arrays in the OLD table (a row whose array failed to parse). That failure
+// mode doesn't exist in questions_v2: each row is already one normalized
+// question object, not a JSON array that can desync internally. Kept as
+// harmless no-ops so old frontend "check for corruption" buttons don't 404;
+// safe to delete both routes once you've updated the frontend.
 router.get("/api/admin/migrate", requireAdmin, async (req, res) => {
-	try {
-		const result = await db.execute("SELECT * FROM questions");
-		const all = result.rows.map(normalizeQuestionRow);
-		const corrupted = all.filter((x) => !Array.isArray(x.questions));
-		res.json({
-			total: all.length,
-			corrupted: corrupted.length,
-			corruptedLectures: corrupted.map((q) => ({ lecture: q.lecture, chapter: q.chapter, _id: q._id })),
-		});
-	} catch (e) {
-		res.status(500).json({ error: e.message || "Failed" });
-	}
+	res.json({ total: 0, corrupted: 0, corruptedLectures: [], note: "No-op: questions_v2 rows can't desync the way old JSON-array rows could." });
 });
 
 router.post("/api/admin/migrate", requireAdmin, async (req, res) => {
-	try {
-		const result = await db.execute("SELECT * FROM questions");
-		const corruptedIds = result.rows
-			.filter((row) => {
-				try {
-					const q = JSON.parse(row.questions_json || "[]");
-					return !Array.isArray(q);
-				} catch {
-					return true;
-				}
-			})
-			.map((row) => row.id);
-
-		for (const id of corruptedIds) {
-			await db.execute({ sql: "DELETE FROM questions WHERE id = ?", args: [id] });
-		}
-
-		await loadQuestions();
-		res.json({
-			success: true,
-			deleted: corruptedIds.length,
-			message: corruptedIds.length ? `Deleted ${corruptedIds.length} corrupted record(s).` : "No corrupted records found.",
-		});
-	} catch (e) {
-		res.status(500).json({ error: e.message || "Failed" });
-	}
+	res.json({ success: true, deleted: 0, message: "No-op: questions_v2 rows can't desync the way old JSON-array rows could." });
 });
+
 
 
 /* ─────────────────────────────────────────────────────────────────────────────
