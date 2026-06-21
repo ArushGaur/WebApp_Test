@@ -10,28 +10,28 @@
 
 /* ── THEME TOKENS ───────────────────────────────────────────────────── */
 :root {
-    --bg: #0a0e15;
-    --bg-card: #11161f;
-    --bg-input: #161c27;
-    --bg-hover: #1c2330;
-    --bg-sidebar: #0c1018;
-    --border: rgba(223, 232, 248, 0.085);
-    --border-focus: #ff8a3d;
+    --bg: #070a12;
+    --bg-card: #0e1422;
+    --bg-input: #131a2c;
+    --bg-hover: #192238;
+    --bg-sidebar: #080c16;
+    --border: rgba(190, 210, 255, 0.10);
+    --border-focus: #3d6dff;
 
     /* signature trio */
-    --accent: #ff8a3d;
-    --accent-2: #34e8d4;
-    --accent-3: #8b7cf6;
-    --accent-4: #ffb84d;
+    --accent: #3d6dff;
+    --accent-2: #26e0e0;
+    --accent-3: #a855f7;
+    --accent-4: #fbbf24;
 
-    --accent-glow: rgba(255, 138, 61, 0.22);
-    --success: #34e0a1;
-    --warn: #ffb84d;
-    --error: #ff5c7a;
+    --accent-glow: rgba(61, 109, 255, 0.28);
+    --success: #2de0a8;
+    --warn: #fbbf24;
+    --error: #ff4d6a;
 
-    --text: #eef1f8;
-    --text-dim: #aab4c8;
-    --text-muted: rgba(238, 241, 248, 0.62);
+    --text: #f1f4fd;
+    --text-dim: #a3b1d6;
+    --text-muted: rgba(241, 244, 253, 0.6);
 
     --sidebar-w: 232px;
     --radius: 16px;
@@ -52,16 +52,16 @@
     --bg-hover: #ebeef5;
     --bg-sidebar: #ffffff;
     --border: rgba(20, 24, 38, 0.10);
-    --border-focus: #e06f1f;
-    --accent: #e06f1f;
-    --accent-2: #0e9c8e;
-    --accent-3: #6c5ce0;
-    --accent-4: #c2780a;
-    --warn: #b5650f;
+    --border-focus: #2952d6;
+    --accent: #2952d6;
+    --accent-2: #0e9696;
+    --accent-3: #8b30d6;
+    --accent-4: #b9860f;
+    --warn: #a9700f;
     --text: #14182a;
     --text-dim: #565f78;
     --text-muted: rgba(20, 24, 38, 0.62);
-    --accent-glow: rgba(224, 111, 31, 0.16);
+    --accent-glow: rgba(41, 82, 214, 0.15);
     --shadow-card: 0 2px 14px rgba(30, 36, 60, 0.07);
     --shadow-modal: 0 24px 60px rgba(30, 36, 60, 0.22);
 }
@@ -99,8 +99,8 @@ body {
 
 [data-theme="dark"] body {
     background:
-        radial-gradient(900px 520px at 10% 0%, rgba(255, 138, 61, 0.05) 0%, rgba(255, 138, 61, 0) 60%),
-        radial-gradient(700px 480px at 95% 30%, rgba(52, 232, 212, 0.04) 0%, rgba(52, 232, 212, 0) 60%),
+        radial-gradient(900px 520px at 10% 0%, rgba(61, 109, 255, 0.08) 0%, rgba(255, 138, 61, 0) 60%),
+        radial-gradient(700px 480px at 95% 30%, rgba(38, 224, 224, 0.05) 0%, rgba(52, 232, 212, 0) 60%),
         linear-gradient(180deg, #0a0e15 0%, #07090f 100%);
 }
 
@@ -254,7 +254,7 @@ select:focus-visible,
     height: 52px;
     border-radius: 14px;
     flex-shrink: 0;
-    background: linear-gradient(135deg, var(--accent) 0%, #c75a1f 100%);
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-3) 100%);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -389,8 +389,8 @@ select:focus-visible,
     width: 100%;
     margin-top: 16px;
     padding: 14px;
-    background: linear-gradient(135deg, var(--accent), #d9651f);
-    color: #0a0e15;
+    background: linear-gradient(135deg, var(--accent), var(--accent-3));
+    color: #ffffff;
     border: none;
     border-radius: 12px;
     font-size: 0.94rem;
@@ -644,7 +644,7 @@ select:focus-visible,
     height: 36px;
     border-radius: 10px;
     flex-shrink: 0;
-    background: linear-gradient(135deg, var(--accent), #c75a1f);
+    background: linear-gradient(135deg, var(--accent), var(--accent-3));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -698,7 +698,7 @@ select:focus-visible,
 }
 
 .nav-item.active {
-    background: linear-gradient(135deg, rgba(255, 138, 61, 0.14), rgba(255, 138, 61, 0.05));
+    background: linear-gradient(135deg, rgba(255, 138, 61, 0.14), rgba(61, 109, 255, 0.08));
     color: var(--accent);
     border-color: rgba(255, 138, 61, 0.22);
     font-weight: 700;
@@ -845,7 +845,7 @@ select:focus-visible,
 }
 
 .drawer-item.active {
-    background: linear-gradient(135deg, rgba(255, 138, 61, 0.14), rgba(255, 138, 61, 0.05));
+    background: linear-gradient(135deg, rgba(255, 138, 61, 0.14), rgba(61, 109, 255, 0.08));
     color: var(--accent);
     border-color: rgba(255, 138, 61, 0.22);
     font-weight: 600;
@@ -1098,8 +1098,8 @@ select:focus-visible,
 }
 
 .btn-primary {
-    background: linear-gradient(135deg, var(--accent), #d9651f);
-    color: #0a0e15;
+    background: linear-gradient(135deg, var(--accent), var(--accent-3));
+    color: #ffffff;
     font-weight: 700;
     box-shadow: 0 2px 14px var(--accent-glow);
 }
