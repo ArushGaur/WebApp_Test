@@ -562,26 +562,26 @@
                     if (!Array.isArray(data.questions)) throw new Error(data.error || 'Malformed response');
                     document.getElementById('mq-lecture-count').textContent = `${items.length} Question${items.length !== 1 ? 's' : ''} · Paper-wise view`;
 
-                    // Rebuild _mqQuestionList to match what the question-view expects
-                    // We need gi (global index in allQuestions) and sqIdx for each item.
-                    // Build a lookup: rowId -> gi
-                    const rowIdToGi = {};
-                    allQuestions.forEach((row, gi) => { if (row._id) rowIdToGi[row._id] = gi; });
+                    // CHANGED: the old code tried to map each item's database `rowId`
+                    // (a per-QUESTION numeric id) to an index `gi` inside `allQuestions`
+                    // (which holds per chapter+topic GROUPS, not individual questions).
+                    // Those two ids are never compatible — gi was always -1 and the
+                    // question view never opened. Paper-wise cards now carry the real
+                    // rowId directly and open via showQuestionByRowId(), which fetches
+                    // the question straight from /api/admin/question-row/:id — no
+                    // dependency on allQuestions being loaded/indexed at all.
+                    _mqQuestionList = items.map(({ rowId }) => ({ rowId }));
 
-                    _mqQuestionList = [];
                     let qIndex = 1;
-                    grid.innerHTML = items.map(({ rowId, chapter, topic, questionIndex, question: sq }) => {
-                        const gi = rowIdToGi[rowId] ?? -1;
-                        const sqIdx = questionIndex;
-                        _mqQuestionList.push({ gi, sqIdx });
+                    grid.innerHTML = items.map(({ rowId, chapter, topic, question: sq }) => {
                         const isMulti = sq.isMultiCorrect || (sq.correctIndexes || [sq.correctIndex || 0]).length > 1;
                         const previewText = stripMath((sq.question || '').substring(0, 60));
-                        const qKey = `${gi}:${sqIdx}`;
+                        const qKey = `row:${rowId}`;
                         const isChecked = selectedQuestions.has(qKey) ? 'checked' : '';
-                        const checkboxHtml = qSelectModeOn ? `<input type="checkbox" class="lec-checkbox" ${isChecked} onclick="event.stopPropagation(); toggleQuestionSelect(event, ${gi}, ${sqIdx})" style="position:absolute;top:8px;right:8px;width:18px;height:18px;cursor:pointer;accent-color:var(--accent);z-index:10">` : '';
-                        const clickHandler = qSelectModeOn ? `onclick="event.stopPropagation(); toggleQuestionSelect(event, ${gi}, ${sqIdx})"` : `onclick="showQuestionViewH(${gi}, ${sqIdx})"`;
+                        const checkboxHtml = qSelectModeOn ? `<input type="checkbox" class="lec-checkbox" ${isChecked} onclick="event.stopPropagation(); toggleQuestionSelectByRowId(event, ${rowId})" style="position:absolute;top:8px;right:8px;width:18px;height:18px;cursor:pointer;accent-color:var(--accent);z-index:10">` : '';
+                        const clickHandler = qSelectModeOn ? `onclick="event.stopPropagation(); toggleQuestionSelectByRowId(event, ${rowId})"` : `onclick="showQuestionByRowId(${rowId})"`;
                         const tags = `<div style="font-size:0.72rem;color:var(--text-dim);margin-bottom:4px">${_jsonEscHtml(formatChapterLabel(chapter || '(No Chapter)'))}${topic ? ` · ${_jsonEscHtml(topic)}` : ''}</div>`;
-                        return `<div class="lecture-card ${isMulti ? 'has-multi' : ''}" data-ch="${(chapter || '(No Chapter)').replace(/"/g, '&quot;')}" data-lec="${paper.replace(/"/g, '&quot;')}" data-qidx="${sqIdx}" data-gi="${gi}" data-sqidx="${sqIdx}" style="position:relative" ${clickHandler}>
+                        return `<div class="lecture-card ${isMulti ? 'has-multi' : ''}" data-ch="${(chapter || '(No Chapter)').replace(/"/g, '&quot;')}" data-lec="${paper.replace(/"/g, '&quot;')}" data-rowid="${rowId}" style="position:relative" ${clickHandler}>
                             ${checkboxHtml}
                             <div class="lecture-card-num">Q${qIndex++}</div>
                             ${tags}
@@ -613,6 +613,63 @@
                     }).join('');
                 });
         }
+
+        // NEW: open a single question directly by its questions_v2 row id.
+        // Used by paper-wise cards, which only ever have a rowId (no gi/sqIdx —
+        // see the comment in renderQuestionsForPaper for why those don't apply
+        // here). Fetches the question fresh from the server every time, so it
+        // works correctly whether or not the owning chapter has been lazy-loaded
+        // into allQuestions.
+        async function showQuestionByRowId(rowId) {
+            try {
+                const r = await fetch(`${API_BASE}/api/admin/question-row/${rowId}`, { credentials: 'include' });
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                const data = await r.json(); // { _id, chapter, topic, subject, year, updatedAt, question }
+                if (!data || !data.question) throw new Error('Question not found');
+
+                // Build (or reuse) a single-row entry in allQuestions so the existing
+                // view/edit/delete/save machinery (which all key off gi+sqIdx) keeps working
+                // unchanged for this question.
+                let gi = allQuestions.findIndex(q => q._id === `rowid:${rowId}`);
+                const wrapped = {
+                    _id: `rowid:${rowId}`,
+                    _rowId: rowId,
+                    chapter: data.chapter || null,
+                    lecture: data.topic || "",
+                    topic: data.topic || "",
+                    updatedAt: data.updatedAt || 0,
+                    questions: [data.question],
+                };
+                if (gi === -1) {
+                    allQuestions.push(wrapped);
+                    gi = allQuestions.length - 1;
+                } else {
+                    allQuestions[gi] = wrapped;
+                }
+
+                mqPrevView = 'paper';
+                showQuestionView(gi, 0);
+            } catch (e) {
+                console.error('showQuestionByRowId failed:', e);
+                showErrorModal('Could not open this question. Please try again.', 'Error');
+            }
+        }
+        window.showQuestionByRowId = showQuestionByRowId;
+
+        // Paper-wise select-mode checkbox toggle (keyed by rowId, not gi:sqIdx,
+        // since paper-wise cards only have a rowId — see showQuestionByRowId).
+        function toggleQuestionSelectByRowId(e, rowId) {
+            const key = `row:${rowId}`;
+            if (selectedQuestions.has(key)) {
+                selectedQuestions.delete(key);
+            } else {
+                selectedQuestions.add(key);
+            }
+            updateQuestionMassDeleteBar();
+            const checkbox = document.querySelector(`.lecture-card[data-rowid="${rowId}"] .lec-checkbox`);
+            if (checkbox) checkbox.checked = selectedQuestions.has(key);
+        }
+        window.toggleQuestionSelectByRowId = toggleQuestionSelectByRowId;
 
         function getScopedChapterRows() {
             const rows = mqCurrentSubject
@@ -1183,10 +1240,18 @@
         function _doNavigateQuestion(delta) {
             const newIdx = mqCurrentSqIdx + delta;
             if (newIdx < 0 || newIdx >= _mqQuestionList.length) return;
-            const { gi, sqIdx } = _mqQuestionList[newIdx];
+            const entry = _mqQuestionList[newIdx];
             _hasUnsavedEdits = false;
-            showQuestionView(gi, sqIdx);
-            history.pushState({ type: "mqQuestion", idx: gi, sqIdx }, "", "");
+            // Paper-wise entries only carry a rowId (see renderQuestionsForPaper);
+            // chapter/topic/lecture entries carry gi+sqIdx as before.
+            if (entry.rowId != null) {
+                showQuestionByRowId(entry.rowId);
+                history.pushState({ type: "mqQuestion", rowId: entry.rowId }, "", "");
+            } else {
+                const { gi, sqIdx } = entry;
+                showQuestionView(gi, sqIdx);
+                history.pushState({ type: "mqQuestion", idx: gi, sqIdx }, "", "");
+            }
         }
         function handleLecCardClick(e, el) {
             const ch = el.dataset.ch;
@@ -1371,8 +1436,12 @@
             if (toolbar) toolbar.style.display = "none";
             document.getElementById("lecSelectModeQBtn").style.display = "none";
 
-            // Find position in the navigation list
-            const listIdx = _mqQuestionList.findIndex(e => e.gi === gi && (sqIdx === undefined || e.sqIdx === sqIdx));
+            // Find position in the navigation list. Paper-wise entries are keyed
+            // by rowId (no gi/sqIdx — see renderQuestionsForPaper), so match on
+            // the wrapped row's _rowId in that case instead.
+            const listIdx = (q._rowId != null)
+                ? _mqQuestionList.findIndex(e => e.rowId === q._rowId)
+                : _mqQuestionList.findIndex(e => e.gi === gi && (sqIdx === undefined || e.sqIdx === sqIdx));
             mqCurrentSqIdx = listIdx;
             const inList = _mqQuestionList.length > 1;
             const posLabel = inList && listIdx >= 0 ? ` · ${listIdx + 1} / ${_mqQuestionList.length}` : '';
