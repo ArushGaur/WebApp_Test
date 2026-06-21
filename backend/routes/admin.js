@@ -202,7 +202,13 @@ router.get("/api/admin/questions-meta", requireAdmin, async (req, res) => {
 			 ORDER BY chapter, topic`
 		);
 		const rows = result.rows.map((row) => ({
-			_id: null,
+			// CHANGED: was `_id: null` for every row. Since all metadata rows shared
+			// the same null id, the frontend's ensureChapterLoaded() merge (which
+			// looks up full rows by _id) collided every topic onto whichever full
+			// row happened to load last — showing only 1 topic with a wrong count.
+			// A composite chapter::topic key is unique per group, so each metadata
+			// row now matches its own full row correctly.
+			_id: `${row.chapter || ""}::${row.topic || ""}`,
 			chapter: row.chapter || null,
 			lecture: row.topic || "", // backward-compat alias
 			topic: row.topic || "",
@@ -260,7 +266,11 @@ router.get("/api/admin/questions-for-chapter/:chapter", requireAdmin, async (req
 			const key = row.topic || "";
 			if (!groups[key]) {
 				groups[key] = {
-					_id: null,
+					// CHANGED: was `_id: null`. Must match the same composite key
+					// scheme used in /api/admin/questions-meta so the frontend's
+					// byId[row._id] lookup in ensureChapterLoaded() correctly pairs
+					// each metadata row with its corresponding full row here.
+					_id: `${row.chapter || ""}::${row.topic || ""}`,
 					chapter: row.chapter || null,
 					lecture: row.topic || "",
 					topic: row.topic || "",
