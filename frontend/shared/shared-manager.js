@@ -1419,7 +1419,6 @@
                                 <span style="color:var(--text);font-weight:600;font-size:1rem">${String(sub.numericalAnswer ?? sub.correct_answer ?? 'N/A')}</span>
                                </div>`
                             : `<div style="margin-bottom:14px">
-                            <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px">Options</div>
                             ${LETTERS.map((l, oi) => `<div class="opt-render-row ${ci.includes(oi) ? "is-correct" : ""}"><span class="opt-letter">${l}</span><div id="iqe_opt_render_${si}_${oi}"></div>${ci.includes(oi) ? '<span style="margin-left:auto;font-size:0.7rem;color:var(--success);font-weight:700">✓ Correct</span>' : ""}</div>`).join("")}
                             ${isNoneCorrect ? '<div style="margin-top:10px;padding:8px 12px;background:rgba(245,158,11,0.1);border:1px dashed rgba(245,158,11,0.45);border-radius:6px;font-size:0.76rem;color:#f59e0b;font-weight:600">⊘ None of the options is correct — every student gets full marks for this question.</div>' : ""}
                         </div>`}
@@ -1610,7 +1609,6 @@
                                 <span style="color:var(--text);font-weight:600;font-size:1rem">${String(sub.numericalAnswer ?? sub.correct_answer ?? 'N/A')}</span>
                                </div>`
                             : `<div style="margin-bottom:14px">
-                            <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px">Options (rendered)</div>
                             ${LETTERS.map((l, oi) => `<div class="opt-render-row ${ci.includes(oi) ? "is-correct" : ""}"><span class="opt-letter">${l}</span><div id="iqe_opt_render_${si}_${oi}"></div></div>`).join("")}
                         </div>
                         <div class="options-grid">
