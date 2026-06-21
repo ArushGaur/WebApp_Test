@@ -18,6 +18,38 @@ async function initDB(TEACHER_PASSCODE, hashPasscode) {
 		CREATE INDEX IF NOT EXISTS idx_questions_chapter_lecture ON questions(chapter, lecture);
 		CREATE INDEX IF NOT EXISTS idx_questions_lecture ON questions(lecture);
 
+		-- NEW NORMALIZED QUESTION BANK — one row per question (not per topic).
+		-- subject/chapter/topic/year are real, indexed columns so both
+		-- chapter+topic browsing AND subject+year ("paper-wise") search are
+		-- fast at 300k+ rows. Everything else a question needs (text, options,
+		-- images, tables, correctIndexes, solution, etc.) lives in raw_json,
+		-- in exactly the shape normalizeQuestion() in utils/helpers.js
+		-- already produces — so no other code needs to change its data model.
+		-- The OLD 'questions' table above is left untouched; migrate-to-v2.js
+		-- reads from it once to populate this table, then you can drop the
+		-- old table + question_years yourself once you've verified everything.
+		CREATE TABLE IF NOT EXISTS questions_v2 (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			subject TEXT NOT NULL DEFAULT '',
+			unit TEXT DEFAULT '',
+			chapter TEXT DEFAULT '',
+			topic TEXT DEFAULT '',
+			year TEXT DEFAULT '',
+			month TEXT DEFAULT '',
+			day TEXT DEFAULT '',
+			shift TEXT DEFAULT '',
+			question_number INTEGER,
+			question_type TEXT DEFAULT 'MCQ',
+			raw_json TEXT NOT NULL DEFAULT '{}',
+			created_at INTEGER DEFAULT 0,
+			updated_at INTEGER DEFAULT 0
+		);
+		CREATE INDEX IF NOT EXISTS idx_q2_chapter_topic ON questions_v2(chapter, topic);
+		CREATE INDEX IF NOT EXISTS idx_q2_subject_year ON questions_v2(subject, year);
+		CREATE INDEX IF NOT EXISTS idx_q2_chapter ON questions_v2(chapter);
+		CREATE INDEX IF NOT EXISTS idx_q2_subject ON questions_v2(subject);
+		CREATE INDEX IF NOT EXISTS idx_q2_year ON questions_v2(year);
+
 		CREATE TABLE IF NOT EXISTS students (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			mobile TEXT NOT NULL,
