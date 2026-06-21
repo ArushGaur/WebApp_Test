@@ -2721,7 +2721,7 @@ function _agRenderSubjects() {
 
     const order = ['Physics', 'Chemistry', 'Mathematics'];
     const ICONS = { Physics: '⚛️', Chemistry: '🧪', Mathematics: '📐', General: '📚' };
-    const COLORS = { Physics: '#56a9ff', Chemistry: '#2ed2b4', Mathematics: '#f59e0b', General: '#b7c8e8' };
+    const COLOR_VARS = { Physics: 'var(--accent)', Chemistry: 'var(--accent-2)', Mathematics: 'var(--accent-4)', General: 'var(--accent-3)' };
 
     const sorted = Object.keys(subjects).sort((a, b) => {
         const ai = order.indexOf(a), bi = order.indexOf(b);
@@ -2736,12 +2736,11 @@ function _agRenderSubjects() {
     grid.innerHTML = sorted.map(subj => {
         const { count, chapters } = subjects[subj];
         const icon = ICONS[subj] || '📚';
-        const color = COLORS[subj] || '#b7c8e8';
-        return `<div class="ag-subject-card" onclick="agSelectSubject('${_agEsc(subj)}')"
-            style="border-color:${color}22">
-            <div style="font-size:2rem;margin-bottom:6px">${icon}</div>
-            <div style="font-weight:800;font-size:0.95rem;color:${color}">${_agEsc(subj)}</div>
-            <div style="font-size:0.72rem;color:var(--text-dim);margin-top:4px">${count} Q · ${chapters.size} Chapters</div>
+        const colorVar = COLOR_VARS[subj] || 'var(--accent-3)';
+        return `<div class="ag-subject-card" onclick="agSelectSubject('${_agEsc(subj)}')" style="--card-tint:color-mix(in srgb, ${colorVar} 16%, transparent)">
+            <div class="ag-subject-card-icon">${icon}</div>
+            <div class="ag-subject-card-title">${_agEsc(subj)}</div>
+            <div class="ag-subject-card-meta">${count} Q · ${chapters.size} Chapters</div>
         </div>`;
     }).join('');
 }
