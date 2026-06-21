@@ -1,21 +1,21 @@
 /* ════════════════════════════════════════════════════════════════════════
    GRIP PHYSICS — CLIENT PANEL
-   Visual identity: "lab instrument" — graphite-ink surface, copper signal
-   trace as the primary accent, cyan spark as the secondary. Numbers and
-   identifiers (roll numbers, counts, dates) are set in mono to read like
-   instrument readouts. A single recurring motif — a thin animated trace
-   line, like an oscilloscope sweep — marks key moments: login, card tops,
-   active states. Everything else stays quiet so that signature lands.
+   Visual identity: neutral graphite-gray chrome with a blue/violet signal
+   accent. Question text reads in a serif (Lora) for exam-paper clarity,
+   answer options stay in the UI sans (Outfit) at a slightly smaller size
+   so the eye separates "what's being asked" from "what to pick."
    ════════════════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;1,500&display=swap');
 
 /* ── THEME TOKENS ───────────────────────────────────────────────────── */
 :root {
-    --bg: #070a12;
-    --bg-card: #0e1422;
-    --bg-input: #131a2c;
-    --bg-hover: #192238;
-    --bg-sidebar: #080c16;
-    --border: rgba(190, 210, 255, 0.10);
+    --bg: #121314;
+    --bg-card: #1a1b1d;
+    --bg-input: #1f2022;
+    --bg-hover: #262729;
+    --bg-sidebar: #0f1011;
+    --border: rgba(255, 255, 255, 0.09);
     --border-focus: #3d6dff;
 
     /* signature trio */
@@ -29,9 +29,9 @@
     --warn: #fbbf24;
     --error: #ff4d6a;
 
-    --text: #f1f4fd;
-    --text-dim: #a3b1d6;
-    --text-muted: rgba(241, 244, 253, 0.6);
+    --text: #f3f4f5;
+    --text-dim: #a9abaf;
+    --text-muted: rgba(243, 244, 245, 0.58);
 
     --sidebar-w: 232px;
     --radius: 16px;
@@ -66,10 +66,6 @@
     --shadow-modal: 0 24px 60px rgba(30, 36, 60, 0.22);
 }
 
-[data-theme="dark"] {
-    --bg: #0a0e15;
-}
-
 /* ── RESET ──────────────────────────────────────────────────────────── */
 * {
     margin: 0;
@@ -99,9 +95,9 @@ body {
 
 [data-theme="dark"] body {
     background:
-        radial-gradient(900px 520px at 10% 0%, rgba(61, 109, 255, 0.08) 0%, rgba(61, 109, 255, 0) 60%),
-        radial-gradient(700px 480px at 95% 30%, rgba(38, 224, 224, 0.05) 0%, rgba(52, 232, 212, 0) 60%),
-        linear-gradient(180deg, #0a0e15 0%, #07090f 100%);
+        radial-gradient(900px 520px at 10% 0%, rgba(61, 109, 255, 0.05) 0%, rgba(61, 109, 255, 0) 60%),
+        radial-gradient(700px 480px at 95% 30%, rgba(38, 224, 224, 0.035) 0%, rgba(52, 232, 212, 0) 60%),
+        linear-gradient(180deg, #121314 0%, #0d0e0f 100%);
 }
 
 [data-theme="light"] body {
@@ -1464,9 +1460,12 @@ tr:hover td {
 }
 
 .q-render-preview {
-    line-height: 1.75;
-    font-size: 1.08rem;
+    font-family: 'Lora', 'Outfit', serif;
+    line-height: 1.7;
+    font-size: 1rem;
     font-weight: 500;
+    margin-bottom: 22px;
+    color: var(--text);
 }
 
 .options-grid {
@@ -1480,12 +1479,13 @@ tr:hover td {
     display: flex;
     align-items: flex-start;
     gap: 10px;
-    padding: 11px 14px;
+    padding: 13px 14px;
     background: var(--bg-input);
     border: 1.5px solid var(--border);
     border-radius: var(--radius-sm);
     transition: var(--transition);
-    font-size: 0.85rem;
+    font-size: 0.93rem;
+    font-family: var(--font-display);
 }
 
 .opt-render-row.is-correct {
@@ -1615,6 +1615,16 @@ tr:hover td {
     gap: 10px;
 }
 
+.ag-section-label {
+    font-weight: 700;
+    font-size: 0.86rem;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .ag-subject-grid,
 .ag-chapter-grid,
 .ag-topic-grid {
@@ -1628,11 +1638,36 @@ tr:hover td {
 .ag-topic-card {
     background: var(--bg-input);
     border: 1.5px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 14px;
+    border-radius: var(--radius);
+    padding: 18px 14px;
     cursor: pointer;
     transition: var(--transition);
     text-align: center;
+    position: relative;
+}
+
+.ag-subject-card-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    margin: 0 auto 10px;
+    background: var(--card-tint, var(--accent-glow));
+}
+
+.ag-subject-card-title {
+    font-weight: 700;
+    font-size: 0.92rem;
+    color: var(--text);
+}
+
+.ag-subject-card-meta {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 4px;
 }
 
 .ag-subject-card:hover,
@@ -1640,6 +1675,7 @@ tr:hover td {
 .ag-topic-card:hover {
     border-color: var(--accent);
     background: var(--accent-glow);
+    transform: translateY(-2px);
 }
 
 .ag-subject-card.selected,
@@ -1647,15 +1683,37 @@ tr:hover td {
 .ag-topic-card.topic-selected {
     border-color: var(--accent);
     background: var(--accent-glow);
-    color: var(--accent);
+}
+
+.ag-subject-card.selected::after,
+.ag-topic-card.topic-selected::after {
+    content: '✓';
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.6rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .ag-ch-checkbox {
-    width: 17px;
-    height: 17px;
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    width: 18px;
+    height: 18px;
     border-radius: 5px;
     border: 1.5px solid var(--border);
-    flex-shrink: 0;
+    accent-color: var(--accent);
+    cursor: pointer;
+    background: var(--bg-card);
 }
 
 .ag-selection-pill {
@@ -1750,12 +1808,18 @@ tr:hover td {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 18px;
-    width: 560px;
+    width: 600px;
     max-width: 100%;
     max-height: 85vh;
     display: flex;
     flex-direction: column;
     box-shadow: var(--shadow-modal);
+    animation: agModalIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes agModalIn {
+    from { opacity: 0; transform: translateY(20px) scale(0.97); }
+    to { opacity: 1; transform: none; }
 }
 
 #ag-modal-header {
@@ -1763,10 +1827,25 @@ tr:hover td {
     border-bottom: 1px solid var(--border);
     font-weight: 800;
     font-size: 1.02rem;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+#ag-modal-header button {
+    transition: var(--transition);
+}
+
+#ag-modal-header button:hover {
+    border-color: var(--accent) !important;
+    color: var(--accent) !important;
+    background: var(--accent-glow) !important;
 }
 
 #ag-modal-body {
-    padding: 20px 22px;
+    padding: 22px;
     overflow-y: auto;
     flex: 1;
 }
@@ -1777,6 +1856,7 @@ tr:hover td {
     display: flex;
     justify-content: flex-end;
     gap: 10px;
+    flex-shrink: 0;
 }
 
 .pgen-step {
