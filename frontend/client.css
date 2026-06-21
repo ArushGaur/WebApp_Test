@@ -99,7 +99,7 @@ body {
 
 [data-theme="dark"] body {
     background:
-        radial-gradient(900px 520px at 10% 0%, rgba(61, 109, 255, 0.08) 0%, rgba(255, 138, 61, 0) 60%),
+        radial-gradient(900px 520px at 10% 0%, rgba(61, 109, 255, 0.08) 0%, rgba(61, 109, 255, 0) 60%),
         radial-gradient(700px 480px at 95% 30%, rgba(38, 224, 224, 0.05) 0%, rgba(52, 232, 212, 0) 60%),
         linear-gradient(180deg, #0a0e15 0%, #07090f 100%);
 }
@@ -698,9 +698,9 @@ select:focus-visible,
 }
 
 .nav-item.active {
-    background: linear-gradient(135deg, rgba(255, 138, 61, 0.14), rgba(61, 109, 255, 0.08));
+    background: linear-gradient(135deg, rgba(61, 109, 255, 0.14), rgba(61, 109, 255, 0.08));
     color: var(--accent);
-    border-color: rgba(255, 138, 61, 0.22);
+    border-color: rgba(61, 109, 255, 0.22);
     font-weight: 700;
 }
 
@@ -845,9 +845,9 @@ select:focus-visible,
 }
 
 .drawer-item.active {
-    background: linear-gradient(135deg, rgba(255, 138, 61, 0.14), rgba(61, 109, 255, 0.08));
+    background: linear-gradient(135deg, rgba(61, 109, 255, 0.14), rgba(61, 109, 255, 0.08));
     color: var(--accent);
-    border-color: rgba(255, 138, 61, 0.22);
+    border-color: rgba(61, 109, 255, 0.22);
     font-weight: 600;
 }
 
@@ -938,7 +938,7 @@ select:focus-visible,
 }
 
 .stat-card:hover {
-    border-color: rgba(255, 138, 61, 0.3);
+    border-color: rgba(61, 109, 255, 0.3);
     transform: translateY(-2px);
 }
 
@@ -1301,7 +1301,7 @@ tr:hover td {
 
 .chapter-card:hover,
 .lecture-card:hover {
-    border-color: rgba(255, 138, 61, 0.35);
+    border-color: rgba(61, 109, 255, 0.35);
     transform: translateY(-3px);
     box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
 }
@@ -1329,8 +1329,8 @@ tr:hover td {
 }
 
 .lecture-card.has-multi {
-    background: linear-gradient(160deg, rgba(255, 138, 61, 0.07), var(--bg-card));
-    border-color: rgba(255, 138, 61, 0.22);
+    background: linear-gradient(160deg, rgba(61, 109, 255, 0.07), var(--bg-card));
+    border-color: rgba(61, 109, 255, 0.22);
 }
 
 .lecture-card.has-multi::before {
@@ -2206,7 +2206,7 @@ tr:hover td {
 
 .reg-pick-card:hover {
     transform: translateY(-3px);
-    border-color: rgba(255, 138, 61, 0.32);
+    border-color: rgba(61, 109, 255, 0.32);
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
 }
 
@@ -3055,7 +3055,7 @@ tr:hover td {
 .imp-ak-tab.active { background: var(--accent-glow); color: var(--accent); }
 
 .imp-status { padding: 12px 16px; border-radius: var(--radius-sm); font-size: 0.82rem; margin-top: 12px; display: none; }
-.imp-status.loading { background: var(--accent-glow); border: 1px solid rgba(255, 138, 61, 0.25); color: var(--accent); display: block; }
+.imp-status.loading { background: var(--accent-glow); border: 1px solid rgba(61, 109, 255, 0.25); color: var(--accent); display: block; }
 .imp-status.success { background: rgba(52, 224, 161, 0.08); border: 1px solid rgba(52, 224, 161, 0.25); color: var(--success); display: block; }
 .imp-status.error { background: rgba(255, 92, 122, 0.08); border: 1px solid rgba(255, 92, 122, 0.25); color: var(--error); display: block; }
 
@@ -3337,7 +3337,7 @@ tr:hover td {
 }
 .imp-badge.eq {
     background: var(--accent-glow);
-    border: 1px solid rgba(255, 138, 61, 0.3);
+    border: 1px solid rgba(61, 109, 255, 0.3);
     color: var(--accent);
 }
 
