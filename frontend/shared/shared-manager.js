@@ -3079,9 +3079,11 @@
 
         async function jsonUploadSaveAll() {
             const isJeeMode = _jsonUploadExamType === 'jee_mains';
+            const isJeePaper = isJeeMode && _jsonUploadJeeMode === 'paper';
+            const isJeeChapterwise = isJeeMode && _jsonUploadJeeMode === 'chapterwise';
             const isNeetPaper = !isJeeMode && _jsonUploadNeetMode === 'paper';
             let lectureName = "";
-            if (isJeeMode) {
+            if (isJeePaper) {
                 const year = document.getElementById("jsonUploadYear")?.value;
                 const month = document.getElementById("jsonUploadMonth")?.value;
                 const date = document.getElementById("jsonUploadDate")?.value.trim();
@@ -3110,10 +3112,10 @@
             _jsonUploadQuestions.forEach((q, idx) => {
                 const chapter = q.chapter || q.subject || "General";
                 const topic = q.topic || "(No Topic)";
-                // JEE / NEET paper: use the paper label as lecture.
-                // NEET chapterwise: silently use topic as the internal lecture key so each
+                // JEE paper / NEET paper: use the paper label as lecture.
+                // JEE chapterwise / NEET chapterwise: silently use topic as the internal lecture key so each
                 // topic becomes exactly one DB row. Year lives inside each question object.
-                const lecture = (isJeeMode || isNeetPaper) ? lectureName : topic;
+                const lecture = (isJeePaper || isNeetPaper) ? lectureName : topic;
                 const groupKey = `${chapter}|||${topic}`;
                 if (!byGroup[groupKey]) byGroup[groupKey] = { chapter, topic, lecture, questions: [] };
 
