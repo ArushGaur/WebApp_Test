@@ -251,6 +251,76 @@ router.get("/api/admin/question-row/:id", requireAdmin, async (req, res) => {
 	}
 });
 
+// Update ONE question row in place (by its real questions_v2 id). Unlike
+// PUT /api/admin/question/:chapter/:lecture (which replaces an entire
+// chapter+topic group), this touches exactly one row — siblings in the
+// same topic are never deleted. Accepts either:
+//   { question: {...} }            — preferred: the single edited question
+//   { questions: [questionObj] }   — also accepted for backward-compat with
+//                                     callers that still send a 1-item array
+// chapter/lecture/topic in the body let the row move to a different
+// chapter/topic, same as the multi-row route does.
+router.put("/api/admin/question-row/:id", requireAdmin, async (req, res) => {
+	try {
+		const id = Number(req.params.id);
+		if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+
+		const existingResult = await db.execute({ sql: "SELECT * FROM questions_v2 WHERE id = ? LIMIT 1", args: [id] });
+		if (!existingResult.rows.length) return res.status(404).json({ error: "Not found" });
+		const existingRow = existingResult.rows[0];
+
+		const body = req.body || {};
+		let questionObj = body.question;
+		if (!questionObj && Array.isArray(body.questions) && body.questions.length) {
+			questionObj = body.questions[0]; // backward-compat: take the first (only) item
+		}
+		if (!questionObj || typeof questionObj !== "object") {
+			return res.status(400).json({ error: "question object is required" });
+		}
+
+		const normalized = normalizeQuestion(questionObj, { preserveRaw: true });
+		const chapter = body.chapter !== undefined ? String(body.chapter || "").trim() : (existingRow.chapter || "");
+		const topic = (body.topic ?? body.lecture) !== undefined ? String(body.topic ?? body.lecture ?? "").trim() : (existingRow.topic || "");
+		const subject = String(normalized.subject ?? existingRow.subject ?? "").trim();
+		const unit = String(normalized.unit ?? existingRow.unit ?? "").trim();
+		const year = normalized.year != null ? String(normalized.year).trim() : (existingRow.year || "");
+
+		await db.execute({
+			sql: `UPDATE questions_v2
+				SET subject = ?, unit = ?, chapter = ?, topic = ?, year = ?, raw_json = ?, updated_at = ?
+				WHERE id = ?`,
+			args: [subject, unit, chapter, topic, year, JSON.stringify(normalized), Date.now(), id],
+		});
+
+		await refreshCache(existingRow.chapter || "", existingRow.topic || "");
+		if (chapter !== (existingRow.chapter || "") || topic !== (existingRow.topic || "")) {
+			await refreshCache(chapter, topic);
+		}
+		res.json({ success: true, id });
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+// Delete ONE question row by its real questions_v2 id — siblings in the
+// same chapter+topic are untouched.
+router.delete("/api/admin/question-row/:id", requireAdmin, async (req, res) => {
+	try {
+		const id = Number(req.params.id);
+		if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+
+		const existingResult = await db.execute({ sql: "SELECT chapter, topic FROM questions_v2 WHERE id = ? LIMIT 1", args: [id] });
+		if (!existingResult.rows.length) return res.status(404).json({ error: "Not found" });
+		const { chapter, topic } = existingResult.rows[0];
+
+		await db.execute({ sql: "DELETE FROM questions_v2 WHERE id = ?", args: [id] });
+		await refreshCache(chapter || "", topic || "");
+		res.json({ success: true });
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
 // Fetch all rows for a chapter — used when user opens a chapter (lazy load)
 router.get("/api/admin/questions-for-chapter/:chapter", requireAdmin, async (req, res) => {
 	try {
@@ -280,7 +350,9 @@ router.get("/api/admin/questions-for-chapter/:chapter", requireAdmin, async (req
 			}
 			let raw = {};
 			try { raw = JSON.parse(row.raw_json || "{}"); } catch { raw = {}; }
-			groups[key].questions.push(normalizeQuestion(raw, { preserveRaw: true }));
+			const normalized = normalizeQuestion(raw, { preserveRaw: true });
+			normalized._rowId = row.id; // needed so paper-wise view can map a DB row id -> exact question
+			groups[key].questions.push(normalized);
 			groups[key].updatedAt = Math.max(groups[key].updatedAt, row.updated_at || 0);
 		}
 		res.json(Object.values(groups));
