@@ -566,6 +566,8 @@
 
         function renderQuestionsForPaper(paper) {
             const grid = document.getElementById('lectureCardsGrid'); if (!grid) return;
+            grid.style.gridTemplateColumns = "";
+            grid.style.gap = "";
             document.getElementById('mq-chapter-title').textContent = `${paper}`;
             document.getElementById('mq-lecture-count').textContent = `Loading…`;
             grid.innerHTML = '<p style="color:var(--text-dim);padding:20px">Loading questions…</p>';
@@ -1104,6 +1106,8 @@
             grid.className = "";
 
             if (viewMode === "topic") {
+                grid.style.gridTemplateColumns = "repeat(auto-fill, minmax(220px, 1fr))";
+                grid.style.gap = "16px";
                 const topics = {};
                 lecs.forEach(q => {
                     const topic = q.topic || "(No Topic)";
@@ -1115,16 +1119,18 @@
                     const qs = topics[topic];
                     const totalQ = qs.reduce((sum, x) => sum + (Array.isArray(x.questions) ? x.questions.length : (x.questionCount || 0)), 0);
                     const hasMulti = qs.some(x => Array.isArray(x.questions) && x.questions.some(y => y.isMultiCorrect));
-                    return `<div class="lecture-card ${hasMulti ? "has-multi" : ""}" data-ch-enc="${encodeURIComponent(ch)}" data-topic-enc="${encodeURIComponent(topic)}" onclick="handleTopicCardClick(event, this, decodeURIComponent(this.dataset.chEnc), decodeURIComponent(this.dataset.topicEnc))">
+                    return `<div class="lecture-card topic-card ${hasMulti ? "has-multi" : ""}" data-ch-enc="${encodeURIComponent(ch)}" data-topic-enc="${encodeURIComponent(topic)}" onclick="handleTopicCardClick(event, this, decodeURIComponent(this.dataset.chEnc), decodeURIComponent(this.dataset.topicEnc))">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                             <div class="lecture-card-num">📚</div>
                             <button class="btn btn-ghost" style="padding:2px; font-size:0.9rem; min-width:unset; opacity:0.7" onclick="event.stopPropagation(); renameTopic(this.closest('.lecture-card').dataset.chEnc, this.closest('.lecture-card').dataset.topicEnc)" title="Rename Topic">✏️</button>
                         </div>
-                        <div style="font-size:0.82rem;font-weight:600;color:var(--text);margin-bottom:4px;word-break:break-word;">${topic}</div>
-                        <div style="font-size:0.78rem;margin-bottom:3px">${totalQ} Question${totalQ !== 1 ? 's' : ''}</div>
+                        <div style="font-size:0.95rem;font-weight:700;color:var(--text);margin-bottom:6px;word-break:break-word;">${topic}</div>
+                        <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:3px">${totalQ} Question${totalQ !== 1 ? 's' : ''}</div>
                     </div>`;
                 }).join("");
             } else {
+                grid.style.gridTemplateColumns = "";
+                grid.style.gap = "";
                 const uniqueLectures = [...new Set(lecs.map(q => q.lecture))].sort((a, b) => Number(a) - Number(b));
                 grid.innerHTML = uniqueLectures.map(lecNum => {
                     const lecData = lecs.filter(q => Number(q.lecture) === Number(lecNum));
@@ -1162,6 +1168,10 @@
                 document.getElementById("mq-chapter-title").textContent = `${ch} - Lecture ${lecNum}`;
                 document.getElementById("mq-lecture-count").textContent = `${totalQ} Question${totalQ !== 1 ? 's' : ''}`;
                 const grid = document.getElementById("lectureCardsGrid");
+                if (grid) {
+                    grid.style.gridTemplateColumns = "";
+                    grid.style.gap = "";
+                }
                 // Build navigation list for Prev/Next buttons
                 _mqQuestionList = [];
                 grid.innerHTML = allQs.map((sq, idx) => {
@@ -1207,6 +1217,10 @@
 
         function renderTopicQuestionCards(ch, topic, qs) {
             const grid = document.getElementById("lectureCardsGrid");
+            if (grid) {
+                grid.style.gridTemplateColumns = "";
+                grid.style.gap = "";
+            }
             // Build navigation list for Prev/Next buttons
             _mqQuestionList = [];
             let qIndex = 1;
