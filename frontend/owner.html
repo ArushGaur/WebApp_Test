@@ -489,6 +489,21 @@
                             </div>
                         </div>
 
+                        <!-- JEE sub-mode: Chapterwise or Paper Upload -->
+                        <div id="jsonUploadJeeModeBlock" style="display:block;margin-bottom:12px">
+                            <div style="font-size:0.78rem;font-weight:700;color:var(--text-dim);margin-bottom:8px">JEE
+                                Upload Mode</div>
+                            <div style="display:flex;gap:10px;flex-wrap:wrap">
+                                <button id="jsonJeeChapterBtn" type="button"
+                                    onclick="jsonUploadSetJeeMode('chapterwise')"
+                                    style="flex:1;min-width:140px;padding:10px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);cursor:pointer;font-weight:700;font-size:0.82rem">Chapterwise
+                                    Upload</button>
+                                <button id="jsonJeePaperBtn" type="button" onclick="jsonUploadSetJeeMode('paper')"
+                                    style="flex:1;min-width:140px;padding:10px 12px;border-radius:6px;border:1px solid var(--accent);background:rgba(86,169,255,0.08);color:#56a9ff;cursor:pointer;font-weight:700;font-size:0.82rem">Paper
+                                    Upload</button>
+                            </div>
+                        </div>
+
                         <!-- NEET sub-mode: Chapterwise or Paper Upload -->
                         <div id="jsonUploadNeetModeBlock" style="display:none;margin-bottom:12px">
                             <div style="font-size:0.78rem;font-weight:700;color:var(--text-dim);margin-bottom:8px">NEET
