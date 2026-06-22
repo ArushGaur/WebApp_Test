@@ -182,13 +182,12 @@ async function getInstituteById(id) {
 }
 
 // ── requireAdmin ──────────────────────────────────────────────────────────────
-// Accepts a regular admin/teacher session (req.session.admin === true).
-// Owners live on their own cookie (grip.owner.sid) and a separate set of
-// /api/owner/* endpoints, so they DO NOT pass through requireAdmin. Any data
-// the owner needs (students, chapters, questions, …) should come from the
-// matching /api/owner/* endpoint.
+// Accepts a regular admin/teacher session (req.session.admin === true) OR an
+// owner session (req.session.ownerAdmin === true). Owners use a separate cookie
+// (grip.owner.sid) and route via X-Session-Type: owner, but should have full
+// access to all /api/admin/* endpoints (question management, students, etc.).
 function requireAdmin(req, res, next) {
-	if (!req.session?.admin) {
+	if (!req.session?.admin && !req.session?.ownerAdmin) {
 		return res.status(403).json({ error: "Unauthorized" });
 	}
 	next();
