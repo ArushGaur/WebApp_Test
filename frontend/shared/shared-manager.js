@@ -2131,6 +2131,108 @@
             const q = allQuestions[gi];
             if (!q) { showErrorModal("Question set not found.", "Error"); return; }
 
+            // SINGLE-ROW MODE: this question was opened via showQuestionByRowId
+            // (paper-wise view) and `q.questions` therefore holds ONLY this one
+            // question, not its topic siblings. Saving through the normal
+            // "replace whole chapter+topic" path below would wipe every sibling
+            // row in the database. Patch and PUT just this one row instead via
+            // /api/admin/question-row/:id, then return early.
+            if (q._rowId != null) {
+                const origIdx = 0;
+                const text = document.getElementById(`iqe_qt_${origIdx}`)?.value.trim();
+                const opts = LETTERS.map((_, oi) => document.getElementById(`iqe_opt_${origIdx}_${oi}`)?.value.trim() || "");
+                const isMulti = document.getElementById(`iqe_multi_${origIdx}`)?.checked || false;
+                const wrap = document.getElementById(`iqe_correct_wrap_${origIdx}`);
+                const isNoneCorrect = wrap?.dataset.none === '1';
+                const selectedBtns = wrap?.querySelectorAll('.correct-btn:not(.correct-btn-none).selected') || [];
+                const checked = Array.from(selectedBtns).map(btn => parseInt(btn.dataset.oi));
+                const ci = isNoneCorrect ? [] : (checked.length ? checked : [0]);
+
+                const existingSub = (q.questions && q.questions[0]) || {};
+                const staged = _mqEditImages[origIdx] || {};
+                const optionImages = Array.isArray(staged.optionImages)
+                    ? [...staged.optionImages, null, null, null, null].slice(0, 4)
+                    : mqGetOptionImages(existingSub);
+                const solutionText = document.getElementById(`mqSolEditArea_${origIdx}`)?.value.trim() || "";
+                const existingSolutions = Array.isArray(existingSub.solutions) ? existingSub.solutions.map(sol => ({ ...sol })) : [];
+                const questionImages = Array.isArray(staged.questionImages)
+                    ? staged.questionImages.filter(Boolean)
+                    : (Array.isArray(existingSub.questionImages) ? existingSub.questionImages.filter(Boolean) : (existingSub.questionImage ? [existingSub.questionImage] : []));
+                const solutionImages = Array.isArray(staged.solutionImages)
+                    ? staged.solutionImages.filter(Boolean)
+                    : mqGetSolutionImages(existingSub);
+                if (solutionText || solutionImages.length || existingSolutions.length) {
+                    if (!existingSolutions.length) {
+                        existingSolutions.push({ text: solutionText, image: solutionImages[0] || null, images: solutionImages });
+                    } else {
+                        if (!existingSolutions[0]) existingSolutions[0] = {};
+                        existingSolutions[0].text = solutionText;
+                        existingSolutions[0].images = solutionImages;
+                        existingSolutions[0].image = solutionImages[0] || null;
+                    }
+                }
+                const { otherTables: _keepTables } = _extractOptionTables(existingSub);
+                const _normKeepTables = Array.isArray(_keepTables)
+                    ? _keepTables.filter(t => t && ((Array.isArray(t.headers) && t.headers.length) || (Array.isArray(t.rows) && t.rows.length)))
+                    : [];
+                const _existingOptTables = mqGetOptionTables(existingSub);
+                const _optTablesSave = _existingOptTables.map(t => t || null);
+                const _hasOptTablesSave = _hasAnyOptionTable(_optTablesSave);
+
+                const patchedQuestion = {
+                    question: text,
+                    options: opts,
+                    correctIndexes: ci,
+                    isMultiCorrect: isNoneCorrect ? false : isMulti,
+                    ...(isNoneCorrect ? { isNoneCorrect: true } : {}),
+                    ...(existingSub.year ? { year: String(existingSub.year) } : {}),
+                    ...(existingSub.subject ? { subject: existingSub.subject } : {}),
+                    ...(existingSub.unit ? { unit: existingSub.unit } : {}),
+                    ...(_normKeepTables.length ? { tables: _normKeepTables } : {}),
+                    ...(_hasOptTablesSave ? { optionTables: _optTablesSave, hasOptionTables: true } : {}),
+                    ...(existingSub.numericalAnswer !== undefined && existingSub.numericalAnswer !== null ? { numericalAnswer: existingSub.numericalAnswer } : {}),
+                    questionImage: questionImages[0] || null,
+                    questionImages,
+                    hasImage: questionImages.length > 0,
+                    solutions: existingSolutions,
+                    optionImages,
+                    hasOptionImages: optionImages.some(Boolean)
+                };
+
+                if (!text || !opts.every((o, oi) => o || optionImages[oi] || _optTablesSave[oi])) {
+                    showErrorModal("Please fill in the question text and all options.", "Incomplete data");
+                    return;
+                }
+
+                showSavingOverlay("Saving question...", "Updating this question only");
+                try {
+                    const r = await fetch(`${API_BASE}/api/admin/question-row/${q._rowId}`, {
+                        method: "PUT",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ chapter, lecture, topic: lecture, question: patchedQuestion })
+                    });
+                    const data = await r.json().catch(() => null);
+                    if (!r.ok || (data && data.error)) {
+                        hideSavingOverlay();
+                        showErrorModal(data?.error || await extractErrorMessage(r, "Save failed."), "Save failed");
+                        return;
+                    }
+                    // Update the in-memory wrapped row so the view reflects the edit immediately.
+                    q.questions = [patchedQuestion];
+                    q.chapter = chapter || q.chapter;
+                    q.lecture = lecture || q.lecture;
+                    q.topic = lecture || q.topic;
+                    hideSavingOverlay();
+                    showSuccessModal("Saved!", "Question updated.");
+                    showQuestionView(gi, 0);
+                } catch (e) {
+                    hideSavingOverlay();
+                    showErrorModal("An error occurred while saving. Please try again.", "Error");
+                }
+                return;
+            }
+
             // Start with a full copy of ALL existing questions for this lecture
             const fullQuestions = (q.questions || []).map(sub => ({ ...sub }));
 
@@ -2278,7 +2380,10 @@
             pendingDeleteChapter = q.chapter || "";
             pendingDeleteLecture = q.lecture;
             pendingDeleteQuestionIndex = sqIdx;
-            pendingDeleteRowId = q._id || null;
+            // Legacy fallback only — confirmDelete() prefers the per-question
+            // `_rowId` set on the actual question object. q._id is a chapter+topic
+            // GROUP key, not a real row id, so it's not usable as a delete target.
+            pendingDeleteRowId = null;
 
             document.getElementById("deleteModalText").textContent = `Delete question ${sqIdx + 1} from "${q.chapter || "No chapter"} / ${q.topic || q.lecture}"? This will remove only this question.`;
             window._deleteFromInline = true;
@@ -2299,26 +2404,28 @@
                     // Ensure the row is fully loaded (not meta-only) before accessing .questions
                     const lecture = await ensureRowLoaded(gi);
                     if (!lecture || !Array.isArray(lecture.questions)) throw new Error("Invalid question data");
-                    const rowId = lecture._id || pendingDeleteRowId;
-                    if (rowId == null) throw new Error("Missing row id");
 
-                    // Remove the specific question
-                    lecture.questions.splice(pendingDeleteQuestionIndex, 1);
+                    // CHANGED: each individual question carries its own real database
+                    // row id in `_rowId` (set by the server — see findQuestion /
+                    // questions-for-chapter in the backend). The previous code used
+                    // `lecture._id`, which is a chapter+topic GROUP key (e.g.
+                    // "Current Electricity::Wheatstone Bridge"), not a real row id —
+                    // it then PUT a shortened `questions` array against a route that
+                    // expects exactly one question, silently corrupting the topic.
+                    // We now delete the exact row by its real numeric id instead.
+                    const targetQuestion = lecture.questions[pendingDeleteQuestionIndex];
+                    const rowId = (targetQuestion && targetQuestion._rowId != null) ? targetQuestion._rowId : pendingDeleteRowId;
+                    if (rowId == null) throw new Error("Missing row id for this question");
 
-                    // Save back to server
                     const r = await fetch(`${API_BASE}/api/admin/question-row/${encodeURIComponent(String(rowId))}`, {
-                        method: "PUT",
+                        method: "DELETE",
                         credentials: "include",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            chapter: lecture.chapter,
-                            lecture: lecture.lecture,
-                            topic: lecture.topic || "",
-                            questions: lecture.questions
-                        })
                     });
 
                     if (r.ok) {
+                        // Reflect the deletion locally so the view updates immediately.
+                        lecture.questions.splice(pendingDeleteQuestionIndex, 1);
+
                         hideDeleteProgress();
                         showSuccessModal("Deleted!", "Question deleted successfully.");
                         await loadQuestionsAdmin();
@@ -2341,7 +2448,8 @@
                             }
                         }
                     } else {
-                        throw new Error("Delete failed on server");
+                        const errData = await r.json().catch(() => ({}));
+                        throw new Error(errData.error || "Delete failed on server");
                     }
                 } catch (e) {
                     hideDeleteProgress();
