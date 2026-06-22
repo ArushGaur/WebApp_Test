@@ -1487,7 +1487,7 @@
             <div id="iqe-questions-container">
                 ${subsToRender.map(([sub, si]) => {
                 const isNoneCorrect = !!sub.isNoneCorrect;
-                const isNumerical = (sub.question_type || "").toUpperCase() === "INTEGER" || (sub.numericalAnswer !== undefined && sub.numericalAnswer !== null) || (Array.isArray(sub.options) && sub.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(sub.optionImages) || sub.optionImages.every(function(im) { return !im; })));
+                const isNumerical = (sub.question_type || "").toUpperCase() === "INTEGER" || (sub.numericalAnswer !== undefined && sub.numericalAnswer !== null) || (Array.isArray(sub.options) && sub.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(sub.optionImages) || sub.optionImages.every(function(im) { return !im; })) && !_hasAnyOptionTable(mqGetOptionTables(sub)));
                 const ci = isNoneCorrect ? [] : (sub.correctIndexes || [sub.correctIndex || 0]);
                 const questionImages = getQuestionImages(sub);
                 const imgHtml = questionImages.length ? `<div style="margin-bottom:14px;display:flex;flex-direction:column;gap:10px">${questionImages.map((imgData, imgIdx) => {
@@ -1521,7 +1521,7 @@
             // Render math after DOM is fully inserted
             setTimeout(() => {
                 subsToRender.forEach(([sub, si]) => {
-                    const isNumerical = (sub.question_type || "").toUpperCase() === "INTEGER" || (sub.numericalAnswer !== undefined && sub.numericalAnswer !== null) || (Array.isArray(sub.options) && sub.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(sub.optionImages) || sub.optionImages.every(function(im) { return !im; })));
+                    const isNumerical = (sub.question_type || "").toUpperCase() === "INTEGER" || (sub.numericalAnswer !== undefined && sub.numericalAnswer !== null) || (Array.isArray(sub.options) && sub.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(sub.optionImages) || sub.optionImages.every(function(im) { return !im; })) && !_hasAnyOptionTable(mqGetOptionTables(sub)));
                     const prev = document.getElementById(`iqe_preview_${si}`);
                     // Render any tables/matrices attached to this question.
                     const _subTables = _normalizeTablesField(sub.tables);
@@ -1676,7 +1676,7 @@
                 const questionImages = getQuestionImages(sub);
                 const isMulti = sub.isMultiCorrect || ci.length > 1;
                 const isNoneCorrect = !!sub.isNoneCorrect;
-                const isNumerical = (sub.question_type || "").toUpperCase() === "INTEGER" || (sub.numericalAnswer !== undefined && sub.numericalAnswer !== null) || (Array.isArray(sub.options) && sub.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(sub.optionImages) || sub.optionImages.every(function(im) { return !im; })));
+                const isNumerical = (sub.question_type || "").toUpperCase() === "INTEGER" || (sub.numericalAnswer !== undefined && sub.numericalAnswer !== null) || (Array.isArray(sub.options) && sub.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(sub.optionImages) || sub.optionImages.every(function(im) { return !im; })) && !_hasAnyOptionTable(mqGetOptionTables(sub)));
                 return `<div data-orig-idx="${si}" style="background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
                             <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px">Question ${si + 1}${questionImages.length ? ' <span style="color:var(--accent)">📷 Has Image</span>' : ""}${isNumerical ? ' <span style="color:#a78bfa">🔢 Numerical</span>' : ""}</div>
@@ -1719,7 +1719,7 @@
             // Render math after DOM is fully inserted
             setTimeout(() => {
                 subsToRender.forEach(([sub, si]) => {
-                    const isNumerical = (sub.question_type || "").toUpperCase() === "INTEGER" || (sub.numericalAnswer !== undefined && sub.numericalAnswer !== null) || (Array.isArray(sub.options) && sub.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(sub.optionImages) || sub.optionImages.every(function(im) { return !im; })));
+                    const isNumerical = (sub.question_type || "").toUpperCase() === "INTEGER" || (sub.numericalAnswer !== undefined && sub.numericalAnswer !== null) || (Array.isArray(sub.options) && sub.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(sub.optionImages) || sub.optionImages.every(function(im) { return !im; })) && !_hasAnyOptionTable(mqGetOptionTables(sub)));
                     const prev = document.getElementById(`iqe_preview_${si}`);
                     // FIX: repair LaTeX (wrap bare \neq, neq, !=, \le, \ge … in $...$)
                     // before rendering so the "not equal" sign renders in edit mode too.
