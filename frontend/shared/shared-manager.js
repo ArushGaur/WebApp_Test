@@ -98,29 +98,31 @@
         // In-flight promises to avoid duplicate fetches
         const _loadingRowPromises = {};
 
-        // Fetch a single row's full data (with questions[]) on demand
+        // Fetch a single row's full data (with questions[]) on demand.
+        //
+        // CHANGED: this used to call GET /api/admin/question-row/${row._id} —
+        // but that endpoint expects a real numeric questions_v2 row id (used by
+        // showQuestionByRowId() for the paper-wise single-question flow). For a
+        // chapter+topic GROUP row (the normal topic/chapter view case), `row._id`
+        // is the composite string key (e.g. "Sets::Disjoint Sets"), which is NOT
+        // a number — the request 400'd, resolved to null, and silently left
+        // `q.questions` empty/undefined. saveInlineEdit() then built a sparse
+        // `fullQuestions` array from that empty data and overwrote the whole
+        // topic in the database with it, wiping out every sibling question.
+        //
+        // The correct lazy-load path for a group row is ensureChapterLoaded(),
+        // which already calls the right endpoint (/api/admin/questions-for-chapter)
+        // and fully populates every row for that chapter, including this one.
         async function ensureRowLoaded(gi) {
             const row = allQuestions[gi];
             if (!row) return null;
             if (!row._metaOnly && Array.isArray(row.questions)) return row; // already full
-            const id = row._id;
-            if (_loadedRowCache[id]) {
-                allQuestions[gi] = _loadedRowCache[id];
-                return _loadedRowCache[id];
-            }
-            if (!_loadingRowPromises[id]) {
-                _loadingRowPromises[id] = fetch(`${API_BASE}/api/admin/question-row/${id}`, { credentials: 'include' })
-                    .then(r => r.ok ? r.json() : null)
-                    .then(full => {
-                        if (full) {
-                            _loadedRowCache[id] = full;
-                            allQuestions[gi] = full;
-                        }
-                        delete _loadingRowPromises[id];
-                        return full;
-                    });
-            }
-            return _loadingRowPromises[id];
+            // Single-question rows created by showQuestionByRowId carry a real
+            // numeric _rowId and are never _metaOnly, so they never reach here —
+            // anything that does is a chapter+topic group row. Load the whole
+            // chapter so this row (and its siblings) get their full questions[].
+            await ensureChapterLoaded(row.chapter || null);
+            return allQuestions[gi];
         }
 
         // Fetch all rows for a chapter and populate allQuestions entries
@@ -147,15 +149,34 @@
                     }
                 }
             } catch (e) {
-                console.warn("ensureChapterLoaded failed, loading rows individually:", e);
-                const promises = [];
-                for (let i = 0; i < allQuestions.length; i++) {
-                    const row = allQuestions[i];
-                    if ((row.chapter || null) === (chapter || null) && row._metaOnly) {
-                        promises.push(ensureRowLoaded(i));
+                // CHANGED: the old fallback called ensureRowLoaded() per unloaded
+                // row, which (before the fix above) hit the same broken endpoint
+                // and silently produced empty data — and would now recurse back
+                // into this very function. There is no valid per-row fallback for
+                // a group-based schema: a single chapter+topic group either loads
+                // as a whole or it doesn't. Retry the chapter fetch once; if that
+                // also fails, surface the error so a save attempt can't proceed
+                // against incomplete/empty data.
+                console.error("ensureChapterLoaded failed:", e);
+                try {
+                    const enc = encodeURIComponent(chKey);
+                    const r2 = await fetch(`${API_BASE}/api/admin/questions-for-chapter/${enc}`, { credentials: 'include' });
+                    if (!r2.ok) throw new Error(`HTTP ${r2.status}`);
+                    const fullRows2 = await r2.json();
+                    if (!Array.isArray(fullRows2)) throw new Error("Response is not an array");
+                    const byId2 = {};
+                    for (const fr of fullRows2) byId2[fr._id] = fr;
+                    for (let i = 0; i < allQuestions.length; i++) {
+                        const row = allQuestions[i];
+                        if ((row.chapter || null) === (chapter || null) && byId2[row._id]) {
+                            allQuestions[i] = byId2[row._id];
+                            _loadedRowCache[row._id] = byId2[row._id];
+                        }
                     }
+                } catch (e2) {
+                    console.error("ensureChapterLoaded retry also failed:", e2);
+                    throw e2; // let callers (e.g. showQuestionView) know loading failed
                 }
-                await Promise.allSettled(promises);
             }
         }
 
@@ -2230,6 +2251,21 @@
                     hideSavingOverlay();
                     showErrorModal("An error occurred while saving. Please try again.", "Error");
                 }
+                return;
+            }
+
+            // SAFETY CHECK: this path replaces the ENTIRE chapter+topic group in
+            // the database with whatever is in `fullQuestions` below. If the
+            // group's full question list never loaded (e.g. a lazy-load failed),
+            // q.questions would be empty/undefined and saving would silently
+            // wipe every sibling question in this topic. Refuse to proceed rather
+            // than risk that — this is exactly the failure mode that previously
+            // corrupted topics with 8-9 questions down to a handful of blanks.
+            if (!Array.isArray(q.questions) || !q.questions.length) {
+                showErrorModal(
+                    "This topic's questions didn't fully load, so saving was blocked to avoid losing data. Please close this question, reopen the topic, and try again.",
+                    "Save blocked — data not loaded"
+                );
                 return;
             }
 
