@@ -2590,6 +2590,17 @@ function _agShowConfigSub(sub) {
             const suggested = Math.max(1, Math.min(_agCountTotalAvailable() || 30, 30));
             countInput.value = String(suggested);
         }
+
+        // Auto-populate header fields from selection
+        const subjects = [...new Set([..._ag.selection.values()].map(s => s.subject).filter(Boolean))];
+        const chapters = [...new Set([..._ag.selection.values()].map(s => s.chapter).filter(Boolean))];
+        const subjectInput = document.getElementById('ag-subject-input');
+        const chapterInput = document.getElementById('ag-chapter-input');
+        const testTypeInput = document.getElementById('ag-test-type-input');
+        if (subjectInput) subjectInput.value = subjects.join(' & ');
+        if (chapterInput) chapterInput.value = chapters.join(' & ');
+        if (testTypeInput) testTypeInput.value = 'Chapter Test';
+
         _agRenderTemplateList();
     } else if (sub === 'online') {
         agOtUpdateDurPreview();
@@ -3328,6 +3339,10 @@ async function _agGeneratePaper() {
             }
         }
 
+        // Read PYQ filter checkboxes
+        const filterPyq = document.getElementById('ag-filter-pyq')?.checked;
+        const filterOther = document.getElementById('ag-filter-other')?.checked;
+
         // Build pool from all matched rows
         const pool = [];
         for (const [key, sel] of _ag.selection.entries()) {
@@ -3345,6 +3360,21 @@ async function _agGeneratePaper() {
             rows.forEach(row => {
                 if (Array.isArray(row.questions)) {
                     row.questions.forEach((q, qi) => {
+                        // PYQ = has a year value, Other = no year value
+                        const hasYear = q.year && String(q.year).trim() !== '';
+                        const isPyq = hasYear;
+                        const isOther = !hasYear;
+                        let include = true;
+                        if (filterPyq && filterOther) {
+                            include = true;
+                        } else if (filterPyq) {
+                            include = isPyq;
+                        } else if (filterOther) {
+                            include = isOther;
+                        } else {
+                            include = false;
+                        }
+                        if (!include) return;
                         pool.push({ row, qi, q, chapter: row.chapter || '(No Chapter)', topic: row.topic || '', lecture: row.lecture });
                     });
                 }
