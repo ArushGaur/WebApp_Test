@@ -566,6 +566,7 @@ function showPaperQuestions(paper, push = true) {
 
 function renderQuestionsForPaper(paper) {
     const grid = document.getElementById('lectureCardsGrid'); if (!grid) return;
+    grid.className = "questions-view-grid";
     document.getElementById('mq-chapter-title').textContent = `${paper}`;
     document.getElementById('mq-lecture-count').textContent = `Loading…`;
     grid.innerHTML = '<p style="color:var(--text-dim);padding:20px">Loading questions…</p>';
@@ -606,7 +607,7 @@ function renderQuestionsForPaper(paper) {
                             ${checkboxHtml}
                             <div class="lecture-card-num">Q${qIndex++}</div>
                             ${tags}
-                            <div style="font-size:0.82rem;font-weight:600;color:var(--text);margin-bottom:4px;word-break:break-word;">${previewText || 'Empty question'}</div>
+                            <div class="lecture-card-title">${previewText || 'Empty question'}</div>
                         </div>`;
             }).join('');
         })
@@ -629,7 +630,7 @@ function renderQuestionsForPaper(paper) {
                             ${checkboxHtml}
                             <div class="lecture-card-num">Q${qIndex++}</div>
                             ${tags}
-                            <div style="font-size:0.82rem;font-weight:600;color:var(--text);margin-bottom:4px;word-break:break-word;">${previewText || 'Empty question'}</div>
+                            <div class="lecture-card-title">${previewText || 'Empty question'}</div>
                         </div>`;
             }).join('');
         });
@@ -1101,7 +1102,7 @@ async function showLectureViewForChapter(ch) {
     const topicCount = [...new Set(lecs.map(q => q.topic || "(No Topic)"))].length;
     document.getElementById("mq-lecture-count").textContent = topicCount + " topic(s)";
     const grid = document.getElementById("lectureCardsGrid");
-    grid.className = "";
+    grid.className = "topics-view-grid";
 
     if (viewMode === "topic") {
         const topics = {};
@@ -1120,8 +1121,8 @@ async function showLectureViewForChapter(ch) {
                             <div class="lecture-card-num">📚</div>
                             <button class="btn btn-ghost" style="padding:2px; font-size:0.9rem; min-width:unset; opacity:0.7" onclick="event.stopPropagation(); renameTopic(this.closest('.lecture-card').dataset.chEnc, this.closest('.lecture-card').dataset.topicEnc)" title="Rename Topic">✏️</button>
                         </div>
-                        <div style="font-size:0.82rem;font-weight:600;color:var(--text);margin-bottom:4px;word-break:break-word;">${topic}</div>
-                        <div style="font-size:0.78rem;margin-bottom:3px">${totalQ} Question${totalQ !== 1 ? 's' : ''}</div>
+                        <div class="lecture-card-title">${topic}</div>
+                        <div class="lecture-card-count">${totalQ} Question${totalQ !== 1 ? 's' : ''}</div>
                     </div>`;
         }).join("");
     } else {
@@ -1136,8 +1137,8 @@ async function showLectureViewForChapter(ch) {
                             <div class="lecture-card-num">L${lecNum}</div>
                             <button class="btn btn-ghost" style="padding:2px; font-size:0.9rem; min-width:unset; opacity:0.7" onclick='event.stopPropagation(); renameTopic(${jsString(encodeURIComponent(ch))}, ${jsString(encodeURIComponent(firstLec.topic || ""))})' title="Rename Topic">✏️</button>
                         </div>
-                        <div style="font-size:0.82rem;font-weight:600;color:var(--text);margin-bottom:4px;word-break:break-word;">${firstLec.topic || "<i style='opacity:0.5'>No Topic</i>"}</div>
-                        <div style="font-size:0.78rem;margin-bottom:3px">${totalQ} Question${totalQ !== 1 ? 's' : ''}</div>
+                        <div class="lecture-card-title">${firstLec.topic || "<i style='opacity:0.5'>No Topic</i>"}</div>
+                        <div class="lecture-card-count">${totalQ} Question${totalQ !== 1 ? 's' : ''}</div>
                         <div class="lecture-card-meta">${firstLec.updatedAt ? new Date(firstLec.updatedAt).toLocaleDateString() : "—"}</div>
                     </div>`;
         }).join("");
@@ -1162,6 +1163,7 @@ async function handleLectureNumClick(e, el, ch, lecNum) {
         document.getElementById("mq-chapter-title").textContent = `${ch} - Lecture ${lecNum}`;
         document.getElementById("mq-lecture-count").textContent = `${totalQ} Question${totalQ !== 1 ? 's' : ''}`;
         const grid = document.getElementById("lectureCardsGrid");
+        grid.className = "questions-view-grid";
         // Build navigation list for Prev/Next buttons
         _mqQuestionList = [];
         grid.innerHTML = allQs.map((sq, idx) => {
@@ -1177,8 +1179,8 @@ async function handleLectureNumClick(e, el, ch, lecNum) {
             return `<div class="lecture-card ${isMulti ? "has-multi" : ""}" data-ch="${ch.replace(/"/g, '&quot;')}" data-lec="${lecNum}" data-qidx="${idx}" data-gi="${gi}" data-sqidx="${sqIdx}" style="position:relative" ${clickHandler}>
                         ${checkboxHtml}
                         <div class="lecture-card-num">Q${idx + 1}</div>
-                        <div style="font-size:0.82rem;font-weight:600;color:var(--text);margin-bottom:4px;word-break:break-word;">${previewText || 'Empty question'}</div>
-                        <div style="font-size:0.78rem;margin-bottom:3px">${(sq.options || []).length} options</div>
+                        <div class="lecture-card-title">${previewText || 'Empty question'}</div>
+                        <div class="lecture-card-count">${(sq.options || []).length} options</div>
                     </div>`;
         }).join("");
     }
@@ -1207,6 +1209,7 @@ async function handleTopicCardClick(e, el, ch, encodedTopic) {
 
 function renderTopicQuestionCards(ch, topic, qs) {
     const grid = document.getElementById("lectureCardsGrid");
+    grid.className = "questions-view-grid";
     // Build navigation list for Prev/Next buttons
     _mqQuestionList = [];
     let qIndex = 1;
@@ -1223,8 +1226,8 @@ function renderTopicQuestionCards(ch, topic, qs) {
             return `<div class="lecture-card ${isMulti ? "has-multi" : ""}" data-ch="${ch.replace(/"/g, '&quot;')}" data-lec="${q.lecture}" data-qidx="${sqIdx}" data-gi="${gi}" data-sqidx="${sqIdx}" style="position:relative" ${clickHandler}>
                         ${checkboxHtml}
                         <div class="lecture-card-num">Q${qIndex++}</div>
-                        <div style="font-size:0.82rem;font-weight:600;color:var(--text);margin-bottom:4px;word-break:break-word;">${previewText || 'Empty question'}</div>
-                        <div style="font-size:0.78rem;margin-bottom:3px">${sq.year ? "Year: " + sq.year : (q.topic || "")}</div>
+                        <div class="lecture-card-title">${previewText || 'Empty question'}</div>
+                        <div class="lecture-card-count">${sq.year ? "Year: " + sq.year : (q.topic || "")}</div>
                     </div>`;
         });
     }).join("");
@@ -1493,26 +1496,48 @@ async function showQuestionView(gi, sqIdx) {
         const imgHtml = questionImages.length ? `<div style="margin-bottom:14px;display:flex;flex-direction:column;gap:10px">${questionImages.map((imgData, imgIdx) => {
             const isUrl = imgData.startsWith('http://') || imgData.startsWith('https://');
             const imgSrc = isUrl ? imgData : `data:${imgData.startsWith('/9j/') ? 'image/jpeg' : imgData.startsWith('iVBOR') ? 'image/png' : 'image/jpeg'};base64,${imgData}`;
-            return `<div style="border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border);text-align:center;background:rgba(0,0,0,0.1)"><img src="${imgSrc}" alt="Question diagram ${imgIdx + 1}" style="max-width:100%;max-height:280px;display:inline-block;object-fit:contain;cursor:pointer;border-radius:var(--radius-sm)" onclick="this.style.maxHeight=this.style.maxHeight=='none'?'280px':'none'" onerror="this.parentElement.innerHTML='<div style=\\'padding:12px;color:var(--error);font-size:0.82rem\\''>⚠️ Image failed to load</div>'"></div>`;
+            return `<div style="text-align:center;display:flex;justify-content:center;align-items:center;"><img src="${imgSrc}" alt="Question diagram ${imgIdx + 1}" style="max-width:100%;max-height:280px;display:block;object-fit:contain;cursor:pointer;border-radius:var(--radius-sm)" onclick="this.style.maxHeight=this.style.maxHeight=='none'?'280px':'none'" onerror="this.parentElement.innerHTML='<div style=\\'padding:12px;color:var(--error);font-size:0.82rem\\'>⚠️ Image failed to load</div>'"></div>`;
         }).join('')}</div>` : '';
         const isMulti = sub.isMultiCorrect || ci.length > 1;
-        return `<div style="background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-                            <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px">Question ${si + 1}${questionImages.length ? ' <span style="color:var(--accent)">📷 Has Image</span>' : ""}${isMulti && !isNumerical ? ' <span style="color:var(--accent-4)">✦ Multi-correct</span>' : ""}${isNoneCorrect ? ' <span style="color:#f59e0b">⊘ None correct</span>' : ""}${isNumerical ? ' <span style="color:#a78bfa">🔢 Numerical</span>' : ""}</div>
-                        </div>
-                        ${imgHtml}
-                        <div class="q-render-preview" id="iqe_preview_${si}"></div>
-                        <div id="iqe_tables_intro_${si}"></div>
-                        ${isNumerical
-                ? `<div style="padding:8px 12px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;font-size:0.82rem">
-                                <span style="font-weight:700;color:#a78bfa">Numerical Answer: </span>
-                                <span style="color:var(--text);font-weight:600;font-size:1rem">${String(sub.numericalAnswer ?? sub.correct_answer ?? 'N/A')}</span>
+        const hasImg = questionImages.length > 0;
+        const layoutContent = hasImg
+            ? `<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
+                   <div style="flex:1.3;min-width:280px">
+                       <div class="q-render-preview" id="iqe_preview_${si}"></div>
+                       <div id="iqe_tables_intro_${si}"></div>
+                       ${isNumerical
+                            ? `<div style="padding:8px 12px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;font-size:0.82rem">
+                                    <span style="font-weight:700;color:#a78bfa">Numerical Answer: </span>
+                                    <span style="color:var(--text);font-weight:600;font-size:1rem">${String(sub.numericalAnswer ?? sub.correct_answer ?? 'N/A')}</span>
                                </div>`
-                : `<div style="margin-bottom:14px">
+                            : `<div style="margin-bottom:14px">
+                                    ${LETTERS.map((l, oi) => `<div class="opt-render-row ${ci.includes(oi) ? "is-correct" : ""}"><span class="opt-letter">${l}</span><div id="iqe_opt_render_${si}_${oi}"></div>${ci.includes(oi) ? '<span style="margin-left:auto;font-size:0.7rem;color:var(--success);font-weight:700">✓ Correct</span>' : ""}</div>`).join("")}
+                                    ${isNoneCorrect ? '<div style="margin-top:10px;padding:8px 12px;background:rgba(245,158,11,0.1);border:1px dashed rgba(245,158,11,0.45);border-radius:6px;font-size:0.76rem;color:#f59e0b;font-weight:600">⊘ None of the options is correct — every student gets full marks for this question.</div>' : ""}
+                               </div>`}
+                       <div id="iqe_tables_options_${si}"></div>
+                   </div>
+                   <div style="flex:0.7;min-width:280px;max-width:440px;margin-bottom:14px;align-self:stretch;display:flex;flex-direction:column;justify-content:center">
+                       ${imgHtml}
+                   </div>
+               </div>`
+            : `<div class="q-render-preview" id="iqe_preview_${si}"></div>
+               <div id="iqe_tables_intro_${si}"></div>
+               ${isNumerical
+                    ? `<div style="padding:8px 12px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;font-size:0.82rem">
+                            <span style="font-weight:700;color:#a78bfa">Numerical Answer: </span>
+                            <span style="color:var(--text);font-weight:600;font-size:1rem">${String(sub.numericalAnswer ?? sub.correct_answer ?? 'N/A')}</span>
+                       </div>`
+                    : `<div style="margin-bottom:14px">
                             ${LETTERS.map((l, oi) => `<div class="opt-render-row ${ci.includes(oi) ? "is-correct" : ""}"><span class="opt-letter">${l}</span><div id="iqe_opt_render_${si}_${oi}"></div>${ci.includes(oi) ? '<span style="margin-left:auto;font-size:0.7rem;color:var(--success);font-weight:700">✓ Correct</span>' : ""}</div>`).join("")}
                             ${isNoneCorrect ? '<div style="margin-top:10px;padding:8px 12px;background:rgba(245,158,11,0.1);border:1px dashed rgba(245,158,11,0.45);border-radius:6px;font-size:0.76rem;color:#f59e0b;font-weight:600">⊘ None of the options is correct — every student gets full marks for this question.</div>' : ""}
-                        </div>`}
-                        <div id="iqe_tables_options_${si}"></div>
+                       </div>`}
+               <div id="iqe_tables_options_${si}"></div>`;
+
+        return `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+                            <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px">Question ${si + 1}${sub.year && String(sub.year).trim() ? ` <span style="font-size:0.68rem;background:rgba(91,95,239,0.12);color:var(--accent-2);padding:2px 7px;border-radius:20px;font-weight:700;text-transform:none;letter-spacing:normal;display:inline-flex;align-items:center;gap:3px">🏛️ ${sub.exam || sub.examName || sub.exam_name || sub.exam_label || (String(sub.subject || '').toLowerCase().includes('bio') ? 'NEET' : 'JEE Main')} ${sub.year}${sub.month ? ' ' + sub.month : ''}${(sub.date || sub.day) ? ' ' + (sub.date || sub.day) : ''}${sub.shift ? ' (' + sub.shift + ')' : ''}</span>` : ''}${isMulti && !isNumerical ? ' <span style="color:var(--accent-4)">✦ Multi-correct</span>' : ""}${isNoneCorrect ? ' <span style="color:#f59e0b">⊘ None correct</span>' : ""}${isNumerical ? ' <span style="color:#a78bfa">🔢 Numerical</span>' : ""}</div>
+                        </div>
+                        ${layoutContent}
                         <div id="mqSolBlock_${si}"></div>
                     </div>`;
     }).join("")}
@@ -1677,9 +1702,9 @@ function mqEnterEditMode() {
         const isMulti = sub.isMultiCorrect || ci.length > 1;
         const isNoneCorrect = !!sub.isNoneCorrect;
         const isNumerical = (sub.question_type || "").toUpperCase() === "INTEGER" || (sub.numericalAnswer !== undefined && sub.numericalAnswer !== null) || (Array.isArray(sub.options) && sub.options.every(function (o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(sub.optionImages) || sub.optionImages.every(function (im) { return !im; })) && !_hasAnyOptionTable(mqGetOptionTables(sub)));
-        return `<div data-orig-idx="${si}" style="background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px">
+        return `<div data-orig-idx="${si}" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-                            <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px">Question ${si + 1}${questionImages.length ? ' <span style="color:var(--accent)">📷 Has Image</span>' : ""}${isNumerical ? ' <span style="color:#a78bfa">🔢 Numerical</span>' : ""}</div>
+                            <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px">Question ${si + 1}${sub.year && String(sub.year).trim() ? ` <span style="font-size:0.68rem;background:rgba(91,95,239,0.12);color:var(--accent-2);padding:2px 7px;border-radius:20px;font-weight:700;text-transform:none;letter-spacing:normal;display:inline-flex;align-items:center;gap:3px">🏛️ ${sub.exam || sub.examName || sub.exam_name || sub.exam_label || (String(sub.subject || '').toLowerCase().includes('bio') ? 'NEET' : 'JEE Main')} ${sub.year}${sub.month ? ' ' + sub.month : ''}${(sub.date || sub.day) ? ' ' + (sub.date || sub.day) : ''}${sub.shift ? ' (' + sub.shift + ')' : ''}</span>` : ''}${isNumerical ? ' <span style="color:#a78bfa">🔢 Numerical</span>' : ""}</div>
                             ${isNumerical ? '' : `<label class="multi-toggle-label">
                                 <input type="checkbox" id="iqe_multi_${si}" ${isMulti ? "checked" : ""} onchange="toggleMultiCorrect(${si})">
                                 <span class="multi-toggle-text">${isMulti ? "✦ Multi-correct" : "○ Single-correct"}</span>
@@ -1901,6 +1926,7 @@ function goBackFromQuestion() {
         document.getElementById("mq-chapter-title").textContent = `${ch} - Lecture ${lecNum}`;
         document.getElementById("mq-lecture-count").textContent = `${totalQ} Question${totalQ !== 1 ? 's' : ''}`;
         const grid = document.getElementById("lectureCardsGrid");
+        grid.className = "questions-view-grid";
         grid.innerHTML = allQs.map((sq, idx) => {
             const gi = allQuestions.findIndex(q => (q.chapter || "(No Chapter)") === ch && Number(q.lecture) === Number(lecNum) && q.questions?.includes(sq));
             const sqIdx = allQuestions[gi]?.questions?.indexOf(sq) ?? idx;
@@ -1913,8 +1939,8 @@ function goBackFromQuestion() {
             return `<div class="lecture-card ${isMulti ? "has-multi" : ""}" data-ch="${ch.replace(/"/g, '&quot;')}" data-lec="${lecNum}" data-qidx="${idx}" data-gi="${gi}" data-sqidx="${sqIdx}" style="position:relative" ${clickHandler}>
                         ${checkboxHtml}
                         <div class="lecture-card-num">Q${idx + 1}</div>
-                        <div style="font-size:0.82rem;font-weight:600;color:var(--text);margin-bottom:4px;word-break:break-word;">${previewText || 'Empty question'}</div>
-                        <div style="font-size:0.78rem;margin-bottom:3px">${(sq.options || []).length} options</div>
+                        <div class="lecture-card-title">${previewText || 'Empty question'}</div>
+                        <div class="lecture-card-count">${(sq.options || []).length} options</div>
                     </div>`;
         }).join("");
     } else if (mqCurrentChapter) {

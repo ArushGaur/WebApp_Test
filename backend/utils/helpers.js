@@ -396,6 +396,27 @@ function normalizeQuestion(q, opts) {
 	if (q?.year !== undefined && q?.year !== null && String(q.year).trim()) {
 		out.year = String(q.year).trim();
 	}
+	if (q?.month !== undefined && q?.month !== null && String(q.month).trim()) {
+		out.month = String(q.month).trim();
+	}
+	if (q?.day !== undefined && q?.day !== null && String(q.day).trim()) {
+		out.day = String(q.day).trim();
+	}
+	if (q?.date !== undefined && q?.date !== null && String(q.date).trim()) {
+		out.date = String(q.date).trim();
+	}
+	if (q?.shift !== undefined && q?.shift !== null && String(q.shift).trim()) {
+		out.shift = String(q.shift).trim();
+	}
+	if (q?.exam !== undefined && q?.exam !== null && String(q.exam).trim()) {
+		out.exam = String(q.exam).trim();
+	}
+	if (q?.examName !== undefined && q?.examName !== null && String(q.examName).trim()) {
+		out.examName = String(q.examName).trim();
+	}
+	if (q?.exam_name !== undefined && q?.exam_name !== null && String(q.exam_name).trim()) {
+		out.exam_name = String(q.exam_name).trim();
+	}
 
 	const normTables = normalizeTables(q?.tables, mathOpts);
 	if (normTables.length) out.tables = normTables;

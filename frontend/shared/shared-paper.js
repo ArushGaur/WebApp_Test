@@ -433,6 +433,16 @@
             const modal = document.getElementById('generate-paper-modal');
             if (!modal) return;
 
+            // Restore title, header fields, title field, and info for next manual run
+            const titleEl = modal.querySelector('.modal-title');
+            if (titleEl) { titleEl.style.display = ''; titleEl.textContent = '📄 Generate Question Paper'; }
+            const headerFields = document.getElementById('paper-header-fields');
+            if (headerFields) headerFields.style.display = '';
+            const titleField = document.getElementById('paper-title-field');
+            if (titleField) titleField.style.display = '';
+            const genInfo = document.getElementById('paper-generate-info');
+            if (genInfo) genInfo.style.display = '';
+
             // Ensure subject/chapter/test-type fields are injected (if not in HTML already)
             _ensurePaperHeaderFields();
 
@@ -759,10 +769,10 @@
         };
         const _pgenPct = { build: 15, latex: 45, template: 72, finalise: 90 };
 
-        function _pgenSet(activeKey, doneKeys = []) {
+        function _pgenSet(activeKey, doneKeys = [], pct = null) {
             const bar = document.getElementById('paper-progress-bar');
             const label = document.getElementById('paper-progress-label');
-            if (bar) bar.style.width = (_pgenPct[activeKey] || 0) + '%';
+            if (bar) bar.style.width = (pct !== null ? pct : (_pgenPct[activeKey] || 0)) + '%';
             if (label) label.textContent = _pgenLabels[activeKey] || '';
             for (const k of _pgenSteps) {
                 const el = document.getElementById(`pstep-${k}`);
@@ -817,7 +827,7 @@
 
             // Show progress, hide controls
             _pgenReset();
-            _pgenSet('build', []);
+            _pgenSet('build', [], 0);
             document.getElementById('paper-generate-progress').style.display = 'block';
             document.getElementById('paper-generate-info').style.display = 'none';
             document.getElementById('paper-template-status').style.display = 'none';
@@ -825,41 +835,79 @@
             const genBtn = document.getElementById('paper-generate-btn');
             if (genBtn) genBtn.disabled = true;
 
-            // Animate through steps while the fetch is pending
-            let _pgenTimer = null;
-            let _pgenPhase = 0;
-            const _pgenSequence = [
-                { after: 600, active: 'build', done: [] },
-                { after: 1800, active: 'latex', done: ['build'] },
-                { after: 3200, active: 'template', done: ['build', 'latex'] },
-                { after: 5000, active: 'finalise', done: ['build', 'latex', 'template'] },
-            ];
-            function _advanceProgress() {
-                if (_pgenPhase >= _pgenSequence.length) return;
-                const step = _pgenSequence[_pgenPhase++];
-                _pgenTimer = setTimeout(() => {
-                    _pgenSet(step.active, step.done);
-                    _advanceProgress();
-                }, step.after);
-            }
-            _advanceProgress();
-
+            let pollInterval = null;
+            let files;
             try {
-                const resp = await fetch(`${API_BASE}/api/admin/generate-paper`, {
+                const resp = await fetch(`${API_BASE}/api/admin/generate-paper/start`, {
                     method: 'POST',
                     credentials: 'include',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ questions, paperTitle, paperSubject, paperChapter, paperTestType, paperClass, templateId: _selectedTemplateId || null })
                 });
-                clearTimeout(_pgenTimer);
-                const data = await resp.json();
-                if (!resp.ok || !data.success) throw new Error(data.error || 'Generation failed');
+
+                if (resp.status === 404) {
+                    // ── Fallback: old synchronous route ──────────────────────────
+                    _pgenSet('build', [], 10);
+                    const syncResp = await fetch(`${API_BASE}/api/admin/generate-paper`, {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ questions, paperTitle, paperSubject, paperChapter, paperTestType, paperClass, templateId: _selectedTemplateId || null })
+                    });
+                    const syncData = await syncResp.json();
+                    if (!syncResp.ok || !syncData.success) throw new Error(syncData.error || 'Generation failed');
+                    _pgenSet('finalise', ['build', 'latex', 'template'], 100);
+                    files = syncData.files;
+                } else {
+                    // ── Async progress-polling route ──────────────────────────────
+                    const startData = await resp.json();
+                    if (!resp.ok || !startData.success) throw new Error(startData.error || 'Generation failed to start');
+
+                    const progressId = startData.progressId;
+
+                    files = await new Promise((resolve, reject) => {
+                        pollInterval = setInterval(async () => {
+                            try {
+                                const pResp = await fetch(`${API_BASE}/api/admin/generate-paper/progress/${progressId}`, {
+                                    credentials: 'include'
+                                });
+                                const pData = await pResp.json();
+                                if (!pResp.ok || !pData.success) {
+                                    clearInterval(pollInterval);
+                                    reject(new Error(pData.error || 'Failed to fetch generation progress'));
+                                    return;
+                                }
+
+                                const progress = pData.progress;
+                                const activeKey = progress.currentStep;
+                                let doneKeys = [];
+                                if (activeKey === 'latex') doneKeys = ['build'];
+                                else if (activeKey === 'template') doneKeys = ['build', 'latex'];
+                                else if (activeKey === 'finalise') doneKeys = ['build', 'latex', 'template'];
+
+                                _pgenSet(activeKey, doneKeys, progress.pct);
+
+                                if (progress.status === 'completed') {
+                                    clearInterval(pollInterval);
+                                    resolve(progress.files);
+                                } else if (progress.status === 'failed') {
+                                    clearInterval(pollInterval);
+                                    reject(new Error(progress.error || 'Generation failed'));
+                                }
+                            } catch (pollErr) {
+                                clearInterval(pollInterval);
+                                reject(pollErr);
+                            }
+                        }, 250);
+                    });
+                }
 
                 // Complete the bar
-                _pgenSet('finalise', ['build', 'latex', 'template']);
+                _pgenSet('finalise', ['build', 'latex', 'template'], 100);
                 const bar = document.getElementById('paper-progress-bar');
                 if (bar) bar.style.width = '100%';
-                document.getElementById('paper-progress-label').textContent = 'Done! Files ready.';
+                const progressLabel = document.getElementById('paper-progress-label');
+                if (progressLabel) progressLabel.textContent = 'Done! Files ready.';
                 // Mark all done
                 for (const k of _pgenSteps) {
                     const el = document.getElementById(`pstep-${k}`);
@@ -871,7 +919,7 @@
                 // Store generated data for format chooser
                 const safeTitle = paperTitle.replace(/[^a-z0-9_\-]/gi, '_');
                 window._lastPaperGenData = {
-                    files: data.files,
+                    files: files,          // FIX: was incorrectly 'data.files'
                     safeTitle: safeTitle,
                     paperTitle: paperTitle,
                     paperSubject: paperSubject,
@@ -909,11 +957,22 @@
                 document.getElementById('paper-download-links').style.display = 'block';
                 document.getElementById('paper-modal-close-actions').style.display = 'flex';
 
-                // Automatically select Word format first
+                // Hide title, header fields, and title field for manual success screen
+                const modal = document.getElementById('generate-paper-modal');
+                if (modal) {
+                    const titleEl = modal.querySelector('.modal-title');
+                    if (titleEl) titleEl.style.display = 'none';
+                }
+                const headerFields = document.getElementById('paper-header-fields');
+                if (headerFields) headerFields.style.display = 'none';
+                const titleField = document.getElementById('paper-title-field');
+                if (titleField) titleField.style.display = 'none';
+
+                // Automatically select Word format first (no auto-download)
                 selectDownloadFormat('docx');
 
             } catch (err) {
-                clearTimeout(_pgenTimer);
+                if (pollInterval) clearInterval(pollInterval); // FIX: was clearTimeout(_pgenTimer) — wrong fn + undeclared var
                 document.getElementById('paper-generate-progress').style.display = 'none';
                 document.getElementById('paper-template-status').style.display = '';
                 document.getElementById('paper-generate-info').innerHTML =
@@ -943,6 +1002,7 @@
                 docxBtn.style.background = 'rgba(86,169,255,0.05)';
                 statusEl.style.display = 'none';
                 renderFormatLinks('docx', window._lastPaperGenData.files);
+                // No auto-download — user clicks individually or uses Download All button
             } else if (format === 'pdf') {
                 pdfBtn.style.borderColor = '#ef4444';
                 pdfBtn.style.background = 'rgba(239,68,68,0.05)';
@@ -950,6 +1010,7 @@
                 if (window._lastPaperGenData.pdfFiles) {
                     statusEl.style.display = 'none';
                     renderFormatLinks('pdf', window._lastPaperGenData.pdfFiles);
+                    // No auto-download — user clicks individually or uses Download All button
                 } else {
                     linksEl.style.display = 'none';
                     statusEl.style.display = 'block';
@@ -968,9 +1029,7 @@
                         </div>
                     `;
 
-                    let currentPct = 0;
                     const updateProgress = (pct, text) => {
-                        currentPct = pct;
                         const bar = document.getElementById('pdf-progress-bar');
                         const txt = document.getElementById('pdf-progress-text');
                         const num = document.getElementById('pdf-progress-percent');
@@ -979,20 +1038,21 @@
                         if (num) num.textContent = pct + '%';
                     };
 
-                    let progressTimers = [];
-                    progressTimers.push(setTimeout(() => updateProgress(15, "Uploading files..."), 150));
-                    progressTimers.push(setTimeout(() => updateProgress(40, "Converting Question Paper..."), 1500));
-                    progressTimers.push(setTimeout(() => updateProgress(70, "Converting Solutions..."), 4500));
-                    progressTimers.push(setTimeout(() => updateProgress(88, "Finishing up conversion..."), 9000));
-
-                    const creepInterval = setInterval(() => {
-                        if (currentPct >= 88 && currentPct < 98) {
-                            updateProgress(currentPct + 1, "Finishing up conversion...");
+                    const getPdfStepText = (step) => {
+                        switch (step) {
+                            case 'build': return 'Building document structure...';
+                            case 'latex': return 'Converting equations (LaTeX)...';
+                            case 'template': return 'Applying template styling...';
+                            case 'finalise': return 'Packaging Word files...';
+                            case 'pdf_questions': return 'Converting Question Paper to PDF...';
+                            case 'pdf_solutions': return 'Converting Solutions to PDF...';
+                            default: return 'Preparing files...';
                         }
-                    }, 800);
+                    };
 
+                    let pollInterval = null;
                     try {
-                        const resp = await fetch(`${API_BASE}/api/admin/generate-paper-pdf`, {
+                        const resp = await fetch(`${API_BASE}/api/admin/generate-paper-pdf/start`, {
                             method: 'POST',
                             credentials: 'include',
                             headers: { 'Content-Type': 'application/json' },
@@ -1003,24 +1063,53 @@
                                 paperChapter: window._lastPaperGenData.paperChapter || '',
                                 paperTestType: window._lastPaperGenData.paperTestType || 'Chapter Test',
                                 paperClass: window._lastPaperGenData.paperClass || '',
-                                templateId: _selectedTemplateId || null
+                                templateId: typeof _selectedTemplateId !== 'undefined' ? _selectedTemplateId : null
                             })
                         });
-                        const resData = await resp.json();
-                        if (!resp.ok || !resData.success) throw new Error(resData.error || 'Failed to generate PDF');
+                        const startData = await resp.json();
+                        if (!resp.ok || !startData.success) throw new Error(startData.error || 'Failed to start PDF conversion');
 
-                        // Clear timers and finish
-                        progressTimers.forEach(clearTimeout);
-                        clearInterval(creepInterval);
+                        const progressId = startData.progressId;
+
+                        const pdfFiles = await new Promise((resolve, reject) => {
+                            pollInterval = setInterval(async () => {
+                                try {
+                                    const pResp = await fetch(`${API_BASE}/api/admin/generate-paper/progress/${progressId}`, {
+                                        credentials: 'include'
+                                    });
+                                    const pData = await pResp.json();
+                                    if (!pResp.ok || !pData.success) {
+                                        clearInterval(pollInterval);
+                                        reject(new Error(pData.error || 'Failed to fetch conversion progress'));
+                                        return;
+                                    }
+
+                                    const progress = pData.progress;
+                                    updateProgress(progress.pct, getPdfStepText(progress.currentStep));
+
+                                    if (progress.status === 'completed') {
+                                        clearInterval(pollInterval);
+                                        resolve(progress.files);
+                                    } else if (progress.status === 'failed') {
+                                        clearInterval(pollInterval);
+                                        reject(new Error(progress.error || 'PDF conversion failed'));
+                                    }
+                                } catch (pollErr) {
+                                    clearInterval(pollInterval);
+                                    reject(pollErr);
+                                }
+                            }, 300);
+                        });
+
                         updateProgress(100, "Done!");
                         await new Promise(r => setTimeout(r, 200));
 
-                        window._lastPaperGenData.pdfFiles = resData.files;
+                        window._lastPaperGenData.pdfFiles = pdfFiles;
                         statusEl.style.display = 'none';
-                        renderFormatLinks('pdf', resData.files);
+                        renderFormatLinks('pdf', pdfFiles);
+                        // No auto-download — user clicks individually or uses Download All button
                     } catch (err) {
-                        progressTimers.forEach(clearTimeout);
-                        clearInterval(creepInterval);
+                        if (pollInterval) clearInterval(pollInterval);
                         statusEl.style.background = 'rgba(239,68,68,0.1)';
                         statusEl.style.border = '1px solid rgba(239,68,68,0.2)';
                         statusEl.style.color = 'var(--error)';

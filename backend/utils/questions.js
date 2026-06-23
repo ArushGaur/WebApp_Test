@@ -93,7 +93,7 @@ async function findQuestion(chapter, topic) {
 	const ch = chapter || "";
 	const tp = topic || "";
 	const result = await db.execute({
-		sql: "SELECT id, raw_json, updated_at FROM questions_v2 WHERE chapter = ? AND topic = ? ORDER BY question_number, id",
+		sql: "SELECT id, subject, year, month, day, shift, raw_json, updated_at FROM questions_v2 WHERE chapter = ? AND topic = ? ORDER BY question_number, id",
 		args: [ch, tp],
 	});
 	if (!result.rows.length) return null;
@@ -103,6 +103,14 @@ async function findQuestion(chapter, topic) {
 		try { raw = JSON.parse(row.raw_json || "{}"); } catch { raw = {}; }
 		const normalized = normalizeQuestion(raw, { preserveRaw: true });
 		normalized._rowId = row.id; // needed for per-question edit/delete
+		
+		// Backfill metadata fields from DB columns if not set
+		if (row.subject && !normalized.subject) normalized.subject = String(row.subject);
+		if (row.year && !normalized.year) normalized.year = String(row.year);
+		if (row.month && !normalized.month) normalized.month = String(row.month);
+		if (row.day && !normalized.day) normalized.day = String(row.day);
+		if (row.shift && !normalized.shift) normalized.shift = String(row.shift);
+		
 		return normalized;
 	});
 
@@ -173,7 +181,7 @@ async function findQuestionsByPaper({ subject, year, chapter, month, day, shift 
 
 	const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 	const result = await db.execute({
-		sql: `SELECT id, chapter, topic, raw_json FROM questions_v2 ${where} ORDER BY chapter, topic, question_number, id`,
+		sql: `SELECT id, subject, year, month, day, shift, chapter, topic, raw_json FROM questions_v2 ${where} ORDER BY chapter, topic, question_number, id`,
 		args,
 	});
 
@@ -181,6 +189,14 @@ async function findQuestionsByPaper({ subject, year, chapter, month, day, shift 
 		let raw = {};
 		try { raw = JSON.parse(row.raw_json || "{}"); } catch { raw = {}; }
 		const normalized = normalizeQuestion(raw, { preserveRaw: true });
+		
+		// Backfill metadata fields from DB columns if not set
+		if (row.subject && !normalized.subject) normalized.subject = String(row.subject);
+		if (row.year && !normalized.year) normalized.year = String(row.year);
+		if (row.month && !normalized.month) normalized.month = String(row.month);
+		if (row.day && !normalized.day) normalized.day = String(row.day);
+		if (row.shift && !normalized.shift) normalized.shift = String(row.shift);
+		
 		return {
 			rowId: row.id,
 			chapter: row.chapter || null,

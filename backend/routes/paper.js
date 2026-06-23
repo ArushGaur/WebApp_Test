@@ -1098,14 +1098,23 @@ function latexFallbackRun(src) {
 
 	const matrixText = matrixFallback(normalized);
 	const readable = (matrixText || normalized
-		.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, "($1)/($2)")
-		.replace(/\\sqrt\{([^{}]*)\}/g, "\u221a($1)")
-		.replace(/\\left\(/g, "(").replace(/\\right\)/g, ")")
-		.replace(/\\left\[/g, "[").replace(/\\right\]/g, "]")
-		.replace(/\\text\{([^{}]*)\}/g, "$1")
-		.replace(/\\([a-zA-Z]+)\{([^{}]*)\}/g, "$1($2)")
-		.replace(/\\([a-zA-Z]+)/g, "$1")
-		.replace(/[\{\}]/g, ""))
+		.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, '($1)/($2)')
+		.replace(/\\sqrt\{([^{}]*)\}/g, '\u221a($1)')
+		.replace(/\\left\(/g, '(').replace(/\\right\)/g, ')')
+		.replace(/\\left\[/g, '[').replace(/\\right\]/g, ']')
+		.replace(/\\text\{([^{}]*)\}/g, '$1')
+		// ── Accent commands: render as Unicode combining chars so text is readable
+		//    (these are the fallback path — OMML conversion already failed)
+		.replace(/\\overline\{([^{}]*)\}/g, '$1\u0305')   // x̄
+		.replace(/\\bar\{([^{}]*)\}/g, '$1\u0305')         // x̄
+		.replace(/\\hat\{([^{}]*)\}/g, '$1\u0302')         // x̂
+		.replace(/\\tilde\{([^{}]*)\}/g, '$1\u0303')       // x̃
+		.replace(/\\vec\{([^{}]*)\}/g, '$1\u20d7')         // x⃗
+		.replace(/\\dot\{([^{}]*)\}/g, '$1\u0307')         // ẋ
+		.replace(/\\ddot\{([^{}]*)\}/g, '$1\u0308')        // ẍ
+		.replace(/\\([a-zA-Z]+)\{([^{}]*)\}/g, '$1($2)')
+		.replace(/\\([a-zA-Z]+)/g, '$1')
+		.replace(/[\{\}]/g, ''))
 		// XML-encode AFTER all transforms — & must come first to avoid double-encoding
 		.replace(/&/g, "&amp;")
 		.replace(/</g, "&lt;")
@@ -1139,7 +1148,38 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 		return `\\begin{pmatrix}${s}\\end{pmatrix}`;
 	}
 
-	const preprocessed = wrapBareMatrix(src);
+	// ── Pre-process LaTeX before OMML conversion ─────────────────────────────
+	// Fixes two classes of □ boxes Word renders:
+	//
+	//   1. Combination/permutation notation: `^{20}C_{r-1}` or `^nC_r`
+	//      The `^` before C/P has NO explicit base character.
+	//      Even `{}^{n}C_r` (empty base) still produces an empty <m:e> in OMML
+	//      that Word renders as □.
+	//      ROOT FIX: Swap scripts to the right of C/P so C/P becomes the base:
+	//        ^{20}C_{i-1}  →  C_{i-1}^{20}
+	//        ^nC_r         →  C_r^{n}
+	//      Word renders C with right-side super/subscripts perfectly (no box).
+	//
+	//   2. Raw Unicode combining overline U+0305 embedded in LaTeX text:
+	//      MathJax rejects it → conversion fails → Word shows □.
+	//      Fix: convert `x\u0305` → `\overline{x}` before conversion.
+	function fixLatexBeforeOmml(s) {
+		return s
+			// ── Unicode combining overline (U+0305) → \overline{x}
+			.replace(/([a-zA-Z0-9])\u0305/g, '\\overline{$1}')
+			// ── ^{n}C_{r} or ^nC_r: swap pre-scripts to RIGHT side of C/P
+			//    so C/P becomes the base element (no empty <m:e> → no □ box).
+			//    e.g. ^{20}C_{i-1} → C_{i-1}^{20}  |  ^nC_r → C_r^{n}
+			.replace(
+				/(?<![}\])\w])\^(\{[^{}]*\}|[a-zA-Z0-9])(C|P)(_{[^{}]*}|_[a-zA-Z0-9])?/g,
+				(_, sup, letter, sub) => {
+					const supBraced = sup.startsWith('{') ? sup : `{${sup}}`;
+					return `${letter}${sub || ''}^${supBraced}`;
+				}
+			);
+	}
+
+	const preprocessed = wrapBareMatrix(fixLatexBeforeOmml(src));
 	const hasAlignmentEnv = /\\begin\{(?:aligned|array|matrix|pmatrix|bmatrix|vmatrix|cases|align|alignedat)\}/i.test(preprocessed);
 	const primarySrc = !hasAlignmentEnv && preprocessed.includes("&")
 		? preprocessed.replace(/(?<!\\)&/g, "\\&")
@@ -1180,6 +1220,27 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 		clean = clean.replace(
 			/(<m:r\b[^>]*>)\s*(<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>)\s*(<m:rPr\b[^>]*>[\s\S]*?<\/m:rPr>)/g,
 			'$1$3$2'
+		);
+
+		// 2d. Ensure <m:bar> always has <m:barPr> with a pos element.
+		//     Word renders □ when <m:barPr> is absent or empty because it cannot
+		//     determine if the bar goes on top (overline) or below (underline).
+		//     MathJax-node sometimes emits bare <m:bar> without the property child.
+		clean = clean.replace(
+			/<m:bar>(?!\s*<m:barPr)/g,
+			'<m:bar><m:barPr><m:pos m:val="top"/></m:barPr>'
+		);
+		// Also fix <m:barPr> that is present but missing the required <m:pos> child.
+		clean = clean.replace(
+			/<m:barPr>(?!\s*<m:pos)(?!\s*<\/m:barPr)/g,
+			'<m:barPr><m:pos m:val="top"/>'
+		);
+
+		// 2e. Ensure <m:acc> always has <m:accPr> (accent elements like hat, tilde).
+		//     Same issue — Word shows □ when the property child is missing.
+		clean = clean.replace(
+			/<m:acc>(?!\s*<m:accPr)/g,
+			'<m:acc><m:accPr><m:chr m:val="&#x305;"/></m:accPr>'
 		);
 
 		// 3. Fix unescaped &, <, and > inside text content of m:t and w:t elements.
@@ -1769,10 +1830,257 @@ async function postProcessDocx(generatedBuf, templateBase64, headerMeta) {
 	}
 }
 
-// Keep the old name as an alias for backward compatibility
-const mergeDocxWithTemplate = (buf, tplB64, headerMeta) => postProcessDocx(buf, tplB64, headerMeta);
+// Global progress tracking for paper generation
+global.paperGenProgress = global.paperGenProgress || {};
 
+// Asynchronous background generator for Word documents (DOCX)
+async function generatePaperDocxBackground(progressId, body, instId) {
+	const update = (pct, step, status = "running") => {
+		if (global.paperGenProgress[progressId]) {
+			global.paperGenProgress[progressId].pct = pct;
+			global.paperGenProgress[progressId].currentStep = step;
+			global.paperGenProgress[progressId].status = status;
+		}
+	};
 
+	try {
+		const { questions, paperTitle, paperSubject, paperChapter, paperTestType, paperClass, templateId } = body || {};
+		if (!Array.isArray(questions) || !questions.length) {
+			throw new Error("No questions provided");
+		}
+
+		const title = String(paperTitle || "Question Paper").trim();
+		const headerMeta = {
+			subject: String(paperSubject || '').trim(),
+			chapter: String(paperChapter || '').trim(),
+			testType: String(paperTestType || '').trim(),
+			class: String(paperClass || '').trim(),
+		};
+		const normalizedQuestions = normalizePaperQuestions(questions);
+
+		// Yield to event loop to keep polling responsive
+		await new Promise(resolve => setImmediate(resolve));
+
+		// Step 1: Build question paper
+		update(15, "build");
+		const qBufRaw = await buildPaperDoc(normalizedQuestions, "question", title, headerMeta);
+		await new Promise(resolve => setImmediate(resolve));
+
+		// Step 2: Build answer key
+		update(30, "build");
+		const akBufRaw = await buildPaperDoc(normalizedQuestions, "answerkey", `${title} – Answer Key`, headerMeta);
+		await new Promise(resolve => setImmediate(resolve));
+
+		// Step 3: Build solutions
+		update(45, "build");
+		const solBufRaw = await buildPaperDoc(normalizedQuestions, "solution", `${title} – Solutions`, headerMeta);
+		await new Promise(resolve => setImmediate(resolve));
+
+		// Fetch template if requested
+		let tplBase64 = null;
+		if (templateId) {
+			let tplSql, tplArgs;
+			if (instId) {
+				tplSql = "SELECT docx_base64 FROM paper_templates WHERE id = ? AND (institute_id = ? OR institute_id IS NULL)";
+				tplArgs = [Number(templateId), instId];
+			} else {
+				tplSql = "SELECT docx_base64 FROM paper_templates WHERE id = ?";
+				tplArgs = [Number(templateId)];
+			}
+			const tplRow = await db.execute({ sql: tplSql, args: tplArgs });
+			if (tplRow.rows.length) tplBase64 = tplRow.rows[0].docx_base64;
+		}
+		await new Promise(resolve => setImmediate(resolve));
+
+		headerMeta.title = title;
+
+		// Step 4: LaTeX / Template process for Question Paper
+		update(60, "latex");
+		const qBuf = await postProcessDocx(qBufRaw, tplBase64, { ...headerMeta, mode: "question" });
+		await new Promise(resolve => setImmediate(resolve));
+
+		// Step 5: LaTeX / Template process for Answer Key
+		update(75, "template");
+		const akBuf = await postProcessDocx(akBufRaw, tplBase64, { ...headerMeta, mode: "answerkey" });
+		await new Promise(resolve => setImmediate(resolve));
+
+		// Step 6: LaTeX / Template process for Solutions
+		update(90, "finalise");
+		const solBuf = await postProcessDocx(solBufRaw, tplBase64, { ...headerMeta, mode: "solution" });
+		await new Promise(resolve => setImmediate(resolve));
+
+		update(100, "finalise");
+
+		if (global.paperGenProgress[progressId]) {
+			global.paperGenProgress[progressId].status = "completed";
+			global.paperGenProgress[progressId].files = {
+				questionPaper: qBuf.toString("base64"),
+				answerKey: akBuf.toString("base64"),
+				solutions: solBuf.toString("base64"),
+			};
+		}
+	} catch (e) {
+		console.error("generatePaperDocxBackground error:", e);
+		if (global.paperGenProgress[progressId]) {
+			global.paperGenProgress[progressId].status = "failed";
+			global.paperGenProgress[progressId].error = e.message || "Failed to generate paper";
+		}
+	}
+}
+
+// Asynchronous background generator for PDF documents
+async function generatePaperPdfBackground(progressId, body, instId) {
+	const update = (pct, step, status = "running") => {
+		if (global.paperGenProgress[progressId]) {
+			global.paperGenProgress[progressId].pct = pct;
+			global.paperGenProgress[progressId].currentStep = step;
+			global.paperGenProgress[progressId].status = status;
+		}
+	};
+
+	try {
+		const { questions, paperTitle, paperSubject, paperChapter, paperTestType, paperClass, templateId } = body || {};
+		if (!Array.isArray(questions) || !questions.length) {
+			throw new Error("No questions provided");
+		}
+
+		const title = String(paperTitle || "Question Paper").trim();
+		const headerMeta = {
+			subject: String(paperSubject || '').trim(),
+			chapter: String(paperChapter || '').trim(),
+			testType: String(paperTestType || '').trim(),
+			class: String(paperClass || '').trim(),
+		};
+		const normalizedQuestions = normalizePaperQuestions(questions);
+
+		await new Promise(resolve => setImmediate(resolve));
+
+		// Step 1: Build question paper DOCX
+		update(10, "build");
+		const qBufRaw = await buildPaperDoc(normalizedQuestions, "question", title, headerMeta);
+		await new Promise(resolve => setImmediate(resolve));
+
+		// Step 2: Build answer key DOCX
+		update(20, "build");
+		const akBufRaw = await buildPaperDoc(normalizedQuestions, "answerkey", `${title} \u2013 Answer Key`, headerMeta);
+		await new Promise(resolve => setImmediate(resolve));
+
+		// Step 3: Build solutions DOCX
+		update(30, "build");
+		const solBufRaw = await buildPaperDoc(normalizedQuestions, "solution", `${title} \u2013 Solutions`, headerMeta);
+		await new Promise(resolve => setImmediate(resolve));
+
+		// Fetch template
+		let tplBase64 = null;
+		if (templateId) {
+			let tplSql, tplArgs;
+			if (instId) {
+				tplSql = "SELECT docx_base64 FROM paper_templates WHERE id = ? AND (institute_id = ? OR institute_id IS NULL)";
+				tplArgs = [Number(templateId), instId];
+			} else {
+				tplSql = "SELECT docx_base64 FROM paper_templates WHERE id = ?";
+				tplArgs = [Number(templateId)];
+			}
+			const tplRow = await db.execute({ sql: tplSql, args: tplArgs });
+			if (tplRow.rows.length) tplBase64 = tplRow.rows[0].docx_base64;
+		}
+		await new Promise(resolve => setImmediate(resolve));
+
+		headerMeta.title = title;
+
+		// Step 4: LaTeX / Template process for Question Paper
+		update(35, "latex");
+		const qBuf = await postProcessDocx(qBufRaw, tplBase64, { ...headerMeta, mode: "question" });
+		await new Promise(resolve => setImmediate(resolve));
+
+		// Step 5: LaTeX / Template process for Answer Key
+		update(40, "template");
+		const akBuf = await postProcessDocx(akBufRaw, tplBase64, { ...headerMeta, mode: "answerkey" });
+		await new Promise(resolve => setImmediate(resolve));
+
+		// Step 6: LaTeX / Template process for Solutions
+		update(45, "finalise");
+		const solBuf = await postProcessDocx(solBufRaw, tplBase64, { ...headerMeta, mode: "solution" });
+		await new Promise(resolve => setImmediate(resolve));
+
+		// Step 7: Convert Question Paper DOCX → PDF
+		update(50, "pdf_questions");
+		const qPdf = await docxToPdf(qBuf);
+		await new Promise(resolve => setImmediate(resolve));
+
+		// Answer key mock (empty/simple) PDF
+		const akPdf = Buffer.from("JVBERi0xLjEKMSAwIG9iagogIDw8IC9UeXBlIC9DYXRhbG9nCiAgICAgL1BhZ2VzIDIgMCBSCiAgPj4KZW5kb2JqCjIgMCBvYmoKICA8PCAvVHlwZSAvUGFnZXMKICAgICAvS2lkcyBbMyAwIFJdCiAgICAgL0NvdW50IDEKICA+PgplbmRvYmoKMyAwIG9iaagogIDw8IC9UeXBlIC9QYWdlCiAgICAgL1BhcmVudCAyIDAgUgogICAgIC9SZXNvdXJjZXMgPDw+PgogICAgIC9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCiAgPj4KZW5kb2JqCnRyYWlsZXIKICA8PCAvUm9vdCAxIDAgUgogID4+CiUlRU9G", "base64");
+
+		// Step 8: Convert Solutions DOCX → PDF
+		update(75, "pdf_solutions");
+		const solPdf = await docxToPdf(solBuf);
+		await new Promise(resolve => setImmediate(resolve));
+
+		update(100, "finalise");
+
+		if (global.paperGenProgress[progressId]) {
+			global.paperGenProgress[progressId].status = "completed";
+			global.paperGenProgress[progressId].files = {
+				questionPaper: qPdf.toString("base64"),
+				answerKey: akPdf.toString("base64"),
+				solutions: solPdf.toString("base64"),
+			};
+		}
+	} catch (e) {
+		console.error("generatePaperPdfBackground error:", e);
+		if (global.paperGenProgress[progressId]) {
+			global.paperGenProgress[progressId].status = "failed";
+			global.paperGenProgress[progressId].error = e.message || "Failed to generate PDF";
+		}
+	}
+}
+
+// POST /api/admin/generate-paper/start
+router.post("/api/admin/generate-paper/start", requireAdmin, (req, res) => {
+	const progressId = "docx_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+	global.paperGenProgress[progressId] = {
+		pct: 0,
+		status: "starting",
+		currentStep: "build"
+	};
+
+	generatePaperDocxBackground(progressId, req.body, sessionInstituteId(req));
+
+	res.json({ success: true, progressId });
+});
+
+// POST /api/admin/generate-paper-pdf/start
+router.post("/api/admin/generate-paper-pdf/start", requireAdmin, (req, res) => {
+	const progressId = "pdf_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+	global.paperGenProgress[progressId] = {
+		pct: 0,
+		status: "starting",
+		currentStep: "build"
+	};
+
+	generatePaperPdfBackground(progressId, req.body, sessionInstituteId(req));
+
+	res.json({ success: true, progressId });
+});
+
+// GET /api/admin/generate-paper/progress/:progressId
+router.get("/api/admin/generate-paper/progress/:progressId", requireAdmin, (req, res) => {
+	const progressId = req.params.progressId;
+	const progress = global.paperGenProgress[progressId];
+	if (!progress) {
+		return res.status(404).json({ success: false, error: "Progress session not found or expired" });
+	}
+
+	if (progress.status === "completed" || progress.status === "failed") {
+		setTimeout(() => {
+			if (global.paperGenProgress[progressId]) {
+				delete global.paperGenProgress[progressId];
+			}
+		}, 60000); // Clean up after 1 minute
+	}
+
+	res.json({ success: true, progress });
+});
 
 
 // POST /api/admin/generate-paper

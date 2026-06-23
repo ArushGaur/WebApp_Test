@@ -1735,7 +1735,7 @@
                 <div style="margin:2px 0 14px;border-top:1px solid var(--border)"></div>
             </div>
 
-            <div style="margin-bottom:14px">
+            <div id="paper-title-field" style="margin-bottom:14px">
                 <label style="font-size:0.78rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">
                     Paper Title <span style="color:var(--text-muted);font-size:0.85em;text-transform:none;letter-spacing:0">(used as document filename)</span>
                 </label>
@@ -2421,8 +2421,7 @@
                     <div style="font-size:0.75rem;color:var(--text-dim);margin-top:2px" id="ag-header-sub">Select
                         subjects, chapters &amp; topics</div>
                 </div>
-                <button onclick="closeAutoGenerateModal()"
-                    style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;width:32px;height:32px;cursor:pointer;color:var(--text-dim);font-size:1rem;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>
+                <button onclick="closeAutoGenerateModal()" class="ag-close-btn">✕</button>
             </div>
 
             <!-- Body -->
@@ -2442,9 +2441,6 @@
                         <span class="ag-breadcrumb-sep">›</span>
                         <span id="ag-bc-subject" style="font-weight:700;color:var(--text)"></span>
                     </div>
-                    <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px">
-                        <b>Checkbox</b> to select a whole chapter · <b>Click card body</b> to drill into topics
-                    </div>
                     <div class="ag-chapter-grid" id="ag-chapter-grid"></div>
                 </div>
 
@@ -2457,8 +2453,6 @@
                         <span class="ag-breadcrumb-sep">›</span>
                         <span id="ag-bc-chapter" style="font-weight:700;color:var(--text)"></span>
                     </div>
-                    <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px">Click topic cards to
-                        select/deselect topics</div>
                     <div class="ag-topic-grid" id="ag-topic-grid"></div>
                 </div>
 
@@ -2474,62 +2468,42 @@
                         <label
                             style="display:block;font-weight:700;font-size:0.88rem;color:var(--text-dim);margin-bottom:8px">📄
                             Paper Title</label>
-                        <input type="text" id="ag-paper-title" placeholder="e.g. Physics Practice Test"
-                            value="Question Paper"
-                            style="width:100%;padding:10px 14px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-size:0.9rem;outline:none;font-family:inherit"
-                            onfocus="this.style.borderColor='var(--border-focus)'"
-                            onblur="this.style.borderColor='var(--border)'">
+                        <input type="text" id="ag-paper-title" class="ag-input" placeholder="e.g. Physics Practice Test"
+                            value="Question Paper">
                     </div>
 
                     <!-- SUB-STEP A: Delivery chooser -->
                     <div id="ag-sub-choose">
                         <div style="font-weight:700;font-size:0.88rem;color:var(--text-dim);margin-bottom:12px">📤 How
                             do you want to deliver this paper?</div>
-                        <div class="ag-grid-2col" style="gap:12px">
-                            <button onclick="agChooseDelivery('offline')"
-                                style="padding:22px 12px;background:var(--bg-input);border:2px solid var(--border);border-radius:14px;cursor:pointer;color:var(--text);font-family:inherit;text-align:center;transition:all .2s;display:flex;flex-direction:column;align-items:center;gap:7px"
-                                onmouseover="this.style.borderColor='var(--accent-4)';this.style.background='rgba(245,158,11,0.07)'"
-                                onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--bg-input)'">
-                                <div style="font-size:2rem">📄</div>
-                                <div style="font-weight:800;font-size:0.92rem">Offline Test</div>
-                                <div style="font-size:0.73rem;color:var(--text-muted)">Download DOCX / PDF files</div>
+                        <div class="ag-grid-2col">
+                            <button onclick="agChooseDelivery('offline')" class="ag-delivery-card">
+                                <div class="ag-delivery-card-icon">📄</div>
+                                <div class="ag-delivery-card-title">Offline Test</div>
+                                <div class="ag-delivery-card-desc">Download DOCX / PDF files</div>
                             </button>
-                            <button onclick="agChooseDelivery('online')"
-                                style="padding:22px 12px;background:var(--bg-input);border:2px solid var(--border);border-radius:14px;cursor:pointer;color:var(--text);font-family:inherit;text-align:center;transition:all .2s;display:flex;flex-direction:column;align-items:center;gap:7px"
-                                onmouseover="this.style.borderColor='var(--accent)';this.style.background='rgba(86,169,255,0.07)'"
-                                onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--bg-input)'">
-                                <div style="font-size:2rem">🌐</div>
-                                <div style="font-weight:800;font-size:0.92rem">Online Test</div>
-                                <div style="font-size:0.73rem;color:var(--text-muted)">Live on student portal</div>
+                            <button onclick="agChooseDelivery('online')" class="ag-delivery-card">
+                                <div class="ag-delivery-card-icon">🌐</div>
+                                <div class="ag-delivery-card-title">Online Test</div>
+                                <div class="ag-delivery-card-desc">Live on student portal</div>
                             </button>
                         </div>
                     </div>
 
                     <!-- SUB-STEP B: Offline config -->
                     <div id="ag-sub-offline" style="display:none">
-                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
-                            <button onclick="agChooseDelivery(null)"
-                                style="background:none;border:none;cursor:pointer;color:var(--accent);font-family:inherit;font-size:0.82rem;font-weight:700;padding:4px 0;display:flex;align-items:center;gap:5px">
-                                ← Back
-                            </button>
-                            <div style="font-size:0.82rem;color:var(--text-muted)">Offline Test Configuration</div>
-                        </div>
+
 
                         <label
                             style="display:block;font-weight:700;font-size:0.88rem;color:var(--text-dim);margin-bottom:8px">
                             📝 Total Number of Questions
                         </label>
                         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-                            <input type="number" id="ag-qcount" min="1" max="500" value="30" placeholder="e.g. 30"
-                                style="width:120px;padding:10px 14px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-size:1rem;font-weight:700;outline:none;font-family:inherit"
-                                onfocus="this.style.borderColor='var(--border-focus)'"
-                                onblur="this.style.borderColor='var(--border)'">
-                            <div style="font-size:0.8rem;color:var(--text-muted)">Questions randomly selected from your
-                                chosen chapters/topics</div>
+                            <input type="number" id="ag-qcount" class="ag-input-number-large" min="1" max="500" value="30" placeholder="e.g. 30">
                         </div>
 
                         <!-- PYQ Filter -->
-                        <div style="margin-bottom:16px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:12px;padding:14px">
+                        <div class="ag-config-panel">
                             <div style="font-size:0.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px">🔍 Question Source</div>
                             <div style="display:flex;gap:20px;flex-wrap:wrap">
                                 <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:0.85rem;color:var(--text);font-weight:600">
@@ -2544,34 +2518,26 @@
                         </div>
 
                         <!-- Paper Header Fields -->
-                        <div style="background:var(--bg-input);border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:16px">
+                        <div class="ag-config-panel">
                             <div style="font-size:0.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:12px">📄 Paper Header Info</div>
                             <div class="ag-grid-2col" style="margin-bottom:10px">
                                 <div>
                                     <label style="font-size:0.78rem;color:var(--text-dim);font-weight:600;display:block;margin-bottom:5px">🎓 Class</label>
-                                    <input id="ag-class-input" type="text" placeholder="e.g. XI"
-                                        style="width:100%;padding:8px 12px;background:var(--bg);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-size:0.88rem;outline:none;font-family:inherit;transition:border .15s"
-                                        onfocus="this.style.borderColor='var(--border-focus)'" onblur="this.style.borderColor='var(--border)'">
+                                    <input id="ag-class-input" type="text" class="ag-input" placeholder="e.g. XI">
                                 </div>
                                 <div>
                                     <label style="font-size:0.78rem;color:var(--text-dim);font-weight:600;display:block;margin-bottom:5px">📚 Subject</label>
-                                    <input id="ag-subject-input" type="text" placeholder="e.g. Physics"
-                                        style="width:100%;padding:8px 12px;background:var(--bg);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-size:0.88rem;outline:none;font-family:inherit;transition:border .15s"
-                                        onfocus="this.style.borderColor='var(--border-focus)'" onblur="this.style.borderColor='var(--border)'">
+                                    <input id="ag-subject-input" type="text" class="ag-input" placeholder="e.g. Physics">
                                 </div>
                             </div>
                             <div class="ag-grid-2col">
                                 <div>
                                     <label style="font-size:0.78rem;color:var(--text-dim);font-weight:600;display:block;margin-bottom:5px">📖 Chapter / Topic</label>
-                                    <input id="ag-chapter-input" type="text" placeholder="e.g. Ray Optics"
-                                        style="width:100%;padding:8px 12px;background:var(--bg);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-size:0.88rem;outline:none;font-family:inherit;transition:border .15s"
-                                        onfocus="this.style.borderColor='var(--border-focus)'" onblur="this.style.borderColor='var(--border)'">
+                                    <input id="ag-chapter-input" type="text" class="ag-input" placeholder="e.g. Ray Optics">
                                 </div>
                                 <div>
                                     <label style="font-size:0.78rem;color:var(--text-dim);font-weight:600;display:block;margin-bottom:5px">📋 Test Type</label>
-                                    <input id="ag-test-type-input" type="text" placeholder="e.g. Chapter Test" value="Chapter Test"
-                                        style="width:100%;padding:8px 12px;background:var(--bg);border:1.5px solid var(--border);border-radius:9px;color:var(--text);font-size:0.88rem;outline:none;font-family:inherit;transition:border .15s"
-                                        onfocus="this.style.borderColor='var(--border-focus)'" onblur="this.style.borderColor='var(--border)'">
+                                    <input id="ag-test-type-input" type="text" class="ag-input" placeholder="e.g. Chapter Test" value="Chapter Test">
                                 </div>
                             </div>
                         </div>
@@ -2591,13 +2557,7 @@
 
                     <!-- SUB-STEP C: Online Test config (mirrors online-test-details-modal) -->
                     <div id="ag-sub-online" style="display:none">
-                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
-                            <button onclick="agChooseDelivery(null)"
-                                style="background:none;border:none;cursor:pointer;color:var(--accent);font-family:inherit;font-size:0.82rem;font-weight:700;padding:4px 0;display:flex;align-items:center;gap:5px">
-                                ← Back
-                            </button>
-                            <div style="font-size:0.82rem;color:var(--text-muted)">Online Test Configuration</div>
-                        </div>
+
 
                         <!-- Marking Scheme -->
                         <div
@@ -2696,8 +2656,6 @@
                                     style="width:120px;padding:10px 14px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-size:1rem;font-weight:700;outline:none;font-family:inherit"
                                     onfocus="this.style.borderColor='var(--border-focus)'"
                                     onblur="this.style.borderColor='var(--border)'">
-                                <div style="font-size:0.8rem;color:var(--text-muted)">Questions randomly selected from
-                                    your chosen chapters/topics</div>
                             </div>
                         </div>
 
@@ -2802,7 +2760,7 @@
                         <div
                             style="height:8px;background:var(--border);border-radius:99px;overflow:hidden;margin-bottom:10px">
                             <div id="ag-ol-bar"
-                                style="height:100%;width:0%;border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--accent-2),#a855f7);background-size:200% 100%;animation:agBarShimmer 1.5s linear infinite;transition:width 0.6s cubic-bezier(.4,0,.2,1)">
+                                style="height:100%;width:0%;border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--accent-3),var(--accent-2));background-size:200% 100%;animation:agBarShimmer 1.5s linear infinite;transition:width 0.6s cubic-bezier(.4,0,.2,1)">
                             </div>
                         </div>
                         <div style="display:flex;flex-direction:column;gap:8px" id="ag-ol-steps">
@@ -2835,7 +2793,7 @@
                         <div
                             style="height:8px;background:var(--border);border-radius:99px;overflow:hidden;margin-bottom:10px">
                             <div id="ag-loader-bar"
-                                style="height:100%;width:0%;border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--accent-2),#a855f7);background-size:200% 100%;animation:agBarShimmer 1.5s linear infinite;transition:width 0.6s cubic-bezier(.4,0,.2,1)">
+                                style="height:100%;width:0%;border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--accent-3),var(--accent-2));background-size:200% 100%;animation:agBarShimmer 1.5s linear infinite;transition:width 0.6s cubic-bezier(.4,0,.2,1)">
                             </div>
                         </div>
                         <!-- Step checklist -->
@@ -2863,16 +2821,15 @@
 
             </div><!-- /body -->
 
-            <!-- Footer -->
             <div id="ag-modal-footer">
-                <div style="font-size:0.78rem;color:var(--text-muted);flex:1" id="ag-footer-info"></div>
-                <button class="btn btn-ghost" id="ag-btn-back" onclick="agStepBack()" style="display:none">←
-                    Back</button>
-                <button class="btn btn-ghost" onclick="closeAutoGenerateModal()">Cancel</button>
-                <button class="btn btn-primary" id="ag-btn-next" onclick="agStepNext()"
-                    style="background:linear-gradient(135deg,var(--accent),#7c3aed);border:none;min-width:120px;display:none">
-                    Next →
-                </button>
+                <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:8px;text-align:center" id="ag-footer-info"></div>
+                <div id="ag-modal-footer-buttons" style="display:flex;justify-content:space-between;align-items:center;width:100%">
+                    <button class="btn btn-ghost" id="ag-btn-back" onclick="agStepBack()" style="display:none">← Back</button>
+                    <button class="btn btn-primary" id="ag-btn-next" onclick="agStepNext()"
+                        style="background:linear-gradient(135deg,var(--accent),var(--accent-2));color:var(--ag-btn-text);border:none;min-width:120px;display:none;margin-left:auto">
+                        Next →
+                    </button>
+                </div>
             </div>
         </div>
     </div>

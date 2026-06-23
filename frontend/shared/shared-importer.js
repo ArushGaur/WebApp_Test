@@ -909,7 +909,7 @@
                 : '<span style="font-size:0.7rem;color:var(--text-muted)">(none yet)</span>';
             html += '</div></div></div>';
 
-            html += '<div id="mqSolBody_' + qi + '" style="display:block;padding:12px 14px 14px;background:rgba(16,185,129,0.04)">';
+            html += '<div id="mqSolBody_' + qi + '" style="display:none;padding:12px 14px 14px;background:rgba(16,185,129,0.04)">';
             if (hasSol) {
                 normalizedSolutions.forEach(function (sol, sIdx) {
                     if (!sol) return;
@@ -920,18 +920,41 @@
                     } else if (sol.image) {
                         allImgs.push(sol.image);
                     }
-                    allImgs.forEach(function (imgData, imgIdx) {
-                        const imgSrc = imgData.startsWith('http') ? imgData : 'data:image/jpeg;base64,' + imgData;
-                        html += '<div style="margin-bottom:10px;text-align:center" id="mqSolImgSlot_' + qi + '_' + sIdx + '_' + imgIdx + '">';
-                        html += '<img src="' + imgSrc + '" alt="Solution diagram ' + (imgIdx + 1) + '" style="max-width:100%;max-height:220px;border-radius:6px;border:1px solid var(--border);object-fit:contain">';
+
+                    const hasImages = allImgs.length > 0;
+                    if (hasImages) {
+                        html += '<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">';
+                        
+                        // Left Column: Explanation Text
+                        html += '<div style="flex:1.3;min-width:280px">';
+                        if (solText) {
+                            const solNumMatch = solText.match(/^\s*\d+\.?\s*(?:\([a-dA-D]\)\s*)?:?\s*/);
+                            const cleanedText = solNumMatch ? solText.slice(solNumMatch[0].length).trim() : solText;
+                            const escapedForAttr = cleanedText.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            html += '<div class="imp-sol-text" data-sol-raw="' + escapedForAttr + '" style="font-size:0.86rem;line-height:1.8;color:var(--text);white-space:pre-wrap;word-break:break-word"></div>';
+                        }
                         html += '</div>';
-                    });
-                    if (solText) {
-                        const solNumMatch = solText.match(/^\s*\d+\.?\s*(?:\([a-dA-D]\)\s*)?:?\s*/);
-                        const cleanedText = solNumMatch ? solText.slice(solNumMatch[0].length).trim() : solText;
-                        const escapedForAttr = cleanedText.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                        html += '<div class="imp-sol-text" data-sol-raw="' + escapedForAttr + '" style="font-size:0.86rem;line-height:1.8;color:var(--text);white-space:pre-wrap;word-break:break-word"></div>';
+
+                        // Right Column: Images
+                        html += '<div style="flex:0.7;min-width:280px;max-width:440px;display:flex;flex-direction:column;gap:12px;justify-content:center">';
+                        allImgs.forEach(function (imgData, imgIdx) {
+                            const imgSrc = imgData.startsWith('http') ? imgData : 'data:image/jpeg;base64,' + imgData;
+                            html += '<div style="text-align:center" id="mqSolImgSlot_' + qi + '_' + sIdx + '_' + imgIdx + '">';
+                            html += '<img src="' + imgSrc + '" alt="Solution diagram ' + (imgIdx + 1) + '" style="max-width:100%;max-height:220px;border-radius:6px;border:none;object-fit:contain">';
+                            html += '</div>';
+                        });
+                        html += '</div>';
+
+                        html += '</div>';
+                    } else {
+                        if (solText) {
+                            const solNumMatch = solText.match(/^\s*\d+\.?\s*(?:\([a-dA-D]\)\s*)?:?\s*/);
+                            const cleanedText = solNumMatch ? solText.slice(solNumMatch[0].length).trim() : solText;
+                            const escapedForAttr = cleanedText.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            html += '<div class="imp-sol-text" data-sol-raw="' + escapedForAttr + '" style="font-size:0.86rem;line-height:1.8;color:var(--text);white-space:pre-wrap;word-break:break-word"></div>';
+                        }
                     }
+
                     if (sIdx < normalizedSolutions.length - 1) {
                         html += '<hr style="border:none;border-top:1px dashed rgba(16,185,129,0.2);margin:10px 0">';
                     }
@@ -944,7 +967,7 @@
         }
 
         function mqToggleSolBody(qi) {
-            const body = document.getElementById('mqSolBody_' + qi);
+            const body = document.getElementById('mqSolBody_' + qi) || document.getElementById('impSolBody_' + qi);
             if (!body) return;
             body.style.display = body.style.display === 'none' ? 'block' : 'none';
             const texts = body.querySelectorAll('.imp-sol-text');
@@ -1622,6 +1645,12 @@
                     subject,
                     unit,
                     topic: topicKey || topic,
+                    year: origQ.year || origQ._pyqMeta?.year || null,
+                    month: origQ.month || origQ._pyqMeta?.month || null,
+                    day: origQ.day || origQ.date || origQ._pyqMeta?.date || null,
+                    date: origQ.date || origQ.day || origQ._pyqMeta?.date || null,
+                    shift: origQ.shift || origQ._pyqMeta?.shift || null,
+                    exam: origQ.exam || origQ.examName || origQ.exam_name || origQ.exam_label || null,
                 });
             });
 

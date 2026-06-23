@@ -1211,8 +1211,8 @@ function sqRenderQuestionCards() {
         card.innerHTML = `
                     ${_sqQSelectModeOn ? `<input type="checkbox" class="lec-checkbox" onclick="event.stopPropagation();sqToggleQuestionSelect(event,${i})" ${_sqSelectedQuestions.has(String(i)) ? "checked" : ""}>` : ""}
                     <div class="lecture-card-num" style="font-size:0.8rem;letter-spacing:0.3px">Q${i + 1}</div>
-                    <div style="font-size:0.79rem;font-weight:600;color:var(--text);margin-bottom:4px;word-break:break-word;line-height:1.3;max-height:48px;overflow:hidden">${(q.question || "").substring(0, 60)}${(q.question || "").length > 60 ? "…" : ""}</div>
-                    <div style="font-size:0.72rem;color:var(--text-muted);display:flex;gap:6px;flex-wrap:wrap;margin-top:2px">
+                    <div class="lecture-card-title">${(q.question || "").substring(0, 60)}${(q.question || "").length > 60 ? "…" : ""}</div>
+                    <div class="lecture-card-count" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px">
                         ${cardIsNumerical
                             ? `<span style="color:#a78bfa">🔢 ${escapeHtml(String(q.numericalAnswer ?? q.correct_answer ?? 'N/A'))}</span>`
                             : `<span>${["A", "B", "C", "D"][(q.correctIndexes || [q.correctIndex || 0])[0]]} correct</span>`}
@@ -1298,7 +1298,7 @@ function sqRenderLectures(chapter) {
                     <div style="display:flex;justify-content:flex-end;align-items:flex-start;width:100%;gap:4px">
                         <button class="btn btn-ghost" style="padding:2px 4px;font-size:0.85rem;min-width:unset;flex-shrink:0" title="Edit Lecture" onclick="sqEditLecture(event,'${encodeURIComponent(s.chapter)}','${encodeURIComponent(s.lecture)}')">✏️</button>
                     </div>
-                    <div style="font-size:0.78rem;margin-bottom:3px">${qCount} Question${qCount !== 1 ? "s" : ""}</div>`;
+                    <div class="lecture-card-count">${qCount} Question${qCount !== 1 ? "s" : ""}</div>`;
         card.onclick = (e) => {
             if (e.target.closest("input")) return;
             if (e.target.closest("button")) return;
@@ -1488,26 +1488,45 @@ function sqOpenQuestionView(chapter, lecture, qCardIdx) {
         const isNumerical = (q.numericalAnswer !== undefined && q.numericalAnswer !== null) || (Array.isArray(q.options) && q.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function(im) { return !im; })));
         const hasImg = q.questionImage && q.questionImage.length > 0;
         const imgSrc = hasImg ? (q.questionImage.startsWith('http') ? q.questionImage : `data:image/jpeg;base64,${q.questionImage}`) : "";
-        const imgHtml = hasImg ? `<div style="margin-bottom:14px;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border);text-align:center;background:rgba(0,0,0,0.1)"><img src="${imgSrc}" alt="Question diagram" style="max-width:100%;max-height:280px;display:inline-block;object-fit:contain;cursor:pointer;border-radius:var(--radius-sm)" onclick="this.style.maxHeight=this.style.maxHeight=='none'?'280px':'none'"></div>` : "";
+        const imgHtml = hasImg ? `<div style="margin-bottom:14px;text-align:center;display:flex;justify-content:center;align-items:center;"><img src="${imgSrc}" alt="Question diagram" style="max-width:100%;max-height:280px;display:block;object-fit:contain;cursor:pointer;border-radius:var(--radius-sm)" onclick="this.style.maxHeight=this.style.maxHeight=='none'?'280px':'none'"></div>` : "";
         const LTRS = ["A", "B", "C", "D"];
         const qDiv = document.createElement("div");
-        qDiv.style.cssText = "background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px";
+        qDiv.style.cssText = "background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px";
         qDiv.dataset.origIdx = i;
+        const layoutContent = hasImg 
+            ? `<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
+                   <div style="flex:1.3;min-width:280px">
+                       <div class="q-render-preview" id="sq_iqe_preview_${i}"></div>
+                       <div style="margin-bottom:14px">
+                           <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px">${isNumerical ? 'Answer' : 'Options'}</div>
+                           ${isNumerical
+                               ? `<div style="padding:8px 12px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;font-size:0.82rem">
+                                   <span style="font-weight:700;color:#a78bfa">Numerical Answer: </span>
+                                   <span style="color:var(--text);font-weight:600;font-size:1rem">${escapeHtml(String(q.numericalAnswer ?? q.correct_answer ?? 'N/A'))}</span>
+                                  </div>`
+                               : LTRS.map((l, oi) => `<div class="opt-render-row ${ci.includes(oi) ? "is-correct" : ""}"><span class="opt-letter">${l}</span><div id="sq_iqe_opt_render_${i}_${oi}"></div>${ci.includes(oi) ? '<span style="margin-left:auto;font-size:0.7rem;color:var(--success);font-weight:700">✓ Correct</span>' : ""}</div>`).join("")}
+                       </div>
+                   </div>
+                   <div style="flex:0.7;min-width:280px;max-width:440px;margin-bottom:14px;align-self:stretch;display:flex;flex-direction:column;justify-content:center">
+                       ${imgHtml}
+                   </div>
+               </div>`
+            : `<div class="q-render-preview" id="sq_iqe_preview_${i}"></div>
+               <div style="margin-bottom:14px">
+                   <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px">${isNumerical ? 'Answer' : 'Options'}</div>
+                   ${isNumerical
+                       ? `<div style="padding:8px 12px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;font-size:0.82rem">
+                           <span style="font-weight:700;color:#a78bfa">Numerical Answer: </span>
+                           <span style="color:var(--text);font-weight:600;font-size:1rem">${escapeHtml(String(q.numericalAnswer ?? q.correct_answer ?? 'N/A'))}</span>
+                          </div>`
+                       : LTRS.map((l, oi) => `<div class="opt-render-row ${ci.includes(oi) ? "is-correct" : ""}"><span class="opt-letter">${l}</span><div id="sq_iqe_opt_render_${i}_${oi}"></div>${ci.includes(oi) ? '<span style="margin-left:auto;font-size:0.7rem;color:var(--success);font-weight:700">✓ Correct</span>' : ""}</div>`).join("")}
+               </div>`;
+
         qDiv.innerHTML = `
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-                        <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px">Question ${i + 1}${hasImg ? ' <span style="color:var(--accent)">📷 Has Image</span>' : ""}${isMulti ? ' <span style="color:var(--accent-4)">✦ Multi-correct</span>' : ""}${isNumerical ? ' <span style="color:#a78bfa">🔢 Numerical</span>' : ""}</div>
+                        <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px">Question ${i + 1}${q.year && String(q.year).trim() ? ` <span style="font-size:0.68rem;background:rgba(91,95,239,0.12);color:var(--accent-2);padding:2px 7px;border-radius:20px;font-weight:700;text-transform:none;letter-spacing:normal;display:inline-flex;align-items:center;gap:3px">🏛️ ${q.exam || q.examName || q.exam_name || q.exam_label || (String(q.subject || '').toLowerCase().includes('bio') ? 'NEET' : 'JEE Main')} ${q.year}${q.month ? ' ' + q.month : ''}${(q.date || q.day) ? ' ' + (q.date || q.day) : ''}${q.shift ? ' (' + q.shift + ')' : ''}</span>` : ''}${isMulti ? ' <span style="color:var(--accent-4)">✦ Multi-correct</span>' : ""}${isNumerical ? ' <span style="color:#a78bfa">🔢 Numerical</span>' : ""}</div>
                     </div>
-                    ${imgHtml}
-                    <div class="q-render-preview" id="sq_iqe_preview_${i}"></div>
-                    <div style="margin-bottom:14px">
-                        <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px">${isNumerical ? 'Answer' : 'Options'}</div>
-                        ${isNumerical
-                            ? `<div style="padding:8px 12px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;font-size:0.82rem">
-                                <span style="font-weight:700;color:#a78bfa">Numerical Answer: </span>
-                                <span style="color:var(--text);font-weight:600;font-size:1rem">${escapeHtml(String(q.numericalAnswer ?? q.correct_answer ?? 'N/A'))}</span>
-                               </div>`
-                            : LTRS.map((l, oi) => `<div class="opt-render-row ${ci.includes(oi) ? "is-correct" : ""}"><span class="opt-letter">${l}</span><div id="sq_iqe_opt_render_${i}_${oi}"></div>${ci.includes(oi) ? '<span style="margin-left:auto;font-size:0.7rem;color:var(--success);font-weight:700">✓ Correct</span>' : ""}</div>`).join("")}
-                    </div>
+                    ${layoutContent}
                     <div id="sqSolBlock_${i}"></div>`;
         questionsDiv.appendChild(qDiv);
     });
@@ -1591,10 +1610,10 @@ function sqEnterEditMode() {
         const isNumerical = (q.numericalAnswer !== undefined && q.numericalAnswer !== null) || (Array.isArray(q.options) && q.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function(im) { return !im; })));
         const hasImg = q.questionImage && q.questionImage.length > 0;
         const imgSrc = hasImg ? (q.questionImage.startsWith('http') ? q.questionImage : `data:image/jpeg;base64,${q.questionImage}`) : "";
-        const imgHtml = hasImg ? `<div style="margin-bottom:14px;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border);text-align:center;background:rgba(0,0,0,0.1)"><img src="${imgSrc}" alt="Question diagram" style="max-width:100%;max-height:280px;display:inline-block;object-fit:contain;cursor:pointer;border-radius:var(--radius-sm)" onclick="this.style.maxHeight=this.style.maxHeight=='none'?'280px':'none'"></div>` : "";
+        const imgHtml = hasImg ? `<div style="margin-bottom:14px;text-align:center;display:flex;justify-content:center;align-items:center;"><img src="${imgSrc}" alt="Question diagram" style="max-width:100%;max-height:280px;display:block;object-fit:contain;cursor:pointer;border-radius:var(--radius-sm)" onclick="this.style.maxHeight=this.style.maxHeight=='none'?'280px':'none'"></div>` : "";
         const LTRS = ["A", "B", "C", "D"];
         const qDiv = document.createElement("div");
-        qDiv.style.cssText = "background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px";
+        qDiv.style.cssText = "background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px";
         qDiv.dataset.origIdx = i;
         const existingText = Array.isArray(q.solutions) && q.solutions.length > 0
             ? String(q.solutions[0]?.text || q.solutions[0]?.content || q.solutions[0]?.solution || q.solutions[0]?.explanation || '')
@@ -1614,7 +1633,7 @@ function sqEnterEditMode() {
         _sqEditSolImages[i] = existingSolImgs;
         qDiv.innerHTML = `
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-                        <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px">Question ${i + 1}${hasImg ? ' <span style="color:var(--accent)">📷 Has Image</span>' : ""}${isNumerical ? ' <span style="color:#a78bfa">🔢 Numerical</span>' : ""}</div>
+                        <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px">Question ${i + 1}${q.year && String(q.year).trim() ? ` <span style="font-size:0.68rem;background:rgba(91,95,239,0.12);color:var(--accent-2);padding:2px 7px;border-radius:20px;font-weight:700;text-transform:none;letter-spacing:normal;display:inline-flex;align-items:center;gap:3px">🏛️ ${q.exam || q.examName || q.exam_name || q.exam_label || (String(q.subject || '').toLowerCase().includes('bio') ? 'NEET' : 'JEE Main')} ${q.year}${q.month ? ' ' + q.month : ''}${(q.date || q.day) ? ' ' + (q.date || q.day) : ''}${q.shift ? ' (' + q.shift + ')' : ''}</span>` : ''}${isNumerical ? ' <span style="color:#a78bfa">🔢 Numerical</span>' : ""}</div>
                         ${isNumerical ? '' : `<label class="multi-toggle-label">
                             <input type="checkbox" id="sq_iqe_multi_${i}" ${isMulti ? "checked" : ""} onchange="sqToggleMultiCorrect(${i})">
                             <span class="multi-toggle-text">${isMulti ? "✦ Multi-correct" : "○ Single-correct"}</span>
@@ -2554,7 +2573,15 @@ function agStepNext() {
 function agStepBack() {
     if (_ag.step === 'chapters') { agGoToSubjects(); }
     else if (_ag.step === 'topics') { agGoToChapters(); }
-    else if (_ag.step === 'config') { _ag.subStep = 'choose'; _ag.delivery = null; _agShowStep('chapters'); _agRenderChapters(_ag.subject); }
+    else if (_ag.step === 'config') {
+        if (_ag.subStep === 'choose') {
+            _agShowStep('chapters');
+            _agRenderChapters(_ag.subject);
+        } else {
+            _ag.delivery = null;
+            _agShowConfigSub('choose');
+        }
+    }
 }
 
 function agGoToSubjects() {
@@ -2669,17 +2696,20 @@ function _agUpdateFooter() {
     if (_ag.step === 'subjects') {
         nextBtn.textContent = 'Next →';
         nextBtn.style.display = 'none';
-        nextBtn.style.background = 'linear-gradient(135deg,var(--accent),#7c3aed)';
+        nextBtn.style.background = 'linear-gradient(135deg,var(--accent),var(--accent-2))';
+        nextBtn.style.color = 'var(--ag-btn-text)';
         if (headerSub) headerSub.textContent = 'Select subjects, chapters & topics';
     } else if (_ag.step === 'chapters') {
         nextBtn.textContent = `Review Selection →`;
         nextBtn.style.display = '';
-        nextBtn.style.background = 'linear-gradient(135deg,var(--accent),#7c3aed)';
+        nextBtn.style.background = 'linear-gradient(135deg,var(--accent),var(--accent-2))';
+        nextBtn.style.color = 'var(--ag-btn-text)';
         if (headerSub) headerSub.textContent = `${_ag.subject || ''} — Select chapters`;
     } else if (_ag.step === 'topics') {
         nextBtn.textContent = '← Back to Chapters';
         nextBtn.style.display = '';
-        nextBtn.style.background = 'linear-gradient(135deg,var(--accent),#7c3aed)';
+        nextBtn.style.background = 'linear-gradient(135deg,var(--accent),var(--accent-3))';
+        nextBtn.style.color = 'var(--ag-btn-text)';
         if (headerSub) headerSub.textContent = `${_ag.chapter || ''} — Select topics`;
     } else if (_ag.step === 'config') {
         const sub = _ag.subStep || 'choose';
@@ -2691,12 +2721,14 @@ function _agUpdateFooter() {
             nextBtn.textContent = '✨ Generate Paper';
             nextBtn.style.display = '';
             agOtUpdateScheduleGap();
-            nextBtn.style.background = 'linear-gradient(135deg,var(--accent-4),#ea580c)';
+            nextBtn.style.background = 'linear-gradient(135deg,var(--accent),var(--accent-3))';
+            nextBtn.style.color = 'var(--ag-btn-text)';
             if (headerSub) headerSub.textContent = 'Configure & generate offline paper';
         } else if (sub === 'online') {
             nextBtn.textContent = '🚀 Assign Online Test';
             nextBtn.style.display = '';
             nextBtn.style.background = 'linear-gradient(135deg,var(--accent),var(--accent-2))';
+            nextBtn.style.color = 'var(--ag-btn-text)';
             if (headerSub) headerSub.textContent = 'Configure & assign online test';
         } else if (sub === 'loading') {
             nextBtn.style.display = 'none';
@@ -3073,24 +3105,20 @@ function _agShowAgLoading(subStep) {
     _agShowConfigSub(subStep);
 }
 
-function _agAnimateLoader(kind) {
+function _agUpdateProgress(kind, pct, serverStep) {
     const isOnline = kind === 'online';
     const bar = document.getElementById(isOnline ? 'ag-ol-bar' : 'ag-loader-bar');
     const headline = document.getElementById(isOnline ? 'ag-ol-headline' : 'ag-loader-headline');
     const sub = document.getElementById(isOnline ? 'ag-ol-sub' : 'ag-loader-sub');
     const tip = document.getElementById(isOnline ? 'ag-ol-tip' : 'ag-loader-tip');
-    const steps = isOnline ? [
-        { id: 'pick', pct: 18, text: 'Picking questions from your selection…' },
-        { id: 'build', pct: 44, text: 'Building the online test structure…' },
-        { id: 'students', pct: 72, text: 'Assigning the test to students…' },
-        { id: 'portal', pct: 92, text: 'Publishing to the student portal…' }
-    ] : [
-        { id: 'pick', pct: 20, text: 'Picking questions from your selection…' },
-        { id: 'build', pct: 48, text: 'Building the paper structure…' },
-        { id: 'latex', pct: 68, text: 'Rendering equations and formatting text…' },
-        { id: 'template', pct: 84, text: 'Applying your selected template…' },
-        { id: 'pack', pct: 96, text: 'Packaging download files…' }
-    ];
+
+    if (bar) {
+        bar.style.width = `${pct}%`;
+        bar.title = `${pct}%`;
+    }
+    if (headline) headline.textContent = isOnline ? 'Preparing online test…' : 'Generating your paper…';
+
+    const steps = isOnline ? ['pick', 'build', 'students', 'portal'] : ['pick', 'build', 'latex', 'template', 'pack'];
     const tips = isOnline ? [
         'Tip: you can reopen this later to change the schedule.',
         'Tip: strict mode helps keep live tests locked down.',
@@ -3101,43 +3129,53 @@ function _agAnimateLoader(kind) {
         'Tip: offline generation still uses your selected chapters and topics.'
     ];
 
-    clearTimeout(_agOtLoadingTimer);
-    clearInterval(_agOtLoadingTipTimer);
+    let activeId = 'pick';
+    if (!isOnline) {
+        if (serverStep === 'build') activeId = 'build';
+        else if (serverStep === 'latex') activeId = 'latex';
+        else if (serverStep === 'template') activeId = 'template';
+        else if (serverStep === 'finalise') activeId = 'pack';
+    }
 
-    let idx = 0;
-    const apply = () => {
-        const step = steps[Math.min(idx, steps.length - 1)];
-        if (bar) bar.style.width = `${step.pct}%`;
-        if (headline) headline.textContent = isOnline ? 'Preparing online test…' : 'Generating your paper…';
-        if (sub) sub.textContent = step.text;
-        if (tip) tip.textContent = tips[idx % tips.length];
-
-        steps.forEach((s, sIndex) => {
-            const stepEl = document.getElementById(`${isOnline ? 'ag-ol' : 'ag-l'}s-${s.id}`);
-            if (!stepEl) return;
-            if (sIndex < idx) {
-                stepEl.classList.add('ls-done');
-                stepEl.classList.remove('ls-active');
-            } else if (s.id === step.id) {
-                stepEl.classList.add('ls-active');
-                stepEl.classList.remove('ls-done');
-            } else {
-                stepEl.classList.remove('ls-active');
-            }
-        });
-
-        idx += 1;
-        if (idx < steps.length) {
-            const delay = isOnline ? [700, 900, 900, 700] : [650, 900, 900, 850, 650];
-            _agOtLoadingTimer = setTimeout(apply, delay[Math.min(idx - 1, delay.length - 1)]);
-        }
+    const labels = isOnline ? {
+        pick: 'Picking questions from your selection…',
+        build: 'Building the online test structure…',
+        students: 'Assigning the test to students…',
+        portal: 'Publishing to the student portal…'
+    } : {
+        pick: 'Picking questions from pool…',
+        build: 'Building document structure…',
+        latex: 'Rendering equations (LaTeX)…',
+        template: 'Applying template styling…',
+        pack: 'Packaging download files…'
     };
 
-    apply();
-    _agOtLoadingTipTimer = setInterval(() => {
-        if (tip) tip.style.opacity = '0.6';
-        setTimeout(() => { if (tip) tip.style.opacity = '1'; }, 140);
-    }, 1800);
+    if (sub && labels[activeId]) {
+        sub.textContent = labels[activeId];
+    }
+
+    if (tip) {
+        const tipIdx = Math.floor(pct / 30) % tips.length;
+        tip.textContent = tips[tipIdx];
+    }
+
+    const activeIndex = steps.indexOf(activeId);
+    steps.forEach((id, sIndex) => {
+        const stepEl = document.getElementById(`${isOnline ? 'ag-ol' : 'ag-l'}s-${id}`);
+        if (!stepEl) return;
+        const dataLabel = stepEl.dataset.label || id;
+        const emoji = stepEl.dataset.emoji || '';
+        if (sIndex < activeIndex) {
+            stepEl.className = 'ag-lstep ls-done';
+            stepEl.innerHTML = `<span class="ag-ls-status">✓</span><span>${emoji ? emoji + ' ' : ''}${dataLabel}</span>`;
+        } else if (id === activeId) {
+            stepEl.className = 'ag-lstep ls-active';
+            stepEl.innerHTML = `<span class="ag-ls-status">⚙</span><span>${emoji ? emoji + ' ' : ''}${dataLabel}…</span>`;
+        } else {
+            stepEl.className = 'ag-lstep';
+            stepEl.innerHTML = `<span class="ag-ls-status">⏳</span><span>${dataLabel}</span>`;
+        }
+    });
 }
 
 function _agClearLoaderTimers() {
@@ -3281,7 +3319,7 @@ async function _agGeneratePaper() {
     nextBtn.disabled = true;
     nextBtn.textContent = '⏳ Loading questions…';
     _agShowAgLoading('loading');
-    _agAnimateLoader('offline');
+    _agUpdateProgress('offline', 5, 'pick');
 
     try {
         // Collect all rows that match the selection
@@ -3420,21 +3458,81 @@ async function _agGeneratePaper() {
             _label: (topic || chapter) + ' / Q' + (qi + 1),
         }));
 
-        const resp = await fetch(API_BASE + '/api/admin/generate-paper', {
+        let pollInterval = null;
+        let files;
+
+        // Stop the shimmer animation so the bar shows real server progress.
+        const _agBar = document.getElementById('ag-loader-bar');
+        if (_agBar) _agBar.style.animation = 'none';
+
+        // Try the async progress-based route first; fall back to the
+        // legacy synchronous route if the server doesn't support it yet.
+        const startResp = await fetch(API_BASE + '/api/admin/generate-paper/start', {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ questions, paperTitle, paperSubject, paperChapter, paperTestType, paperClass, templateId: (typeof _selectedTemplateId !== 'undefined' ? _selectedTemplateId : null) })
         });
-        const data = await resp.json();
-        if (!resp.ok || !data.success) throw new Error(data.error || 'Generation failed');
+
+        if (startResp.status === 404) {
+            // ── Fallback: old synchronous route ──────────────────────────
+            _agUpdateProgress('offline', 10, 'build');
+            const syncResp = await fetch(API_BASE + '/api/admin/generate-paper', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ questions, paperTitle, paperSubject, paperChapter, paperTestType, paperClass, templateId: (typeof _selectedTemplateId !== 'undefined' ? _selectedTemplateId : null) })
+            });
+            const syncData = await syncResp.json();
+            if (!syncResp.ok || !syncData.success) throw new Error(syncData.error || 'Generation failed');
+            _agUpdateProgress('offline', 100, 'finalise');
+            files = syncData.files;
+        } else {
+            // ── Async progress-polling route ──────────────────────────────
+            const startData = await startResp.json();
+            if (!startResp.ok || !startData.success) throw new Error(startData.error || 'Generation failed to start');
+
+            const progressId = startData.progressId;
+
+            files = await new Promise((resolve, reject) => {
+                pollInterval = setInterval(async () => {
+                    try {
+                        const pResp = await fetch(API_BASE + '/api/admin/generate-paper/progress/' + progressId, {
+                            credentials: 'include'
+                        });
+                        const pData = await pResp.json();
+                        if (!pResp.ok || !pData.success) {
+                            clearInterval(pollInterval);
+                            reject(new Error(pData.error || 'Failed to fetch generation progress'));
+                            return;
+                        }
+
+                        const progress = pData.progress;
+                        // Drive bar directly from server percentage (no fake animation)
+                        _agUpdateProgress('offline', progress.pct, progress.currentStep);
+
+                        if (progress.status === 'completed') {
+                            clearInterval(pollInterval);
+                            resolve(progress.files);
+                        } else if (progress.status === 'failed') {
+                            clearInterval(pollInterval);
+                            reject(new Error(progress.error || 'Generation failed'));
+                        }
+                    } catch (pollErr) {
+                        clearInterval(pollInterval);
+                        reject(pollErr);
+                    }
+                }, 250);
+            });
+        }
 
         const safeTitle = paperTitle.replace(/[^a-z0-9_\-]/gi, '_');
-        window._lastPaperGenData = { files: data.files, safeTitle, paperTitle, paperSubject, paperChapter, paperTestType, paperClass, questions, pdfFiles: null };
+        window._lastPaperGenData = { files, safeTitle, paperTitle, paperSubject, paperChapter, paperTestType, paperClass, questions, pdfFiles: null };
 
         _agClearLoaderTimers();
+        if (pollInterval) clearInterval(pollInterval);
         closeAutoGenerateModal();
-        _agShowDownloadModal(data.files, safeTitle, paperTitle, questions);
+        _agShowDownloadModal(files, safeTitle, paperTitle, questions);
 
     } catch (err) {
         _agClearLoaderTimers();
@@ -3477,7 +3575,17 @@ function _agShowDownloadModal(files, safeTitle, paperTitle, questions) {
     if (tplStatusEl) tplStatusEl.style.display = 'none';
     if (actionsEl) actionsEl.style.display = 'none';
     if (closeActEl) closeActEl.style.display = 'flex';
-    if (infoEl) { infoEl.style.display = ''; infoEl.innerHTML = ''; }
+    if (infoEl) infoEl.style.display = 'none';
+
+    // Hide title, header fields, and title field for auto-generate success screen
+    if (modal) {
+        const titleEl = modal.querySelector('.modal-title');
+        if (titleEl) titleEl.style.display = 'none';
+    }
+    const headerFields = document.getElementById('paper-header-fields');
+    if (headerFields) headerFields.style.display = 'none';
+    const titleField = document.getElementById('paper-title-field');
+    if (titleField) titleField.style.display = 'none';
     if (titleInput) titleInput.value = paperTitle;
     if (genBtn) { genBtn.disabled = false; genBtn.style.opacity = ''; }
 

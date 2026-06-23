@@ -1,4 +1,12 @@
 const { createClient } = require("@libsql/client");
+const path = require("path");
+
+// Load local environment variables from .env file if it exists
+try {
+	process.loadEnvFile(path.join(__dirname, "../.env"));
+} catch (e) {
+	// .env file is optional (e.g. in production env variables are set directly)
+}
 
 const _raw = createClient({
 	url: process.env.TURSO_DATABASE_URL || "file:local.db",
