@@ -102,6 +102,7 @@
 
             <!-- Form section -->
             <div class="login-form-section">
+                <form id="loginForm" onsubmit="event.preventDefault(); login()" autocomplete="on">
                 <div class="login-field-label">Access Code</div>
                 <div class="login-field-wrap" id="loginFieldWrap">
                     <div class="login-field-icon">
@@ -133,7 +134,7 @@
                 </div>
                 <p id="loginError" class="login-error-msg">Incorrect passcode. Please try again.</p>
 
-                <button class="login-submit-btn" id="loginSubmitBtn" onclick="login()">
+                <button class="login-submit-btn" id="loginSubmitBtn" type="submit">
                     <span class="login-btn-text">Sign In</span>
                     <span class="login-btn-spinner" style="display:none">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -144,6 +145,7 @@
                         </svg>
                     </span>
                 </button>
+                </form>
             </div>
 
             <!-- Footer -->
@@ -1523,15 +1525,19 @@
                 <label id="instModalPasscodeLabel">Passcode * <span
                         style="font-size:0.72rem;color:var(--text-muted)">Password used by teachers to
                         login</span></label>
+                <form autocomplete="on" onsubmit="return false" style="margin:0;padding:0">
                 <input type="password" id="instModalPasscode" placeholder="Set a strong passcode" maxlength="100"
                     autocomplete="new-password">
+                </form>
             </div>
             <div class="inst-form-row">
                 <label id="instModalTeacherPasscodeLabel">Teacher Passcode * <span
                         style="font-size:0.72rem;color:var(--text-muted)">Required to enter the Teacher role in client
                         portal</span></label>
+                <form autocomplete="on" onsubmit="return false" style="margin:0;padding:0">
                 <input type="password" id="instModalTeacherPasscode" placeholder="Set a unique teacher passcode"
                     maxlength="100" autocomplete="new-password">
+                </form>
             </div>
             <div class="inst-form-row">
                 <label>Plan Expiry Date <span style="font-size:0.72rem;color:var(--text-muted)">(leave blank = no
