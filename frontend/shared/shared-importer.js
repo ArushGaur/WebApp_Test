@@ -909,7 +909,7 @@
                 : '<span style="font-size:0.7rem;color:var(--text-muted)">(none yet)</span>';
             html += '</div></div></div>';
 
-            html += '<div id="mqSolBody_' + qi + '" style="display:none;padding:12px 14px 14px;background:rgba(16,185,129,0.04)">';
+            html += '<div id="mqSolBody_' + qi + '" style="display:block;padding:12px 14px 14px;background:rgba(16,185,129,0.04)">';
             if (hasSol) {
                 normalizedSolutions.forEach(function (sol, sIdx) {
                     if (!sol) return;

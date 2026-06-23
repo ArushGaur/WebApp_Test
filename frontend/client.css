@@ -1,7 +1,9 @@
 /* ════════════════════════════════════════════════════════════════════════
    GRIP PHYSICS — CLIENT PANEL
-   Visual identity: neutral graphite-gray chrome with a blue/violet signal
-   accent. Question text reads in a serif (Lora) for exam-paper clarity,
+   Visual identity: Deep Teal — both light and dark themes.
+   Light mode: crisp seafoam-white surfaces with teal accents — clean, clinical.
+   Dark mode: deep aqua-black base with cyan-teal signal — focused, cool.
+   Question text reads in a serif (Lora) for exam-paper clarity,
    answer options stay in the UI sans (Outfit) at a slightly smaller size
    so the eye separates "what's being asked" from "what to pick."
    ════════════════════════════════════════════════════════════════════════ */
@@ -9,33 +11,34 @@
 @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;1,500&display=swap');
 
 /* ── THEME TOKENS ───────────────────────────────────────────────────── */
+/* :root = Deep Teal dark (default / unthemed state) */
 :root {
-    --bg: #0d1420;
-    --bg-card: #141f2f;
-    --bg-input: #1a283b;
-    --bg-hover: #223249;
-    --bg-sidebar: #101a2a;
-    --border: rgba(184, 213, 242, 0.16);
-    --border-focus: #63b3ff;
-    --accent: #56a9ff;
-    --accent-2: #2ed2b4;
-    --accent-3: #2ed2b4;
-    --accent-4: #f59e0b;
-    --accent-glow: rgba(86, 169, 255, 0.24);
-    --ag-btn-text: #050a0e;
-    --ag-panel-bg: rgba(23, 36, 45, 0.3);
-    --success: #2ed2b4;
-    --warn: #f3b96f;
-    --error: #ff6b6b;
-    --text: #e7f1ff;
-    --text-dim: #b7c8e8;
-    --text-muted: rgba(231, 241, 255, 0.66);
+    --bg: #080f10;
+    --bg-card: #0d1a1b;
+    --bg-input: #111f20;
+    --bg-hover: #162828;
+    --bg-sidebar: #060c0d;
+    --border: rgba(46, 204, 196, 0.15);
+    --border-focus: #2eccc4;
+    --accent: #2eccc4;
+    --accent-2: #6de8e2;
+    --accent-3: #6de8e2;
+    --accent-4: #f4bc72;
+    --accent-glow: rgba(46, 204, 196, 0.2);
+    --ag-btn-text: #050e0e;
+    --ag-panel-bg: rgba(13, 26, 27, 0.35);
+    --success: #6de8e2;
+    --warn: #f4bc72;
+    --error: #f07878;
+    --text: #d8f4f2;
+    --text-dim: #7abfba;
+    --text-muted: rgba(216, 244, 242, 0.60);
     --sidebar-w: 228px;
     --radius: 16px;
     --radius-sm: 11px;
     --radius-xs: 8px;
-    --shadow-card: 0 6px 20px rgba(0, 0, 0, 0.2);
-    --shadow-modal: 0 18px 45px rgba(0, 0, 0, 0.38);
+    --shadow-card: 0 6px 20px rgba(0, 0, 0, 0.28);
+    --shadow-modal: 0 18px 45px rgba(0, 0, 0, 0.44);
     --transition: all 0.2s ease;
 
     --font-display: 'Outfit', sans-serif;
@@ -43,30 +46,55 @@
 }
 
 [data-theme="light"] {
-    --bg: #eef4ff;
+    /* Deep Teal light — crisp seafoam-white, teal accents */
+    --bg: #edfaf9;
     --bg-card: #ffffff;
-    --bg-input: #f2f7ff;
-    --bg-hover: #e8f2ff;
+    --bg-input: #f2faf9;
+    --bg-hover: #e0f5f3;
     --bg-sidebar: #ffffff;
-    --border: rgba(14, 26, 42, 0.12);
-    --border-focus: #4d8ef7;
-    --accent: #4b53eb;
-    --accent-2: #1ca79b;
-    --accent-3: #148a7f;
-    --accent-4: #d97706;
-    --warn: #a76812;
-    --text: #0e1a2a;
-    --text-dim: #4f6381;
-    --text-muted: rgba(14, 26, 42, 0.66);
-    --accent-glow: rgba(77, 142, 247, 0.2);
+    --border: rgba(5, 50, 48, 0.10);
+    --border-focus: #0e8a84;
+    --accent: #0e8a84;
+    --accent-2: #2eccc4;
+    --accent-3: #0e8a84;
+    --accent-4: #c47a14;
+    --warn: #956010;
+    --text: #053230;
+    --text-dim: #2e6e6a;
+    --text-muted: rgba(5, 50, 48, 0.58);
+    --accent-glow: rgba(14, 138, 132, 0.16);
     --ag-btn-text: #ffffff;
-    --ag-panel-bg: rgba(75, 83, 235, 0.03);
-    --shadow-card: 0 7px 22px rgba(53, 73, 116, 0.09);
-    --shadow-modal: 0 20px 50px rgba(58, 77, 122, 0.25);
+    --ag-panel-bg: rgba(14, 138, 132, 0.04);
+    --shadow-card: 0 7px 22px rgba(5, 50, 48, 0.08);
+    --shadow-modal: 0 20px 50px rgba(5, 50, 48, 0.16);
+    --success: #0e8a84;
+    --error: #c0392b;
 }
 
 [data-theme="dark"] {
-    --bg: #0b1322;
+    /* Deep Teal dark — aqua-black base, cyan-teal accents */
+    --bg: #080f10;
+    --bg-card: #0d1a1b;
+    --bg-input: #111f20;
+    --bg-hover: #162828;
+    --bg-sidebar: #060c0d;
+    --border: rgba(46, 204, 196, 0.15);
+    --border-focus: #2eccc4;
+    --accent: #2eccc4;
+    --accent-2: #6de8e2;
+    --accent-3: #6de8e2;
+    --accent-4: #f4bc72;
+    --accent-glow: rgba(46, 204, 196, 0.2);
+    --ag-btn-text: #050e0e;
+    --ag-panel-bg: rgba(13, 26, 27, 0.35);
+    --success: #6de8e2;
+    --warn: #f4bc72;
+    --error: #f07878;
+    --text: #d8f4f2;
+    --text-dim: #7abfba;
+    --text-muted: rgba(216, 244, 242, 0.60);
+    --shadow-card: 0 6px 20px rgba(0, 0, 0, 0.28);
+    --shadow-modal: 0 18px 45px rgba(0, 0, 0, 0.44);
 }
 
 /* ── RESET ──────────────────────────────────────────────────────────── */
@@ -98,15 +126,15 @@ body {
 
 [data-theme="dark"] body {
     background:
-        radial-gradient(900px 520px at 10% 0%, rgba(45, 212, 191, 0.06) 0%, rgba(45, 212, 191, 0) 60%),
-        radial-gradient(700px 480px at 95% 30%, rgba(59, 130, 246, 0.05) 0%, rgba(59, 130, 246, 0) 60%),
-        linear-gradient(180deg, #081014 0%, #050a0e 100%);
+        radial-gradient(900px 520px at 10% 0%, rgba(46, 204, 196, 0.07) 0%, rgba(46, 204, 196, 0) 60%),
+        radial-gradient(700px 480px at 95% 30%, rgba(109, 232, 226, 0.04) 0%, rgba(109, 232, 226, 0) 60%),
+        linear-gradient(180deg, #060c0d 0%, #030809 100%);
 }
 
 [data-theme="light"] body {
     background:
-        radial-gradient(900px 520px at 10% 0%, rgba(13, 148, 136, 0.04) 0%, rgba(13, 148, 136, 0) 60%),
-        radial-gradient(700px 480px at 95% 30%, rgba(37, 99, 235, 0.03) 0%, rgba(37, 99, 235, 0) 60%),
+        radial-gradient(900px 520px at 10% 0%, rgba(14, 138, 132, 0.06) 0%, rgba(14, 138, 132, 0) 60%),
+        radial-gradient(700px 480px at 95% 30%, rgba(46, 204, 196, 0.04) 0%, rgba(46, 204, 196, 0) 60%),
         var(--bg);
 }
 
@@ -159,7 +187,7 @@ select:focus-visible,
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #07090f;
+    background: #050c0d;
     z-index: 1000;
     padding: 20px;
     overflow: hidden;
@@ -171,7 +199,7 @@ select:focus-visible,
 
 [data-theme="light"] #loginOverlay,
 [data-theme="light"] #roleOverlay {
-    background: #eef1f6;
+    background: #e4f7f6;
 }
 
 /* Signature backdrop: faint graph grid + a single sweeping trace line.
@@ -193,8 +221,8 @@ select:focus-visible,
 [data-theme="light"] #loginOverlay::before,
 [data-theme="light"] #roleOverlay::before {
     background-image:
-        linear-gradient(rgba(20, 24, 38, 0.05) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(20, 24, 38, 0.05) 1px, transparent 1px);
+        linear-gradient(rgba(5, 50, 48, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(5, 50, 48, 0.05) 1px, transparent 1px);
 }
 
 .login-bg-particles {
@@ -1729,7 +1757,7 @@ tr:hover td {
 }
 
 .q-data-table th {
-    background: rgba(91, 95, 239, 0.14);
+    background: var(--accent-glow);
     font-weight: 700;
     color: var(--text);
 }
