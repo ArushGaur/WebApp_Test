@@ -1183,9 +1183,6 @@ select:focus-visible,
 .table-wrap {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--bg-card);
 }
 
 table {
@@ -1196,19 +1193,18 @@ table {
 
 th {
     text-align: left;
-    padding: 12px 16px;
-    font-size: 0.67rem;
+    padding: 9px 12px;
+    font-size: 0.68rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.6px;
     color: var(--text-muted);
     border-bottom: 1px solid var(--border);
-    font-family: var(--font-mono);
 }
 
 td {
-    padding: 12px 16px;
-    font-size: 0.84rem;
+    padding: 10px 12px;
+    font-size: 0.82rem;
     border-bottom: 1px solid var(--border);
 }
 
@@ -1633,6 +1629,10 @@ tr:hover td {
     gap: 12px;
 }
 
+.ag-topic-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
 .ag-subject-card,
 .ag-chapter-card,
 .ag-topic-card {
@@ -1644,6 +1644,10 @@ tr:hover td {
     transition: var(--transition);
     text-align: center;
     position: relative;
+}
+
+.ag-topic-card {
+    padding: 22px 18px;
 }
 
 .ag-subject-card-icon {

@@ -1,3 +1,7 @@
+process.on('unhandledRejection', (err) => {
+	console.error('Unhandled Rejection:', err);
+});
+
 const express = require("express");
 const cors = require("cors");
 const path = require("path");

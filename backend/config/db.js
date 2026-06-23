@@ -1,8 +1,32 @@
 const { createClient } = require("@libsql/client");
 
-const db = createClient({
+const _raw = createClient({
 	url: process.env.TURSO_DATABASE_URL || "file:local.db",
 	authToken: process.env.TURSO_AUTH_TOKEN || "",
+});
+
+async function _retry(fn, retries = 3) {
+	for (let i = 0; i < retries; i++) {
+		try { return await fn(); } catch (err) {
+			const isSocket = err?.cause?.code === 'UND_ERR_SOCKET'
+				|| err?.message?.includes('other side closed')
+				|| err?.message?.includes('socket hang up');
+			if (isSocket && i < retries - 1) {
+				await new Promise(r => setTimeout(r, 500 * (i + 1)));
+				continue;
+			}
+			throw err;
+		}
+	}
+}
+
+const db = new Proxy(_raw, {
+	get(t, p) {
+		const v = Reflect.get(t, p);
+		if (typeof v !== 'function') return v;
+		if (p !== 'execute' && p !== 'executeMultiple') return v.bind(t);
+		return (...a) => _retry(() => v.apply(t, a));
+	}
 });
 
 async function initDB(TEACHER_PASSCODE, hashPasscode) {
