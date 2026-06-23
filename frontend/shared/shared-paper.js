@@ -531,6 +531,9 @@
                     url += '?instituteId=' + encodeURIComponent(filterEl.value);
                 }
                 const resp = await fetch(url, { credentials: 'include' });
+                // Silently bail on auth errors — session may not be established yet
+                if (resp.status === 401 || resp.status === 403) return;
+                if (!resp.ok) return;
                 _templates = await resp.json();
                 _renderTemplateList();
                 _renderModalTemplateList();
