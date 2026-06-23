@@ -3360,7 +3360,7 @@ async function _agGeneratePaper() {
             rows.forEach(row => {
                 if (Array.isArray(row.questions)) {
                     row.questions.forEach((q, qi) => {
-                        // PYQ = has a year value, Other = no year value
+                        // PYQ = has a year value, Regular = no year value
                         const hasYear = q.year && String(q.year).trim() !== '';
                         const isPyq = hasYear;
                         const isOther = !hasYear;
