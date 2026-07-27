@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<meta name="theme-color" content="#0E1013" />
+<title>CEE 3rd Sem Timetable</title>
+<style>
+  :root{
+    --bg:#0E1013;
+    --surface:#171A1F;
+    --surface-2:#1C2027;
+    --raised:#242A32;
+    --border:rgba(255,255,255,.075);
+    --border-strong:rgba(255,255,255,.16);
+    --text:#EDEFF2;
+    --muted:rgba(237,239,242,.62);
+    --dim:rgba(237,239,242,.40);
+
+    --brand:#7C9BFF;
+    --brand-2:#63E6D2;
+    --brand-soft:rgba(124,155,255,.14);
+
+    --lecture:#7C9BFF;  --lecture-soft:rgba(124,155,255,.14);
+    --tutorial:#58C4DD;  --tutorial-soft:rgba(88,196,221,.14);
+    --lab:#E9A65B;       --lab-soft:rgba(233,166,91,.14);
+    --hss:#5ECE9B;       --hss-soft:rgba(94,206,155,.14);
+
+    --r-sm:8px; --r:12px; --r-lg:16px; --r-xl:20px;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.28);
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    background-image:
+      radial-gradient(1100px 480px at 8% -12%, rgba(124,155,255,.10), transparent 68%),
+      radial-gradient(880px 420px at 96% -6%, rgba(99,230,210,.075), transparent 70%);
+    background-repeat:no-repeat;
+    min-height:100%;
+  }
+  .wrap{
+    width:100%; max-width:940px; margin:0 auto;
+    padding:clamp(16px,3.2vw,32px) clamp(16px,3.2vw,28px) 56px;
+    padding-left:max(clamp(16px,3.2vw,28px), env(safe-area-inset-left));
+    padding-right:max(clamp(16px,3.2vw,28px), env(safe-area-inset-right));
+  }
+
+  /* ---------- header ---------- */
+  header{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;margin-bottom:clamp(16px,2.4vw,22px)}
+  h1{
+    margin:0;font-weight:660;letter-spacing:-.02em;
+    font-size:clamp(19px,2.6vw,25px);line-height:1.24;
+  }
+  h1 .accent{
+    background:linear-gradient(92deg,var(--brand),var(--brand-2));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .clock{
+    display:inline-flex;align-items:center;gap:9px;flex:0 0 auto;
+    font-size:13.5px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;
+    background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:7px 14px;
+  }
+  .clock b{color:var(--text);font-weight:600}
+  .pulse{width:7px;height:7px;border-radius:50%;background:var(--brand-2);box-shadow:0 0 0 4px rgba(99,230,210,.16);animation:beat 2.6s ease-in-out infinite}
+  @keyframes beat{0%,100%{opacity:1}50%{opacity:.45}}
+
+  /* ---------- status hero ---------- */
+  .hero{
+    position:relative;overflow:hidden;
+    border:1px solid var(--border-strong);border-radius:var(--r-xl);
+    background:linear-gradient(135deg,rgba(124,155,255,.14),rgba(99,230,210,.07) 55%,transparent),var(--surface);
+    padding:clamp(16px,2.4vw,22px);margin-bottom:clamp(14px,2vw,18px);box-shadow:var(--shadow);
+  }
+  .hero .eyebrow{font-size:11px;font-weight:750;letter-spacing:.12em;text-transform:uppercase;color:var(--brand-2)}
+  .hero.idle .eyebrow{color:var(--dim)}
+  .hero .big{font-size:clamp(19px,2.9vw,24px);font-weight:650;letter-spacing:-.015em;margin-top:6px;overflow-wrap:anywhere}
+  .hero .sub{font-size:14px;color:var(--muted);margin-top:5px}
+  .bar{height:4px;border-radius:99px;background:rgba(255,255,255,.10);margin-top:14px;overflow:hidden}
+  .bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--brand),var(--brand-2))}
+
+  /* ---------- elective picker ---------- */
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:clamp(14px,2vw,18px);margin-bottom:clamp(16px,2.4vw,22px)}
+  .panel h2{font-size:11px;font-weight:750;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin:0 0 13px}
+  .chips{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  .chip{
+    display:flex;flex-direction:column;gap:3px;text-align:left;width:100%;
+    min-height:60px;padding:11px 14px;cursor:pointer;font-family:inherit;color:var(--text);
+    background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);
+    transition:border-color .16s ease,background .16s ease,transform .16s ease;
+  }
+  .chip span{font-size:11.5px;letter-spacing:.06em;color:var(--dim);font-weight:600}
+  .chip b{font-size:15.5px;font-weight:620;letter-spacing:-.01em}
+  .chip:hover{border-color:var(--border-strong);background:var(--raised)}
+  .chip:active{transform:scale(.985)}
+  .chip:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+  .chip[aria-pressed="true"]{background:var(--hss-soft);border-color:var(--hss)}
+  .chip[aria-pressed="true"] b{color:var(--hss)}
+  .chip[aria-pressed="true"] span{color:rgba(94,206,155,.8)}
+  .hint{font-size:13px;color:var(--muted);margin-top:13px}
+
+  /* ---------- day tabs ---------- */
+  .tabbar{
+    position:sticky;top:0;z-index:5;margin:0 -4px clamp(14px,2vw,18px);padding:8px 4px;
+    background:linear-gradient(var(--bg) 72%,rgba(14,16,19,0));
+  }
+  .tabs{
+    display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;
+    -webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;
+    background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:5px;
+  }
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{
+    appearance:none;border:0;background:none;font-family:inherit;cursor:pointer;
+    flex:1 0 auto;scroll-snap-align:center;min-height:40px;padding:8px 16px;border-radius:999px;
+    font-size:14.5px;color:var(--muted);white-space:nowrap;transition:background .16s ease,color .16s ease;
+  }
+  .tab:hover{color:var(--text)}
+  .tab:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+  .tab[aria-selected="true"]{background:var(--raised);color:var(--text);font-weight:620;box-shadow:inset 0 0 0 1px var(--border-strong)}
+  .tab .full{display:inline}
+  .tab .abbr{display:none}
+  .tab .dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--brand-2);margin-left:7px;vertical-align:middle}
+
+  /* ---------- timeline ---------- */
+  .list{display:flex;flex-direction:column;gap:9px}
+  .card{
+    position:relative;display:grid;gap:4px 18px;align-items:center;
+    grid-template-columns:96px minmax(0,1fr) auto;
+    padding:15px 18px 15px 20px;border:1px solid var(--border);border-radius:var(--r);
+    background:var(--surface);overflow:hidden;
+  }
+  .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--rail,var(--border-strong))}
+  .card.type-Lecture{--rail:var(--lecture)}
+  .card.type-Tutorial{--rail:var(--tutorial)}
+  .card.type-Lab{--rail:var(--lab)}
+  .card.type-HSS{--rail:var(--hss)}
+  .time{font-size:13px;font-variant-numeric:tabular-nums;color:var(--muted);line-height:1.45;min-width:0}
+  .time em{display:block;font-style:normal;color:var(--dim);font-size:12.5px}
+  .body{min-width:0}
+  .title{font-size:15.5px;font-weight:625;letter-spacing:-.008em;overflow-wrap:anywhere}
+  .meta{display:flex;flex-wrap:wrap;gap:2px 8px;font-size:13px;color:var(--dim);margin-top:3px}
+  .meta span:not(:first-child)::before{content:"\00b7";margin-right:8px;color:var(--border-strong)}
+  .tag{
+    justify-self:end;font-size:10.5px;font-weight:750;letter-spacing:.08em;text-transform:uppercase;
+    padding:5px 10px;border-radius:6px;background:var(--raised);color:var(--muted);white-space:nowrap;
+  }
+  .tag.Lecture{background:var(--lecture-soft);color:var(--lecture)}
+  .tag.Tutorial{background:var(--tutorial-soft);color:var(--tutorial)}
+  .tag.Lab{background:var(--lab-soft);color:var(--lab)}
+  .tag.HSS{background:var(--hss-soft);color:var(--hss)}
+
+  .card.now{
+    border-color:transparent;
+    background:linear-gradient(100deg,rgba(124,155,255,.15),rgba(99,230,210,.07) 60%,transparent),var(--surface-2);
+    box-shadow:inset 0 0 0 1px rgba(124,155,255,.45),0 8px 26px rgba(0,0,0,.34);
+  }
+  .card.now .time{color:rgba(237,239,242,.78)}
+  .card.now .meta{color:var(--muted)}
+  .card.next{border-color:var(--border-strong);background:var(--surface-2)}
+  .flag{display:block;font-size:10.5px;font-weight:750;letter-spacing:.11em;text-transform:uppercase;color:var(--brand-2);margin-bottom:4px}
+  .flag.b{color:var(--dim)}
+  .card.done{opacity:.4}
+
+  .break{
+    display:flex;align-items:center;gap:12px;padding:0 6px;font-size:12px;color:var(--dim);
+    letter-spacing:.06em;text-transform:uppercase;font-weight:650;
+  }
+  .break::before,.break::after{content:"";flex:1;height:1px;background:var(--border)}
+  .empty{padding:clamp(32px,6vw,52px) 20px;text-align:center;color:var(--muted);border:1px dashed var(--border);border-radius:var(--r-lg)}
+  .empty strong{display:block;color:var(--text);font-size:16px;margin-bottom:6px}
+
+  .legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:22px;font-size:12.5px;color:var(--dim)}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:7px;vertical-align:baseline}
+  footer{margin-top:16px;font-size:12.5px;color:var(--dim);border-top:1px solid var(--border);padding-top:14px}
+
+  /* ---------- responsive ---------- */
+  @media (max-width:720px){
+    .card{grid-template-columns:84px minmax(0,1fr);grid-template-areas:"time body" "time tag"}
+    .time{grid-area:time}
+    .body{grid-area:body}
+    .tag{grid-area:tag;justify-self:start;margin-top:2px}
+  }
+  @media (max-width:520px){
+    .card{grid-template-columns:1fr;grid-template-areas:"time" "body" "tag";gap:7px;padding:14px 16px 15px 18px}
+    .time{display:flex;gap:7px;align-items:baseline}
+    .time em{display:inline}
+    .time em::before{content:"– "}
+    .tab{flex:1 0 auto;padding:8px 14px}
+    .tab .full{display:none}
+    .tab .abbr{display:inline}
+    .chips{grid-template-columns:1fr 1fr}
+  }
+  @media (max-width:520px){ .chips>.chip:last-child{grid-column:1 / -1} }
+  @media (max-width:360px){ .chips{grid-template-columns:1fr} .chips>.chip:last-child{grid-column:auto} }
+  @media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Civil &amp; Environmental Engineering <span class="accent">3rd Semester</span></h1>
+    <div class="clock"><span class="pulse"></span><span id="clocktext">—</span></div>
+  </header>
+
+  <section class="hero idle" id="hero"></section>
+
+  <section class="panel">
+    <h2>Pick your HSS elective</h2>
+    <div class="chips" id="chips"></div>
+    <div class="hint" id="hint"></div>
+  </section>
+
+  <div class="tabbar"><div class="tabs" id="tabs" role="tablist"></div></div>
+  <div class="list" id="list" role="tabpanel"></div>
+
+  <div class="legend">
+    <span><i style="background:var(--lecture)"></i>Lecture</span>
+    <span><i style="background:var(--tutorial)"></i>Tutorial</span>
+    <span><i style="background:var(--lab)"></i>Lab</span>
+    <span><i style="background:var(--hss)"></i>HSS elective</span>
+  </div>
+  <footer>All HSS electives run 2:00–3:00 PM. Live highlighting follows your device clock.</footer>
+</div>
+
+<script>
+const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday"];
+
+// Core CE 3rd-sem classes (grey-coded CE21xx entries from the CEE sheet)
+const CORE = [
+  {d:0,s:"09:00",e:"09:55",c:"CE2103",f:"OM",r:"R-104",t:"Lecture"},
+  {d:0,s:"11:00",e:"11:55",c:"CE2102",f:"Nk / VS",r:"R-104",t:"Lecture"},
+  {d:0,s:"15:00",e:"15:55",c:"CE2104",f:"AKV",r:"R-102",t:"Lecture"},
+  {d:0,s:"16:00",e:"18:00",c:"CE2103 Lab",f:"OM",r:"R-106",t:"Lab"},
+
+  {d:1,s:"09:00",e:"09:55",c:"CE2102",f:"Nk / VS",r:"R-102",t:"Lecture"},
+  {d:1,s:"11:00",e:"11:55",c:"CE2103",f:"OM",r:"R-104",t:"Lecture"},
+  {d:1,s:"12:00",e:"12:55",c:"CE2103 Tutorial",f:"OM",r:"R-104",t:"Tutorial"},
+  {d:1,s:"15:00",e:"15:55",c:"CE2101",f:"AT",r:"R-102",t:"Lecture"},
+  {d:1,s:"16:00",e:"18:00",c:"CE2104 Lab",f:"AKV",r:"R-102",t:"Lab"},
+
+  {d:2,s:"08:00",e:"08:55",c:"CE2101",f:"AT",r:"R-104",t:"Lecture"},
+  {d:2,s:"09:00",e:"09:55",c:"CE2103",f:"OM",r:"R-104",t:"Lecture"},
+  {d:2,s:"11:00",e:"11:55",c:"CE2104",f:"AKV",r:"R-104",t:"Lecture"},
+
+  {d:3,s:"08:00",e:"08:55",c:"CE2101",f:"AT",r:"R-104",t:"Lecture"},
+  {d:3,s:"09:00",e:"09:55",c:"CE2102",f:"Nk / VS",r:"R-104",t:"Lecture"},
+  {d:3,s:"10:00",e:"10:55",c:"CE2102 Tutorial",f:"Nk / VS",r:"R-104",t:"Tutorial"},
+
+  {d:4,s:"08:00",e:"11:00",c:"CE2101 Lab",f:"AT",r:"R-106",t:"Lab"},
+  {d:4,s:"11:00",e:"11:55",c:"CE2104",f:"AKV",r:"R-104",t:"Lecture"}
+];
+
+// HSS electives — all in the reserved 2–3 PM slot
+const HSS = [
+  {code:"HS2110", name:"Language",   days:{2:"LT103",3:"LT103",4:"LT103"}},
+  {code:"HS2111", name:"Sociology",  days:{1:"LT001",2:"LT001",3:"LT001"}},
+  {code:"HS2112", name:"Demography", days:{1:"LT103",2:"LT003",3:"LT003"}}
+];
+
+const mins = t => (+t.slice(0,2))*60 + (+t.slice(3));
+const fmt = t => { let h=+t.slice(0,2); const m=t.slice(3);
+  const ap = h<12 ? "AM" : "PM"; h = h%12 || 12; return h+":"+m+" "+ap; };
+
+let selected = null;
+let activeDay = 0;
+
+function classesFor(day){
+  const out = CORE.filter(x => x.d === day).map(x => ({...x}));
+  if(selected && selected.days[day]){
+    out.push({d:day, s:"14:00", e:"15:00",
+      c:selected.code+" · "+selected.name, f:"HSS elective", r:selected.days[day], t:"HSS"});
+  }
+  return out.sort((a,b) => mins(a.s) - mins(b.s));
+}
+
+function now(){
+  const n = new Date();
+  return {day:(n.getDay()+6)%7, m:n.getHours()*60+n.getMinutes(), date:n};
+}
+
+function renderChips(){
+  document.getElementById("chips").innerHTML = HSS.map(h =>
+    `<button class="chip" type="button" data-code="${h.code}" aria-pressed="${!!(selected&&selected.code===h.code)}">
+       <span>${h.code}</span><b>${h.name}</b>
+     </button>`
+  ).join("");
+  document.querySelectorAll("#chips .chip").forEach(b => b.onclick = () => {
+    const h = HSS.find(x => x.code === b.dataset.code);
+    selected = (selected && selected.code === h.code) ? null : h;
+    try{ localStorage.setItem("hssCourse", selected ? selected.code : ""); }catch(e){}
+    renderAll();
+  });
+}
+
+function renderTabs(){
+  const t = now();
+  document.getElementById("tabs").innerHTML = DAYS.map((d,i) =>
+    `<button class="tab" role="tab" data-i="${i}" aria-selected="${i===activeDay}">` +
+    `<span class="full">${d}</span><span class="abbr">${d.slice(0,3)}</span>` +
+    `${i===t.day?'<span class="dot" title="Today"></span>':""}</button>`
+  ).join("");
+  document.querySelectorAll(".tab").forEach(b => b.onclick = () => {
+    activeDay = +b.dataset.i; renderAll();
+    b.scrollIntoView({block:"nearest", inline:"center", behavior:"smooth"});
+  });
+}
+
+function renderHero(){
+  const t = now();
+  const el = document.getElementById("hero");
+  const today = classesFor(Math.min(t.day,4));
+  const weekend = t.day > 4;
+
+  if(weekend){
+    el.className = "hero idle";
+    el.innerHTML = `<div class="eyebrow">Weekend</div><div class="big">No classes today</div>
+      <div class="sub">Showing Monday's schedule below.</div>`;
+    return;
+  }
+  const live = today.find(x => t.m >= mins(x.s) && t.m < mins(x.e));
+  if(live){
+    const pct = Math.round((t.m - mins(live.s)) / (mins(live.e) - mins(live.s)) * 100);
+    const left = mins(live.e) - t.m;
+    el.className = "hero";
+    el.innerHTML = `<div class="eyebrow">Happening now</div>
+      <div class="big">${live.c}</div>
+      <div class="sub">${live.r} · ${live.f} · ends ${fmt(live.e)} · ${left} min left</div>
+      <div class="bar"><i style="width:${Math.max(2,pct)}%"></i></div>`;
+    return;
+  }
+  const next = today.find(x => mins(x.s) > t.m);
+  if(next){
+    const inMin = mins(next.s) - t.m;
+    const h = Math.floor(inMin/60), m = inMin%60;
+    const when = h ? `${h} hr ${m} min` : `${m} min`;
+    el.className = "hero";
+    el.innerHTML = `<div class="eyebrow">Up next · in ${when}</div>
+      <div class="big">${next.c}</div>
+      <div class="sub">${next.r} · ${next.f} · ${fmt(next.s)} – ${fmt(next.e)}</div>`;
+    return;
+  }
+  el.className = "hero idle";
+  el.innerHTML = `<div class="eyebrow">${DAYS[t.day]}</div>
+    <div class="big">${today.length ? "Done for the day" : "Nothing scheduled"}</div>
+    <div class="sub">${today.length ? "All "+today.length+" classes are over." : "Pick your HSS elective to fill the 2–3 PM slot."}</div>`;
+}
+
+function renderList(){
+  const t = now();
+  const isToday = activeDay === t.day;
+  const items = classesFor(activeDay);
+  const el = document.getElementById("list");
+
+  if(!items.length){
+    el.innerHTML = `<div class="empty"><strong>No classes on ${DAYS[activeDay]}</strong>${selected?"Enjoy the free day.":"Pick your HSS elective above to see its 2–3 PM slot."}</div>`;
+    return;
+  }
+
+  const nextIdx = isToday ? items.findIndex(x => mins(x.s) > t.m) : -1;
+  let html = "", lunchDone = false;
+
+  items.forEach((x,i) => {
+    if(!lunchDone && mins(x.s) >= 840){ html += `<div class="break">Lunch 1:00 – 2:00 PM</div>`; lunchDone = true; }
+    const live = isToday && t.m >= mins(x.s) && t.m < mins(x.e);
+    const done = isToday && t.m >= mins(x.e);
+    const nxt  = i === nextIdx;
+    const cls  = `card type-${x.t}` + (live?" now":"") + (done?" done":"") + (nxt?" next":"");
+    const flag = live ? `<span class="flag">Happening now</span>`
+               : nxt  ? `<span class="flag b">Up next</span>` : "";
+    html += `<div class="${cls}">
+      <div class="time">${fmt(x.s)}<em>${fmt(x.e)}</em></div>
+      <div class="body"><div class="title">${flag}${x.c}</div>
+        <div class="meta"><span>${x.r}</span><span>${x.f}</span></div></div>
+      <div class="tag ${x.t}">${x.t}</div>
+    </div>`;
+  });
+  if(!lunchDone) html += `<div class="break">Lunch 1:00 – 2:00 PM</div>`;
+  el.innerHTML = html;
+}
+
+function renderClock(){
+  const t = now();
+  const s = t.date.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
+  const dayName = t.day <= 4 ? DAYS[t.day] : (t.date.getDay()===6 ? "Saturday" : "Sunday");
+  document.getElementById("clocktext").innerHTML = `<b>${dayName}</b> · ${s}`;
+}
+
+function renderHint(){
+  const h = document.getElementById("hint");
+  if(selected){
+    const d = Object.keys(selected.days).map(k => DAYS[k].slice(0,3)+" "+selected.days[k]).join(" · ");
+    h.textContent = `2:00–3:00 PM · ${d}`;
+  } else {
+    h.textContent = "Nothing selected — showing core CE courses only.";
+  }
+}
+
+function renderAll(){ renderChips(); renderTabs(); renderHero(); renderList(); renderClock(); renderHint(); }
+
+// Jump to the current weekday on load (weekends fall back to Monday)
+activeDay = Math.min(now().day, 4);
+try{ const sv = localStorage.getItem("hssCourse"); if(sv) selected = HSS.find(h => h.code === sv) || null; }catch(e){}
+renderAll();
+setInterval(() => { renderHero(); renderList(); renderClock(); }, 30000);
+</script>
+</body>
+</html>
