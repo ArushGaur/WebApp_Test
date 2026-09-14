@@ -5,7 +5,7 @@
 /** Convert a File object to a base64 string (no data: prefix) */
 
 /* ══════════════════════════════════════════════════════════════════
-   IMPORT FROM SCREENSHOT — v2
+   IMPORT FROM SCREENSHOT — v_2
    ─────────────────────────────────────────────────────────────────
    Architecture:
      • 3-step wizard: Upload → Extract (live progress) → Review/Save
