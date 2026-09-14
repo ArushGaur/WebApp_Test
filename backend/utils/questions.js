@@ -1,9 +1,12 @@
 const { db } = require("../config/db");
 const { normalizeQuestion } = require("./helpers");
+const { ALL_Q, PYQ_TABLE } = require("./questionTables");
 
 /**
  * ─────────────────────────────────────────────────────────────────────────
- * NEW SCHEMA MODEL (questions_v2): one row per QUESTION, not per topic.
+ * SCHEMA MODEL (questions + pyq_questions): one row per QUESTION, not per
+ * topic. Regular-bank questions live in `questions`, previous-year questions
+ * in `pyq_questions`; reads that span both go through the ALL_Q union.
  *
  * Because of that, the old "cache every question set in memory" approach
  * (questionCache keyed by chapter::lecture, holding entire question arrays)
@@ -29,7 +32,7 @@ let chapterListCache = [];
 
 async function loadQuestions() {
 	const result = await db.execute(
-		"SELECT chapter, topic, COUNT(*) as cnt FROM questions_v2 GROUP BY chapter, topic"
+		`SELECT chapter, topic, COUNT(*) as cnt FROM ${ALL_Q} GROUP BY chapter, topic`
 	);
 	const next = {};
 	for (const row of result.rows) {
@@ -49,7 +52,7 @@ async function refreshCache(chapter, topic) {
 	const ch = chapter || "";
 	const tp = topic || "";
 	const result = await db.execute({
-		sql: "SELECT COUNT(*) as cnt FROM questions_v2 WHERE chapter = ? AND topic = ?",
+		sql: `SELECT COUNT(*) as cnt FROM ${ALL_Q} WHERE chapter = ? AND topic = ?`,
 		args: [ch, tp],
 	});
 	const cnt = Number(result.rows[0]?.cnt) || 0;
@@ -93,7 +96,7 @@ async function findQuestion(chapter, topic) {
 	const ch = chapter || "";
 	const tp = topic || "";
 	const result = await db.execute({
-		sql: "SELECT id, subject, year, month, day, shift, raw_json, updated_at FROM questions_v2 WHERE chapter = ? AND topic = ? ORDER BY question_number, id",
+		sql: `SELECT id, subject, year, month, day, shift, raw_json, updated_at FROM ${ALL_Q} WHERE chapter = ? AND topic = ? ORDER BY question_number, id`,
 		args: [ch, tp],
 	});
 	if (!result.rows.length) return null;
@@ -180,8 +183,12 @@ async function findQuestionsByPaper({ subject, year, chapter, month, day, shift 
 	if (shift) { conditions.push("shift = ?"); args.push(String(shift)); }
 
 	const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+	// A real year only ever exists in `pyq_questions`, so when the caller filters
+	// by year we query that table directly and let its (subject, year) index do
+	// the work. Otherwise we scan the union of both question tables.
+	const from = year ? PYQ_TABLE : ALL_Q;
 	const result = await db.execute({
-		sql: `SELECT id, subject, year, month, day, shift, chapter, topic, raw_json FROM questions_v2 ${where} ORDER BY chapter, topic, question_number, id`,
+		sql: `SELECT id, subject, year, month, day, shift, chapter, topic, raw_json FROM ${from} ${where} ORDER BY chapter, topic, question_number, id`,
 		args,
 	});
 

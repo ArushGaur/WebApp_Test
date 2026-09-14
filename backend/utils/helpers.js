@@ -1,3 +1,7 @@
+// SVG diagrams produced by the extraction AI are folded into the existing
+// image fields as data URIs — see backend/utils/svg.js for the why.
+const { svgToDataUri, toImageSource, collectSvgDataUris, looksLikeSvgMarkup, isSvgDataUri } = require("./svg");
+
 const crypto = require("crypto");
 
 function clamp(n, min, max) {
@@ -8,6 +12,7 @@ function getMime(b64) {
 	if (String(b64 || "").startsWith("/9j/")) return "image/jpeg";
 	if (String(b64 || "").startsWith("iVBORw")) return "image/png";
 	if (String(b64 || "").startsWith("R0lGOD")) return "image/gif";
+	if (String(b64 || "").startsWith("PHN2Zy")) return "image/svg+xml";
 	return "image/jpeg";
 }
 
@@ -88,8 +93,11 @@ function normalizeSolutionText(text) {
 function repairSolutionLatex(text) {
 	if (!text) return text;
 	let t = text;
+	// Only collapse 4+ consecutive backslashes down to 2 (\\).
+	// 3 backslashes (\\\) = \\ (row separator) + \ (start of cmd like \omega)
+	// — collapsing those drops the cmd's leading backslash.
 	try {
-		t = t.replace(/\\{2,}/g, "\\");
+		t = t.replace(/\\{4,}/g, "\\\\");
 	} catch (e) { /* ignore */ }
 
 	t = t.replace(/\\\(/g, "$").replace(/\\\)/g, "$");
@@ -227,6 +235,13 @@ function normalizeMath(s, opts) {
 	const preserveRaw = opts && opts.preserveRaw;
 	let out = String(s || "").trim();
 	if (!out) return out;
+
+	// Some extraction models wrap math as $`x^2`$ (dollar + backtick) instead of
+	// $x^2$. The backticks would render literally and KaTeX would not fire, so
+	// strip them. Also handles the ``$…$`` and `$…$` variants.
+	out = out.replace(/\$`([^`]*?)`\$/g, (_, m) => `$${m}$`);
+	out = out.replace(/`+\s*(\$[^$]*?\$)\s*`+/g, (_, m) => m);
+
 	out = out.replace(/\\\(([^]*?)\\\)/g, (_, m) => `$${m}$`);
 	out = out.replace(/\\\[([^]*?)\\\]/g, (_, m) => `$$${m}$$`);
 	const dollarCount = (out.match(/(?<!\\)\$/g) || []).length;
@@ -278,12 +293,19 @@ function validateImageRegion(r) {
 
 function isImageCell(c) {
 	return c && typeof c === "object" && !Array.isArray(c) &&
-		("image" in c || c.imageNeeded === true || c.image_needed === true);
+		("image" in c || "svg" in c || "cell_svg" in c || "cellSvg" in c ||
+			c.imageNeeded === true || c.image_needed === true);
 }
 
+// A cell may be a plain string, an image cell { text, image }, an AI-drawn cell
+// { text, svg } or a legacy manual-upload placeholder { text, imageNeeded }.
+// An `svg` cell is converted to an svg data URI and stored in `image`, so the
+// renderers/DOCX builder need no cell-level changes and no manual paste box is
+// requested for it.
 function normalizeCell(cell, mathOpts) {
 	if (isImageCell(cell)) {
-		const img = cell.image != null ? String(cell.image) : null;
+		const svg = svgToDataUri(cell.svg ?? cell.cell_svg ?? cell.cellSvg ?? null);
+		const img = svg || (cell.image != null ? toImageSource(String(cell.image)) : null);
 		const needed = (cell.imageNeeded === true || cell.image_needed === true) && !img;
 		const obj = { text: normalizeMath(String(cell.text ?? cell.caption ?? ""), mathOpts), image: img };
 		if (needed) obj.imageNeeded = true;
@@ -353,7 +375,7 @@ function normalizeQuestion(q, opts) {
 			: Array.isArray(q?.questionImageUrls)
 				? q.questionImageUrls
 				: [];
-	const optionImages = Array.isArray(q?.optionImages)
+	const optionImagesRaw = Array.isArray(q?.optionImages)
 		? q.optionImages
 		: Array.isArray(q?.optImgs)
 			? q.optImgs
@@ -361,17 +383,56 @@ function normalizeQuestion(q, opts) {
 				? q.optionsImages
 				: q?.optionImage ? [q.optionImage] : [];
 
+	// ── AI-drawn SVG diagrams ────────────────────────────────────────────
+	// The extractor now returns vector markup instead of leaving a hole for a
+	// manual screenshot upload. SVGs are sanitized + converted to data URIs and
+	// merged into the SAME image fields, so storage/render/DOCX stay unchanged.
+	const questionSvgs = collectSvgDataUris(q, [
+		"question_svg", "questionSvg", "question_svgs", "questionSvgs",
+		"svg", "svgs", "diagram_svg", "diagramSvg",
+	]);
+	const optionSvgSource = ["option_svgs", "optionSvgs", "options_svg", "optionsSvg"]
+		.map((k) => q?.[k])
+		.find((v) => Array.isArray(v))
+		|| [q?.option_a_svg, q?.option_b_svg, q?.option_c_svg, q?.option_d_svg];
+
+	const imagesWithSvg = [...questionImages.map(toImageSource).filter(Boolean)];
+	for (const uri of questionSvgs) if (!imagesWithSvg.includes(uri)) imagesWithSvg.push(uri);
+
+	const optionImages = [...optionImagesRaw, null, null, null, null].slice(0, 4)
+		.map((img, i) => toImageSource(img) || svgToDataUri(optionSvgSource?.[i]) || null);
+	const hasSvg = questionSvgs.length > 0
+		|| optionImages.some((x) => isSvgDataUri(x))
+		|| imagesWithSvg.some((x) => isSvgDataUri(x));
+
 	const out = {
 		question: normQuestion,
 		options: normOptions,
-		questionImages: [...questionImages, null, null].filter(Boolean),
-		questionImage: q?.questionImage || questionImages[0] || null,
+		questionImages: imagesWithSvg.filter(Boolean),
+		questionImage: toImageSource(q?.questionImage) || imagesWithSvg[0] || null,
 		optionImages: [...optionImages, null, null, null].slice(0, 4),
-		hasImage: !!(q?.hasImage || questionImages.length),
-		hasOptionImages: !!(q?.hasOptionImages || (Array.isArray(optionImages) && optionImages.some(Boolean))),
+		hasImage: !!(q?.hasImage || imagesWithSvg.length),
+		hasOptionImages: !!(q?.hasOptionImages || optionImages.some(Boolean)),
 		hasEquation,
 		imageRegion: validateImageRegion(q?.imageRegion),
 	};
+
+	if (hasSvg) out.hasSvg = true;
+
+	// Solution-level diagrams ("solution_svg") land in solutions[0].images so the
+	// existing solution renderer picks them up untouched.
+	const solutionSvgs = collectSvgDataUris(q, ["solution_svg", "solutionSvg", "solution_svgs", "solutionSvgs"]);
+	if (solutionSvgs.length) {
+		const sols = Array.isArray(q?.solutions) && q.solutions.length
+			? q.solutions.map((s) => ({ ...s }))
+			: [{ text: String(q?.solution || ""), image: null, images: [] }];
+		const first = sols[0];
+		first.images = Array.isArray(first.images) ? [...first.images] : (first.image ? [first.image] : []);
+		for (const uri of solutionSvgs) if (!first.images.includes(uri)) first.images.push(uri);
+		if (!first.image) first.image = first.images[0] || null;
+		q = { ...q, solutions: sols };
+		out.hasSvg = true;
+	}
 
 	const noneCorrect = isNoneCorrectQuestion(q || {});
 	const ci = parseCorrectIndexesFromQuestion(q || {});
@@ -532,8 +593,144 @@ function verifyPasscode(passcode, stored) {
 	}
 }
 
+function validatePasswordComplexity(password) {
+	if (!password || password.length < 6) return false;
+	const hasLetter = /[a-zA-Z]/.test(password);
+	const hasDigit = /\d/.test(password);
+	const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+	return hasLetter && hasDigit && hasSpecial;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PER-STUDENT QUESTION SHUFFLE (anti-cheating)
+
+   Every student assigned to an online test gets the SAME questions but in a
+   DIFFERENT order, so two students sitting next to each other never see the
+   same question at the same position.
+
+   The order is derived deterministically from (testId + rollNumber), so:
+     • the same student always gets the same order (safe resume after unlock)
+     • no extra DB write is needed to *generate* it
+   The order actually used is still stored on the attempt row
+   (test_history.question_order_json) so analysis keeps working even if the
+   teacher later edits the test's question list, and so attempts saved before
+   this feature existed keep their original (unshuffled) order.
+══════════════════════════════════════════════════════════════════════════ */
+
+// Small, fast, deterministic 32-bit string hash (FNV-1a).
+function _seedFromString(str) {
+	let h = 2166136261 >>> 0;
+	const s = String(str == null ? "" : str);
+	for (let i = 0; i < s.length; i++) {
+		h ^= s.charCodeAt(i);
+		h = Math.imul(h, 16777619) >>> 0;
+	}
+	return h >>> 0;
+}
+
+// mulberry32 PRNG — tiny, seedable, good enough for shuffling a question paper.
+function _mulberry32(seed) {
+	let a = seed >>> 0;
+	return function () {
+		a = (a + 0x6d2b79f5) >>> 0;
+		let t = a;
+		t = Math.imul(t ^ (t >>> 15), t | 1);
+		t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+	};
+}
+
+/**
+ * Build the question order for one student.
+ *
+ * @param {string|number} testId  online_tests.id
+ * @param {string}        roll    the student's roll number
+ * @param {number}        count   how many questions the test has
+ * @returns {number[]} array of ORIGINAL indexes, in the order this student
+ *                     should see them. e.g. [3, 0, 2, 1] means the student's
+ *                     Q1 is the test's original question #4.
+ */
+function questionOrderForStudent(testId, roll, count, subjects) {
+	const n = Math.max(0, Math.floor(Number(count) || 0));
+	const order = Array.from({ length: n }, (_, i) => i);
+	if (n < 2) return order;
+	const rand = _mulberry32(_seedFromString(`${testId}::${roll}`));
+	// Fisher-Yates, driven by the seeded PRNG.
+	const shuffle = (arr) => {
+		for (let i = arr.length - 1; i > 0; i--) {
+			const j = Math.floor(rand() * (i + 1));
+			[arr[i], arr[j]] = [arr[j], arr[i]];
+		}
+		return arr;
+	};
+
+	/* Keep each subject in one contiguous block.
+	   Shuffling all indexes together interleaved the subjects, so a student
+	   jumped Chemistry -> Biology -> Chemistry question by question. Only the
+	   order WITHIN a subject and the order OF the subject blocks vary per
+	   student, which preserves the anti-cheating property. Falls back to the
+	   flat shuffle when subjects are unknown or there is only one. */
+	const labels = Array.isArray(subjects) ? subjects : null;
+	if (!labels || labels.length !== n) return shuffle(order);
+
+	const blocks = new Map();
+	for (let i = 0; i < n; i++) {
+		const key = String(labels[i] == null ? "" : labels[i]).trim() || "General";
+		if (!blocks.has(key)) blocks.set(key, []);
+		blocks.get(key).push(i);
+	}
+	if (blocks.size < 2) return shuffle(order);
+
+	const out = [];
+	for (const key of shuffle([...blocks.keys()])) {
+		out.push(...shuffle(blocks.get(key)));
+	}
+	return out;
+}
+
+/**
+ * Is `order` a usable permutation for a list of `count` items?
+ * Guards against a teacher adding/removing questions after students submitted.
+ */
+function isValidQuestionOrder(order, count) {
+	if (!Array.isArray(order) || order.length !== count) return false;
+	const seen = new Set();
+	for (const v of order) {
+		const n = Number(v);
+		if (!Number.isInteger(n) || n < 0 || n >= count || seen.has(n)) return false;
+		seen.add(n);
+	}
+	return true;
+}
+
+/**
+ * Reorder a question list into the order a student actually saw.
+ * Returns the list untouched when the order is missing or doesn't fit —
+ * that is exactly the legacy / pre-shuffle case.
+ */
+function applyQuestionOrder(questions, order) {
+	if (!Array.isArray(questions) || !questions.length) return questions || [];
+	if (!isValidQuestionOrder(order, questions.length)) return questions;
+	return order.map((originalIdx) => questions[Number(originalIdx)]);
+}
+
+/** Safely parse a stored question_order_json value into an array. */
+function parseQuestionOrder(raw) {
+	if (Array.isArray(raw)) return raw.map(Number).filter(Number.isFinite);
+	try {
+		const parsed = JSON.parse(raw || "[]");
+		return Array.isArray(parsed) ? parsed.map(Number).filter(Number.isFinite) : [];
+	} catch {
+		return [];
+	}
+}
+
 module.exports = {
 	clamp,
+	questionOrderForStudent,
+	isValidQuestionOrder,
+	applyQuestionOrder,
+	parseQuestionOrder,
 	getMime,
 	toImgPart,
 	cleanJson,
@@ -563,4 +760,5 @@ module.exports = {
 	safeCompare,
 	hashPasscode,
 	verifyPasscode,
+	validatePasswordComplexity,
 };

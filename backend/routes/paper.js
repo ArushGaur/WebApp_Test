@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const fs = require("fs");
-const { execFile } = require("child_process");
+const { execFile, execFileSync } = require("child_process");
 const os = require("os");
 const path = require("path");
 const PDFDocument = require("pdfkit");
@@ -10,21 +10,38 @@ const { db } = require("../config/db");
 const helpers = require("../utils/helpers");
 const { requireAdmin, sessionInstituteId } = require("../middleware/auth");
 const { loadQuestions, refreshCache, findQuestion } = require("../utils/questions");
+const { sanitizeSvg, dataUriToSvg, isSvgDataUri, rasterizeSvgToPng } = require("../utils/svg");
+const { docxToPdf } = require("../utils/docxToPdf");
+const { requireFeature } = require("../utils/permissions");
 
 const {
-    Document, Packer, Paragraph, TextRun, ImageRun, Table, TableRow, TableCell,
-    AlignmentType, HeadingLevel, BorderStyle, WidthType, ShadingType,
-    VerticalAlign, PageNumber, Header, Footer, PageBreak, LevelFormat, TabStopType
+	Document, Packer, Paragraph, TextRun, ImageRun, Table, TableRow, TableCell,
+	AlignmentType, HeadingLevel, BorderStyle, WidthType, ShadingType,
+	VerticalAlign, PageNumber, Header, Footer, PageBreak, LevelFormat, TabStopType
 } = require("docx");
 
 let latexToOMML = null;
 try {
-    ({ latexToOMML } = require("latex-to-omml"));
-} catch (e) {}
+	({ latexToOMML } = require("latex-to-omml"));
+} catch (e) { }
+
+/**
+ * DOCX cannot embed SVG reliably, so an AI-drawn SVG diagram is rasterized to a
+ * PNG buffer here (via @napi-rs/canvas, already a dependency) at 2x scale for
+ * crisp print output. Returns null if rasterization is unavailable.
+ */
 
 async function resolveImageBuffer(imgSrc) {
 	if (!imgSrc) return null;
 	try {
+		// SVG (raw markup or svg data URI) → PNG for DOCX embedding.
+		const svgMarkup = /^\s*<svg[\s>]/i.test(String(imgSrc))
+			? String(imgSrc)
+			: dataUriToSvg(imgSrc);
+		if (svgMarkup) {
+			const clean = sanitizeSvg(svgMarkup);
+			return clean ? await rasterizeSvgToPng(clean) : null;
+		}
 		if (imgSrc.startsWith("http://") || imgSrc.startsWith("https://")) {
 			const controller = new AbortController();
 			const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
@@ -60,7 +77,7 @@ async function getImageDimensions(buffer) {
 	try {
 		// PNG: 8-byte signature, then IHDR chunk (4 len + 4 type + 4 width + 4 height)
 		if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
-			const width  = buffer.readUInt32BE(16);
+			const width = buffer.readUInt32BE(16);
 			const height = buffer.readUInt32BE(20);
 			if (width > 0 && height > 0) return { width, height };
 		}
@@ -72,7 +89,7 @@ async function getImageDimensions(buffer) {
 				const marker = buffer[i + 1];
 				if (marker === 0xC0 || marker === 0xC1 || marker === 0xC2) {
 					const height = buffer.readUInt16BE(i + 5);
-					const width  = buffer.readUInt16BE(i + 7);
+					const width = buffer.readUInt16BE(i + 7);
 					if (width > 0 && height > 0) return { width, height };
 				}
 				if (i + 3 >= buffer.length) break;
@@ -83,7 +100,7 @@ async function getImageDimensions(buffer) {
 		}
 		// GIF: 6-byte header then width/height as little-endian uint16
 		if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) {
-			const width  = buffer.readUInt16LE(6);
+			const width = buffer.readUInt16LE(6);
 			const height = buffer.readUInt16LE(8);
 			if (width > 0 && height > 0) return { width, height };
 		}
@@ -94,26 +111,28 @@ async function getImageDimensions(buffer) {
 		) {
 			const chunk = buffer.slice(12, 16).toString('ascii');
 			if (chunk === 'VP8 ' && buffer.length >= 30) {
-				const width  = (buffer.readUInt16LE(26) & 0x3FFF) + 1;
+				const width = (buffer.readUInt16LE(26) & 0x3FFF) + 1;
 				const height = (buffer.readUInt16LE(28) & 0x3FFF) + 1;
 				if (width > 0 && height > 0) return { width, height };
 			} else if (chunk === 'VP8L' && buffer.length >= 25) {
 				const b = buffer[21] | (buffer[22] << 8) | (buffer[23] << 16) | (buffer[24] << 24);
-				const width  = (b & 0x3FFF) + 1;
+				const width = (b & 0x3FFF) + 1;
 				const height = ((b >> 14) & 0x3FFF) + 1;
 				if (width > 0 && height > 0) return { width, height };
 			} else if (chunk === 'VP8X' && buffer.length >= 30) {
-				const width  = (buffer[24] | (buffer[25] << 8) | (buffer[26] << 16)) + 1;
+				const width = (buffer[24] | (buffer[25] << 8) | (buffer[26] << 16)) + 1;
 				const height = (buffer[27] | (buffer[28] << 8) | (buffer[29] << 16)) + 1;
 				if (width > 0 && height > 0) return { width, height };
 			}
 		}
-	} catch (_) {}
+	} catch (_) { }
 	return null;
 }
 
 function imgType(src) {
 	if (!src) return "jpg";
+	// SVG sources are rasterized to PNG by resolveImageBuffer().
+	if (/^data:image\/svg\+xml/i.test(src) || /^\s*<svg[\s>]/i.test(src)) return "png";
 	if (src.startsWith("data:image/png") || src.includes("iVBOR")) return "png";
 	if (src.startsWith("data:image/gif") || src.includes("R0lGOD")) return "gif";
 	if (src.startsWith("data:image/webp")) return "jpg"; // fallback
@@ -141,7 +160,7 @@ function decodeHtmlEntities(s) {
 
 function splitTextIntoTwoLines(s) {
 	if (!s || s.length <= 25) return s;
-	
+
 	// Try to split around ' & ' first, if it exists
 	const ampIndex = s.indexOf(' & ');
 	if (ampIndex !== -1) {
@@ -149,7 +168,7 @@ function splitTextIntoTwoLines(s) {
 		const part2 = s.substring(ampIndex + 2).trim();
 		return part1 + '\n' + part2;
 	}
-	
+
 	// Try to split around ' and ' (case-insensitive)
 	const andIndex = s.toLowerCase().indexOf(' and ');
 	if (andIndex !== -1) {
@@ -157,12 +176,12 @@ function splitTextIntoTwoLines(s) {
 		const part2 = s.substring(andIndex + 4).trim();
 		return part1 + '\n' + part2;
 	}
-	
+
 	// Otherwise, find the space closest to the middle of the string
 	const mid = Math.floor(s.length / 2);
 	let bestSpace = -1;
 	let minDiff = Infinity;
-	
+
 	for (let i = 0; i < s.length; i++) {
 		if (s[i] === ' ') {
 			const diff = Math.abs(i - mid);
@@ -172,11 +191,11 @@ function splitTextIntoTwoLines(s) {
 			}
 		}
 	}
-	
+
 	if (bestSpace !== -1) {
 		return s.substring(0, bestSpace).trim() + '\n' + s.substring(bestSpace + 1).trim();
 	}
-	
+
 	return s;
 }
 
@@ -309,9 +328,9 @@ async function buildTableElement(tbl, opts = {}) {
 	// (e.g. the left column of the options+image layout when a question image is present).
 	const MAX_TABLE_DXA = opts.maxWidth != null ? opts.maxWidth : (compact ? 10047 : 10466);
 	const CHAR_WIDTH_DXA = 110;
-	const CELL_PAD_DXA   = 160;
-	const MIN_COL_DXA    = 600;
-	const IMG_COL_DXA    = 1800;
+	const CELL_PAD_DXA = 160;
+	const MIN_COL_DXA = 600;
+	const IMG_COL_DXA = 1800;
 
 	const naturalColWidths = Array.from({ length: colCount }, (_, c) => {
 		let maxChars = 0;
@@ -538,22 +557,22 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 	// Rendered size in points. Height is fixed at 100pt; width is computed from
 	// the actual pixel aspect ratio so the image is never stretched or squished.
 	const TARGET_HEIGHT_PT = 100;
-	const MAX_WIDTH_PT     = 200; // cap for very wide/panoramic images
-	let qImgWidth  = 130;         // default fallback (roughly square)
+	const MAX_WIDTH_PT = 200; // cap for very wide/panoramic images
+	let qImgWidth = 130;         // default fallback (roughly square)
 	let qImgHeight = TARGET_HEIGHT_PT;
 
 	if (q.questionImage) {
-		qImgBuf  = await resolveImageBuffer(q.questionImage);
+		qImgBuf = await resolveImageBuffer(q.questionImage);
 		qImgType = imgType(q.questionImage);
 		if (qImgBuf) {
 			const dims = await getImageDimensions(qImgBuf);
 			if (dims && dims.width > 0 && dims.height > 0) {
 				const aspect = dims.width / dims.height;
-				qImgWidth  = Math.round(TARGET_HEIGHT_PT * aspect);
+				qImgWidth = Math.round(TARGET_HEIGHT_PT * aspect);
 				qImgHeight = TARGET_HEIGHT_PT;
 				// If the image is very wide, cap width and scale height down instead
 				if (qImgWidth > MAX_WIDTH_PT) {
-					qImgWidth  = MAX_WIDTH_PT;
+					qImgWidth = MAX_WIDTH_PT;
 					qImgHeight = Math.round(MAX_WIDTH_PT / aspect);
 				}
 			}
@@ -582,7 +601,7 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 	// hasOptionTables are correctly width-constrained to the available left column.
 	// A4 content = 10466 DXA. Right col = image rendered width (1pt = 20 DXA) +
 	// 240 DXA padding, clamped [2400, 4400]. Left col = everything else.
-	const noBorder  = { style: BorderStyle.NIL, size: 0, color: "auto" };
+	const noBorder = { style: BorderStyle.NIL, size: 0, color: "auto" };
 	const noBorders = {
 		top: noBorder, bottom: noBorder, left: noBorder, right: noBorder,
 		insideH: noBorder, insideV: noBorder,
@@ -590,7 +609,7 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 	const rightColDxa = qImgBuf
 		? Math.min(Math.max(Math.round(qImgWidth * 20) + 240, 2400), 4400)
 		: 0;
-	const leftColDxa  = 10466 - rightColDxa;
+	const leftColDxa = 10466 - rightColDxa;
 	// Usable width for options content (subtract right-margin padding on left cell).
 	const optAvailDxa = qImgBuf ? leftColDxa - 100 : leftColDxa;
 	// Tab stop midpoint for two-column text-option layout.
@@ -609,15 +628,15 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 		// ── Two-per-row layout for option tables ──────────────────────────────
 		// Each pair (A+B, then C+D) goes into a borderless 2-column outer table.
 		// halfDxa = width of each column (tight gap of 120 DXA between them).
-		const GAP_DXA  = 120;
-		const halfDxa  = Math.floor((optAvailDxa - GAP_DXA) / 2);
+		const GAP_DXA = 120;
+		const halfDxa = Math.floor((optAvailDxa - GAP_DXA) / 2);
 
 		// Estimate natural width of an option table (same heuristic as buildTableElement).
 		function estimateOptTblWidth(tbl) {
 			if (!tbl || typeof tbl !== "object") return 0;
 			const headers = Array.isArray(tbl.headers) ? tbl.headers : [];
-			const rows    = Array.isArray(tbl.rows)    ? tbl.rows.filter(r => Array.isArray(r)) : [];
-			let colCount  = headers.length;
+			const rows = Array.isArray(tbl.rows) ? tbl.rows.filter(r => Array.isArray(r)) : [];
+			let colCount = headers.length;
 			for (const r of rows) colCount = Math.max(colCount, r.length);
 			if (colCount === 0) return 0;
 			let total = 0;
@@ -642,16 +661,16 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 		const allFitHalf = optionTables.every(tbl => {
 			const hasTbl = tbl && typeof tbl === "object" &&
 				((Array.isArray(tbl.headers) && tbl.headers.length) ||
-				 (Array.isArray(tbl.rows) && tbl.rows.length));
+					(Array.isArray(tbl.rows) && tbl.rows.length));
 			return !hasTbl || estimateOptTblWidth(tbl) <= halfDxa;
 		});
 
 		// Build children for one option slot: label paragraph + table/image/text.
 		async function buildOptCellChildren(oi, maxWidth) {
-			const tbl    = optionTables[oi];
+			const tbl = optionTables[oi];
 			const hasTbl = tbl && typeof tbl === "object" &&
 				((Array.isArray(tbl.headers) && tbl.headers.length) ||
-				 (Array.isArray(tbl.rows)    && tbl.rows.length));
+					(Array.isArray(tbl.rows) && tbl.rows.length));
 			const children = [];
 			children.push(new Paragraph({
 				spacing: { before: 40, after: 16 },
@@ -680,7 +699,7 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 		if (allFitHalf) {
 			// Two-per-row: (A)+(B) on row 1, (C)+(D) on row 2
 			for (let oi = 0; oi < 4; oi += 2) {
-				const leftChildren  = await buildOptCellChildren(oi,     halfDxa);
+				const leftChildren = await buildOptCellChildren(oi, halfDxa);
 				const rightChildren = await buildOptCellChildren(oi + 1, halfDxa);
 				optionParas.push(new Table({
 					width: { size: optAvailDxa, type: WidthType.DXA },
@@ -743,7 +762,7 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 		for (let oi = 0; oi < 4; oi++) {
 			const optImg = optionImages[oi] || null;
 			if (optImg) {
-				const buf  = await resolveImageBuffer(optImg);
+				const buf = await resolveImageBuffer(optImg);
 				const size = buf ? await calcImgSize(buf, 120, 110) : { width: 120, height: 80 };
 				optImgBufs[oi] = { buf, type: imgType(optImg), size };
 			} else {
@@ -830,7 +849,7 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 		paragraphs.push(...optionParas);
 	}
 
-		// ── 4. Render any tables explicitly positioned after the options ─────────
+	// ── 4. Render any tables explicitly positioned after the options ─────────
 	for (const tbl of tablesAfterOptions) {
 		paragraphs.push(...(await buildTableElement(tbl)));
 	}
@@ -1103,6 +1122,16 @@ function latexFallbackRun(src) {
 		.replace(/\\left\(/g, '(').replace(/\\right\)/g, ')')
 		.replace(/\\left\[/g, '[').replace(/\\right\]/g, ']')
 		.replace(/\\text\{([^{}]*)\}/g, '$1')
+		// ── Reaction / extensible arrows → readable Unicode arrows
+		.replace(/\\xrightarrow\s*\[([^\][]*)\]\s*\{([^{}]*)\}/g, ' —($2, $1)→ ')
+		.replace(/\\xrightarrow\s*\{([^{}]*)\}/g, ' —($1)→ ')
+		.replace(/\\xleftarrow\s*\{([^{}]*)\}/g, ' ←($1)— ')
+		.replace(/\\xrightleftharpoons\s*\{([^{}]*)\}/g, ' ⇌($1) ')
+		.replace(/\\(?:longrightarrow|rightarrow|to)\b/g, '→')
+		.replace(/\\(?:longleftarrow|leftarrow|gets)\b/g, '←')
+		.replace(/\\(?:longleftrightarrow|leftrightarrow)\b/g, '↔')
+		.replace(/\\rightleftharpoons\b/g, '⇌')
+		.replace(/\\Delta\b/g, 'Δ')
 		// ── Accent commands: render as Unicode combining chars so text is readable
 		//    (these are the fallback path — OMML conversion already failed)
 		.replace(/\\overline\{([^{}]*)\}/g, '$1\u0305')   // x̄
@@ -1136,15 +1165,53 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 	// can convert it properly. This covers patterns like:
 	//   p_1(x) & p_1'(x) \\\\ p_2(x) & p_2'(x)
 	// which the DB stores without an explicit matrix environment.
+	//
+	// IMPORTANT — determinants: if the bare matrix content is wrapped in a literal
+	// "|" ... "|" pair (the plain-text way determinants get typed/stored, e.g.
+	//   |a & a+1 & a-1 \\ -b & b+1 & b-1 \\ c & c-1 & c+1|
+	// ), those pipe characters must NOT be left in place — they were previously
+	// rendered as ordinary fixed-height text glyphs (tiny bars that don't span the
+	// matrix height) instead of a proper stretching determinant delimiter. We strip
+	// the literal "|" and use \begin{vmatrix}...\end{vmatrix} instead, which the
+	// OMML converter renders as a single delimiter pair (<m:d>) that auto-grows to
+	// match the full height of the matrix — exactly like a real determinant.
+	//
+	// A single bare-matrix block can itself contain several "|...|" determinants
+	// joined by +, -, or = (see Q2's "|...| + |...|" pattern), each must be wrapped
+	// independently so every determinant gets its own pair of stretching bars.
 	function wrapBareMatrix(s) {
 		// Already has an environment — leave alone
 		if (/\\begin\{/.test(s)) return s;
 		// Must have at least one \\\\ row separator AND at least one & column separator
 		if (!s.includes("\\\\") || !(/(?<!\\)&/.test(s))) return s;
-		// Count max columns across rows to pick the right bracket-matrix
-		const rowStrs = s.split("\\\\");
-		const maxCols = Math.max(...rowStrs.map(r => (r.match(/(?<!\\)&/g) || []).length + 1));
-		// Use pmatrix for round brackets (standard for matrices in physics/math)
+
+		// Split on top-level "|" characters (not \left|, \right|, \| etc — those are
+		// already-escaped pipes and shouldn't be treated as bare delimiters).
+		const segments = s.split(/(?<!\\)\|/);
+
+		if (segments.length > 1) {
+			// We have at least one literal "|...|" pair. Rebuild the string, replacing
+			// each piece that sits between a pair of bare pipes with a vmatrix block,
+			// and leaving everything outside the pipes (e.g. " + ", "= 0") untouched.
+			let rebuilt = "";
+			for (let i = 0; i < segments.length; i++) {
+				const seg = segments[i];
+				const isInsideBars = i % 2 === 1; // odd segments were between a pair of |
+				if (isInsideBars && seg.includes("\\\\") && /(?<!\\)&/.test(seg)) {
+					rebuilt += `\\begin{vmatrix}${seg}\\end{vmatrix}`;
+				} else if (isInsideBars) {
+					// Content between bars that isn't actually matrix rows (shouldn't
+					// normally happen here) — restore the literal bars rather than lose them.
+					rebuilt += `|${seg}|`;
+				} else {
+					rebuilt += seg;
+				}
+			}
+			return rebuilt;
+		}
+
+		// No literal "|" delimiters — fall back to round-bracket pmatrix, the
+		// standard default for a bare matrix with no other delimiter specified.
 		return `\\begin{pmatrix}${s}\\end{pmatrix}`;
 	}
 
@@ -1163,8 +1230,95 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 	//   2. Raw Unicode combining overline U+0305 embedded in LaTeX text:
 	//      MathJax rejects it → conversion fails → Word shows □.
 	//      Fix: convert `x\u0305` → `\overline{x}` before conversion.
+	// Find the index of the delimiter that closes the one at `start`.
+	function matchDelimIndex(s, start, open, close) {
+		let depth = 0;
+		for (let i = start; i < s.length; i++) {
+			if (s[i] === "\\") { i++; continue; }
+			if (s[i] === open) depth++;
+			else if (s[i] === close) { depth--; if (depth === 0) return i; }
+		}
+		return -1;
+	}
+
+	// ── Extensible (labelled) arrows + mhchem ────────────────────────────────
+	// MathJax-core / latex-to-omml does not implement \xrightarrow, \xleftarrow,
+	// \xrightleftharpoons or \ce{...}. A single unknown macro makes the WHOLE
+	// equation fail to convert, so the paragraph silently degrades to italic
+	// plain text — exactly the "reaction arrow with a condition written above it"
+	// case in chemistry papers (e.g. $A \xrightarrow{H^+/heat} B$).
+	//
+	// Rewrite them into \overset / \underset over a plain arrow, which OMML
+	// renders natively as a proper arrow with text above/below it.
+	function rewriteExtensibleArrows(input) {
+		let out = String(input || "");
+
+		// mhchem: \ce{H2SO4} → \mathrm{H_{2}SO_{4}}
+		let guard = 0;
+		while (out.includes("\\ce{") && guard++ < 40) {
+			const at = out.indexOf("\\ce{");
+			const open = out.indexOf("{", at);
+			const close = matchDelimIndex(out, open, "{", "}");
+			if (close === -1) break;
+			const body = out.slice(open + 1, close).replace(/([A-Za-z)\]])(\d+)/g, "$1_{$2}");
+			out = out.slice(0, at) + "\\mathrm{" + body + "}" + out.slice(close + 1);
+		}
+
+		const ARROWS = [
+			["xrightleftharpoons", "\\rightleftharpoons"],
+			["xleftrightarrow", "\\longleftrightarrow"],
+			["xrightarrow", "\\longrightarrow"],
+			["xleftarrow", "\\longleftarrow"],
+			["xrightharpoonup", "\\rightharpoonup"],
+			["xleftharpoondown", "\\leftharpoondown"],
+		];
+		for (const [macro, arrow] of ARROWS) {
+			let loops = 0;
+			for (;;) {
+				if (loops++ > 40) break;
+				const at = out.indexOf("\\" + macro);
+				if (at === -1) break;
+				let i = at + macro.length + 1;
+				while (out[i] === " ") i++;
+				let below = "";
+				if (out[i] === "[") {
+					const close = matchDelimIndex(out, i, "[", "]");
+					if (close === -1) break;
+					below = out.slice(i + 1, close);
+					i = close + 1;
+					while (out[i] === " ") i++;
+				}
+				let above = "";
+				if (out[i] === "{") {
+					const close = matchDelimIndex(out, i, "{", "}");
+					if (close === -1) break;
+					above = out.slice(i + 1, close);
+					i = close + 1;
+				}
+				// Labels are usually words/conditions ("heat", "dark", "in absence of
+				// peroxide") — keep them upright unless they clearly contain math.
+				const dress = (label) => {
+					const t = String(label || "").trim();
+					if (!t) return "";
+					if (/[\\^_{}$]/.test(t)) return t;
+					return "\\text{" + t + "}";
+				};
+				let rebuilt = arrow;
+				const top = dress(above);
+				const bottom = dress(below);
+				if (top) rebuilt = "\\overset{" + top + "}{" + rebuilt + "}";
+				if (bottom) rebuilt = "\\underset{" + bottom + "}{" + rebuilt + "}";
+				out = out.slice(0, at) + rebuilt + out.slice(i);
+			}
+		}
+
+		// \limits after a plain arrow is meaningless in OMML and breaks conversion.
+		out = out.replace(/\\limits(?=\s*[_^])/g, "");
+		return out;
+	}
+
 	function fixLatexBeforeOmml(s) {
-		return s
+		return rewriteExtensibleArrows(String(s || ""))
 			// ── Unicode combining overline (U+0305) → \overline{x}
 			.replace(/([a-zA-Z0-9])\u0305/g, '\\overline{$1}')
 			// ── ^{n}C_{r} or ^nC_r: swap pre-scripts to RIGHT side of C/P
@@ -1194,6 +1348,37 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 			if (/\bxmlns:m\s*=\s*"/.test(attrs)) return `<m:oMath${attrs}>`;
 			return `<m:oMath${attrs} xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">`;
 		});
+
+		// 1b. Wrap "bracket-run + matrix + bracket-run" into a proper <m:d> delimiter.
+		//     ROOT CAUSE of tiny/non-stretching matrix & determinant brackets:
+		//     the latex-to-omml library renders \begin{vmatrix}/\begin{pmatrix}/
+		//     \begin{bmatrix} etc. as a plain text run for the opening character,
+		//     then the <m:m> matrix, then a plain text run for the closing character —
+		//     e.g. <m:r><m:t>|</m:t></m:r><m:m>...</m:m><m:r><m:t>|</m:t></m:r>
+		//     A plain <m:t> glyph is a fixed-height character, so it never grows to
+		//     match the height of a multi-row matrix next to it — this is exactly the
+		//     "tiny bars" bug. The correct OMML object is <m:d> (delimiter), which Word
+		//     stretches automatically to fully enclose its content. We detect this exact
+		//     adjacent run+matrix+run pattern for every matching bracket pair Word
+		//     supports and rebuild it as <m:d><m:dPr><m:begChr/><m:endChr/></m:dPr>
+		//     <m:e>...</m:e></m:d>, which is what makes the brackets auto-grow.
+		const DELIM_PAIRS = [
+			['|', '|'], ['(', ')'], ['[', ']'], ['{', '}'],
+			['‖', '‖'], ['⟨', '⟩'],
+		];
+		for (const [openCh, closeCh] of DELIM_PAIRS) {
+			const openChEsc = openCh.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+			const closeChEsc = closeCh.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+			const pattern = new RegExp(
+				`<m:r>(?:<m:rPr>[\\s\\S]*?<\\/m:rPr>)?<m:t[^>]*>${openChEsc}<\\/m:t><\\/m:r>` +
+				`(<m:m\\b[\\s\\S]*?<\\/m:m>)` +
+				`<m:r>(?:<m:rPr>[\\s\\S]*?<\\/m:rPr>)?<m:t[^>]*>${closeChEsc}<\\/m:t><\\/m:r>`,
+				'g'
+			);
+			clean = clean.replace(pattern, (match, matrixXml) => {
+				return `<m:d><m:dPr><m:begChr m:val="${openCh}"/><m:endChr m:val="${closeCh}"/></m:dPr><m:e>${matrixXml}</m:e></m:d>`;
+			});
+		}
 
 		// 2. Strip any attributes (like xml:space) from <m:t> elements which violate Word's strict math schema
 		clean = clean.replace(/<m:t\b[^>]*>/g, '<m:t>');
@@ -1286,6 +1471,17 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 				const escaped = preprocessed.replace(/&/g, '\\&');
 				return sanitizeOmml(await latexToOMML(escaped, { displayMode }));
 			} catch (e3) { }
+
+			// If the content has literal "|" delimiters still present at this point
+			// (e.g. wrapBareMatrix didn't catch it), try vmatrix first so a
+			// determinant gets proper stretching bars instead of plain pipe glyphs.
+			if (/(?<!\\)\|/.test(preprocessed)) {
+				try {
+					const stripped = preprocessed.replace(/(?<!\\)\|/g, '');
+					const vmatrixed = `\\begin{vmatrix}${stripped}\\end{vmatrix}`;
+					return sanitizeOmml(await latexToOMML(vmatrixed, { displayMode }));
+				} catch (e4v) { }
+			}
 
 			try {
 				const matrixed = `\\begin{pmatrix}${preprocessed}\\end{pmatrix}`;
@@ -1425,15 +1621,15 @@ function decodeXml(text) {
 // &amp; MUST be decoded last to avoid turning &amp;lt; into < prematurely.
 function fullyDecodeXml(text) {
 	return String(text || "")
-		.replace(/&apos;/g,  "'")
-		.replace(/&#39;/g,   "'")
-		.replace(/&quot;/g,  '"')
-		.replace(/&#34;/g,   '"')
-		.replace(/&gt;/g,    ">")
-		.replace(/&lt;/g,    "<")
-		.replace(/&nbsp;/g,  " ")
+		.replace(/&apos;/g, "'")
+		.replace(/&#39;/g, "'")
+		.replace(/&quot;/g, '"')
+		.replace(/&#34;/g, '"')
+		.replace(/&gt;/g, ">")
+		.replace(/&lt;/g, "<")
+		.replace(/&nbsp;/g, " ")
 		.replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
-		.replace(/&amp;/g,   "&");  // MUST be last
+		.replace(/&amp;/g, "&");  // MUST be last
 }
 
 async function zipToEntries(buffer) {
@@ -1524,7 +1720,7 @@ function applyHeaderMetaToXml(xml, headerMeta) {
 		const pPr = pPrMatch ? pPrMatch[0] : '';
 		const pOpenMatch = paraXml.match(/^<w:p\b[^>]*>/);
 		const pOpen = pOpenMatch ? pOpenMatch[0] : '<w:p>';
-		
+
 		let mergedRun = '';
 		if (replaced.includes('\n')) {
 			const lines = replaced.split('\n');
@@ -1541,7 +1737,7 @@ function applyHeaderMetaToXml(xml, headerMeta) {
 			const spaceAttr = replaced.startsWith(' ') || replaced.endsWith(' ') ? ' xml:space="preserve"' : '';
 			mergedRun = `<w:r>${rPr}<w:t${spaceAttr}>${replaced}</w:t></w:r>`;
 		}
-		
+
 		return `${pOpen}${pPr}${mergedRun}</w:p>`;
 	});
 
@@ -1559,11 +1755,11 @@ function applyHeaderMetaToXml(xml, headerMeta) {
 	// in paragraphs it rebuilt, so these replaceAll calls only fire on genuine remaining
 	// occurrences — preventing any risk of double-processing already-encoded XML.
 	let result = xml;
-	if (result.includes("{{SUBJECT}}"))   result = result.replaceAll("{{SUBJECT}}",   encode(headerMeta.subject));
-	if (result.includes("{{CHAPTER}}"))   result = result.replaceAll("{{CHAPTER}}",   formatPlaceholderForXml(splitChapter));
+	if (result.includes("{{SUBJECT}}")) result = result.replaceAll("{{SUBJECT}}", encode(headerMeta.subject));
+	if (result.includes("{{CHAPTER}}")) result = result.replaceAll("{{CHAPTER}}", formatPlaceholderForXml(splitChapter));
 	if (result.includes("{{TEST_TYPE}}")) result = result.replaceAll("{{TEST_TYPE}}", encode(headerMeta.testType));
-	if (result.includes("{{CLASS}}"))     result = result.replaceAll("{{CLASS}}",     encode(headerMeta.class));
-	if (result.includes("{{TITLE}}"))     result = result.replaceAll("{{TITLE}}",     formatPlaceholderForXml(splitTitle));
+	if (result.includes("{{CLASS}}")) result = result.replaceAll("{{CLASS}}", encode(headerMeta.class));
+	if (result.includes("{{TITLE}}")) result = result.replaceAll("{{TITLE}}", formatPlaceholderForXml(splitTitle));
 
 	if (headerMeta.mode && headerMeta.mode !== "question") {
 		result = result.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (paraXml) => {
@@ -1830,8 +2026,22 @@ async function postProcessDocx(generatedBuf, templateBase64, headerMeta) {
 	}
 }
 
-// Global progress tracking for paper generation
-global.paperGenProgress = global.paperGenProgress || {};
+// ── Progress tracking for paper generation ─────────────────────────────────
+// This used to be a plain `global.paperGenProgress` object. That silently breaks
+// the moment you run more than one instance (or cluster worker): the browser
+// polls /progress/:id, the load balancer sends it to a pod that never ran the
+// job, and the UI hangs on a 404 forever.
+//
+// `progress` keeps the exact same synchronous object API but mirrors every write
+// to Redis, so any pod can answer the poll. Falls back to pure in-memory when
+// REDIS_URL isn't set (single-instance behaviour, identical to before).
+const { progress, getProgress, clearProgress } = require("../utils/progressStore");
+const { saveArtifacts, loadArtifacts, clearArtifacts } = require("../utils/paperArtifacts");
+const { enqueue } = require("../utils/queue");
+
+// Keep the old global name pointing at the shared store so existing call sites
+// inside this file keep working unchanged.
+global.paperGenProgress = progress;
 
 // Asynchronous background generator for Word documents (DOCX)
 async function generatePaperDocxBackground(progressId, body, instId) {
@@ -1911,13 +2121,23 @@ async function generatePaperDocxBackground(progressId, body, instId) {
 
 		update(100, "finalise");
 
+		// Store the finished documents in the SHARED artifact store FIRST, then
+		// flip the status. In this order a poll that sees "completed" can always
+		// fetch the files, even when it lands on another cluster worker or another
+		// container.
+		const files = {
+			questionPaper: qBuf.toString("base64"),
+			answerKey: akBuf.toString("base64"),
+			solutions: solBuf.toString("base64"),
+		};
+		await saveArtifacts(progressId, files);
+
+		// Deliberately NOT stored on the progress object: that would keep a second
+		// multi-megabyte reference alive in this process for the whole TTL. The
+		// progress endpoint reads the documents from the artifact store instead.
 		if (global.paperGenProgress[progressId]) {
+			global.paperGenProgress[progressId].filesStored = true;
 			global.paperGenProgress[progressId].status = "completed";
-			global.paperGenProgress[progressId].files = {
-				questionPaper: qBuf.toString("base64"),
-				answerKey: akBuf.toString("base64"),
-				solutions: solBuf.toString("base64"),
-			};
 		}
 	} catch (e) {
 		console.error("generatePaperDocxBackground error:", e);
@@ -2003,28 +2223,46 @@ async function generatePaperPdfBackground(progressId, body, instId) {
 		const solBuf = await postProcessDocx(solBufRaw, tplBase64, { ...headerMeta, mode: "solution" });
 		await new Promise(resolve => setImmediate(resolve));
 
-		// Step 7: Convert Question Paper DOCX → PDF
+		// Steps 7-8: render each DOCX to PDF one at a time. Each buffer is turned
+		// into base64 and released immediately - holding three DOCX buffers plus
+		// three PDF buffers plus their base64 copies at once is what used to push
+		// the process over its heap limit (the job then vanished and the browser
+		// saw "Progress session not found or expired").
+		const renderOne = async (buf, label) => {
+			try {
+				const pdf = await docxToPdf(buf);
+				if (!pdf || !pdf.length) throw new Error("empty PDF");
+				const b64 = pdf.toString("base64");
+				return b64;
+			} catch (err) {
+				throw new Error(`Could not render the ${label} PDF: ${err && err.message ? err.message : err}`);
+			}
+		};
+
 		update(50, "pdf_questions");
-		const qPdf = await docxToPdf(qBuf);
+		const qPdf64 = await renderOne(qBuf, "question paper");
 		await new Promise(resolve => setImmediate(resolve));
 
-		// Answer key mock (empty/simple) PDF
-		const akPdf = Buffer.from("JVBERi0xLjEKMSAwIG9iagogIDw8IC9UeXBlIC9DYXRhbG9nCiAgICAgL1BhZ2VzIDIgMCBSCiAgPj4KZW5kb2JqCjIgMCBvYmoKICA8PCAvVHlwZSAvUGFnZXMKICAgICAvS2lkcyBbMyAwIFJdCiAgICAgL0NvdW50IDEKICA+PgplbmRvYmoKMyAwIG9iaagogIDw8IC9UeXBlIC9QYWdlCiAgICAgL1BhcmVudCAyIDAgUgogICAgIC9SZXNvdXJjZXMgPDw+PgogICAgIC9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCiAgPj4KZW5kb2JqCnRyYWlsZXIKICA8PCAvUm9vdCAxIDAgUgogID4+CiUlRU9G", "base64");
+		update(65, "pdf_questions");
+		const akPdf64 = await renderOne(akBuf, "answer key");
+		await new Promise(resolve => setImmediate(resolve));
 
-		// Step 8: Convert Solutions DOCX → PDF
 		update(75, "pdf_solutions");
-		const solPdf = await docxToPdf(solBuf);
+		const solPdf64 = await renderOne(solBuf, "solutions");
 		await new Promise(resolve => setImmediate(resolve));
 
 		update(100, "finalise");
 
+		const files = {
+			questionPaper: qPdf64,
+			answerKey: akPdf64,
+			solutions: solPdf64,
+		};
+		await saveArtifacts(progressId, files);
+
 		if (global.paperGenProgress[progressId]) {
+			global.paperGenProgress[progressId].filesStored = true;
 			global.paperGenProgress[progressId].status = "completed";
-			global.paperGenProgress[progressId].files = {
-				questionPaper: qPdf.toString("base64"),
-				answerKey: akPdf.toString("base64"),
-				solutions: solPdf.toString("base64"),
-			};
 		}
 	} catch (e) {
 		console.error("generatePaperPdfBackground error:", e);
@@ -2036,57 +2274,89 @@ async function generatePaperPdfBackground(progressId, body, instId) {
 }
 
 // POST /api/admin/generate-paper/start
-router.post("/api/admin/generate-paper/start", requireAdmin, (req, res) => {
+// Paper generation blocks the event loop for SECONDS (docx build + image work).
+// If a worker tier is available we hand the job off so the API pod stays free to
+// serve students; otherwise we run it in-process exactly as before.
+router.post("/api/admin/generate-paper/start", requireAdmin, requireFeature("paperGenerator"), async (req, res) => {
 	const progressId = "docx_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+	const instId = sessionInstituteId(req);
 	global.paperGenProgress[progressId] = {
 		pct: 0,
 		status: "starting",
-		currentStep: "build"
+		currentStep: "build",
+		createdAt: Date.now(),
 	};
 
-	generatePaperDocxBackground(progressId, req.body, sessionInstituteId(req));
+	const queued = await enqueue("paper-docx", { progressId, body: req.body, instId });
+	if (!queued) generatePaperDocxBackground(progressId, req.body, instId);
 
-	res.json({ success: true, progressId });
+	res.json({ success: true, progressId, queued });
 });
 
 // POST /api/admin/generate-paper-pdf/start
-router.post("/api/admin/generate-paper-pdf/start", requireAdmin, (req, res) => {
+router.post("/api/admin/generate-paper-pdf/start", requireAdmin, requireFeature("paperGenerator"), async (req, res) => {
 	const progressId = "pdf_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+	const instId = sessionInstituteId(req);
 	global.paperGenProgress[progressId] = {
 		pct: 0,
 		status: "starting",
-		currentStep: "build"
+		currentStep: "build",
+		createdAt: Date.now(),
 	};
 
-	generatePaperPdfBackground(progressId, req.body, sessionInstituteId(req));
+	const queued = await enqueue("paper-pdf", { progressId, body: req.body, instId });
+	if (!queued) generatePaperPdfBackground(progressId, req.body, instId);
 
-	res.json({ success: true, progressId });
+	res.json({ success: true, progressId, queued });
 });
 
 // GET /api/admin/generate-paper/progress/:progressId
-router.get("/api/admin/generate-paper/progress/:progressId", requireAdmin, (req, res) => {
+// Reads local state first, then Redis — so the poll works even when the job is
+// running on a different API pod or on the worker tier.
+router.get("/api/admin/generate-paper/progress/:progressId", requireAdmin, async (req, res) => {
 	const progressId = req.params.progressId;
-	const progress = global.paperGenProgress[progressId];
-	if (!progress) {
-		return res.status(404).json({ success: false, error: "Progress session not found or expired" });
+	const job = await getProgress(progressId);
+	if (!job) {
+		return res.status(404).json({
+			success: false,
+			error: "Progress session not found or expired",
+			hint: "The generation job is no longer on this server. It either finished more than an hour ago or the server restarted mid-render (usually memory pressure on a very large paper).",
+		});
 	}
 
-	if (progress.status === "completed" || progress.status === "failed") {
+	// A completed job that reached us from another process carries status only
+	// (the base64 documents are far too big to mirror inside the status object).
+	// Pull them from the shared artifact store so the download buttons work no
+	// matter which pod/cluster worker answers this poll.
+	let payload = job;
+	if (job.status === "completed" && !job.files) {
+		const files = await loadArtifacts(progressId);
+		if (files) {
+			payload = { ...job, files };
+		} else {
+			return res.status(410).json({
+				success: false,
+				error: "The generated files are no longer available",
+				hint: "The render finished but its files expired or were lost to a restart. Generate the paper again.",
+			});
+		}
+	}
+
+	if (job.status === "completed" || job.status === "failed") {
 		setTimeout(() => {
-			if (global.paperGenProgress[progressId]) {
-				delete global.paperGenProgress[progressId];
-			}
-		}, 60000); // Clean up after 1 minute
+			clearProgress(progressId).catch(() => {});
+			clearArtifacts(progressId).catch(() => {});
+		}, 60000).unref?.(); // Clean up after 1 minute
 	}
 
-	res.json({ success: true, progress });
+	res.json({ success: true, progress: payload });
 });
 
 
 // POST /api/admin/generate-paper
 // Body: { questions: [...], paperTitle, paperSubject, paperChapter, paperTestType, paperClass, templateId? }
 // Returns: JSON with base64-encoded buffers for question, answerkey, solution docx
-router.post("/api/admin/generate-paper", requireAdmin, async (req, res) => {
+router.post("/api/admin/generate-paper", requireAdmin, requireFeature("paperGenerator"), async (req, res) => {
 	try {
 		const { questions, paperTitle, paperSubject, paperChapter, paperTestType, paperClass, templateId } = req.body || {};
 		if (!Array.isArray(questions) || !questions.length) {
@@ -2149,185 +2419,18 @@ router.post("/api/admin/generate-paper", requireAdmin, async (req, res) => {
 	}
 });
 
-// ══════════════════════════════════════════════════════════════════════════
-//  PDF GENERATION — convert DOCX → PDF via LibreOffice headless
-// ══════════════════════════════════════════════════════════════════════════
-/**
- * Resolve the LibreOffice binary. Tries PATH names and common absolute
- * install locations so it works on Ubuntu/Debian, macOS, and custom installs.
- */
-function resolveLibreOfficeBin() {
-	const candidates = [
-		"libreoffice",
-		"soffice",
-		"/usr/bin/libreoffice",
-		"/usr/bin/soffice",
-		"/usr/lib/libreoffice/program/soffice",
-		"/opt/libreoffice/program/soffice",
-		"/opt/libreoffice7.6/program/soffice",
-		"/opt/libreoffice24.2/program/soffice",
-		"/snap/bin/libreoffice",
-		"/Applications/LibreOffice.app/Contents/MacOS/soffice",
-	];
-	for (const bin of candidates) {
-		try {
-			if (!bin.startsWith("/") || fs.existsSync(bin)) return bin;
-		} catch (_) { /* skip */ }
-	}
-	return null;
-}
+// ════════════════════════════════════════════════════════════════════════
+//  PDF GENERATION — built from scratch, in-process (no LibreOffice, no iLovePDF)
+// ════════════════════════════════════════════════════════════════════════
+// The DOCX → PDF conversion now lives in utils/docxToPdf.js: it parses the
+// generated .docx (page setup, headers/footers, paragraphs, runs, tables,
+// images and OMML equations) and re-draws it with pdfkit, so the PDF matches
+// the Word document without any external binary or third-party API key.
 
-/**
- * Convert a DOCX Buffer to a PDF Buffer using LibreOffice headless.
- * This preserves equations (OMML), template styles, images, and layout
- * exactly as they appear in the Word document.
- * @param {Buffer} docxBuffer - The DOCX file contents
- * @returns {Promise<Buffer>} - The PDF file contents
- */
-async function docxToPdf(docxBuffer) {
-	const publicKey = process.env.ILOVEPDF_PUBLIC_KEY;
-	if (publicKey) {
-		console.log("[docxToPdf] Attempting conversion via iLovePDF API...");
-		try {
-			// 1. Authenticate
-			const authResp = await fetch("https://api.ilovepdf.com/v1/auth", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ public_key: publicKey })
-			});
-			if (!authResp.ok) {
-				const errText = await authResp.text();
-				throw new Error(`iLovePDF auth failed: ${authResp.status} ${errText}`);
-			}
-			const { token } = await authResp.json();
-
-			// 2. Start Task
-			const startResp = await fetch("https://api.ilovepdf.com/v1/start/officepdf", {
-				method: "GET",
-				headers: { "Authorization": `Bearer ${token}` }
-			});
-			if (!startResp.ok) {
-				const errText = await startResp.text();
-				throw new Error(`iLovePDF start task failed: ${startResp.status} ${errText}`);
-			}
-			const { server, task } = await startResp.json();
-
-			// 3. Upload File
-			const formData = new FormData();
-			formData.append("task", task);
-			formData.append("file", new Blob([docxBuffer]), "paper.docx");
-
-			const uploadResp = await fetch(`https://${server}/v1/upload`, {
-				method: "POST",
-				headers: { "Authorization": `Bearer ${token}` },
-				body: formData
-			});
-			if (!uploadResp.ok) {
-				const errText = await uploadResp.text();
-				throw new Error(`iLovePDF upload failed: ${uploadResp.status} ${errText}`);
-			}
-			const { server_filename } = await uploadResp.json();
-
-			// 4. Process Task
-			const processResp = await fetch(`https://${server}/v1/process`, {
-				method: "POST",
-				headers: {
-					"Authorization": `Bearer ${token}`,
-					"Content-Type": "application/json"
-				},
-				body: JSON.stringify({
-					task: task,
-					tool: "officepdf",
-					files: [{ server_filename, filename: "paper.docx" }]
-				})
-			});
-			if (!processResp.ok) {
-				const errText = await processResp.text();
-				throw new Error(`iLovePDF process failed: ${processResp.status} ${errText}`);
-			}
-
-			// 5. Download Result
-			const downloadResp = await fetch(`https://${server}/v1/download/${task}`, {
-				method: "GET",
-				headers: { "Authorization": `Bearer ${token}` }
-			});
-			if (!downloadResp.ok) {
-				const errText = await downloadResp.text();
-				throw new Error(`iLovePDF download failed: ${downloadResp.status} ${errText}`);
-			}
-			const pdfBuffer = Buffer.from(await downloadResp.arrayBuffer());
-			console.log("[docxToPdf] iLovePDF conversion completed successfully.");
-			return pdfBuffer;
-
-		} catch (apiErr) {
-			console.warn("[docxToPdf] iLovePDF API error, falling back to local LibreOffice:", apiErr.message);
-		}
-	}
-
-	return new Promise((resolve, reject) => {
-		const bin = resolveLibreOfficeBin();
-		if (!bin) {
-			return reject(new Error(
-				"LibreOffice is not installed on this server and iLovePDF API is unconfigured/failed. " +
-				"Please configure ILOVEPDF_PUBLIC_KEY or install LibreOffice."
-			));
-		}
-
-		const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lo-paper-"));
-		const docxPath = path.join(tmpDir, "paper.docx");
-		const pdfPath = path.join(tmpDir, "paper.pdf");
-
-		try {
-			fs.writeFileSync(docxPath, docxBuffer);
-		} catch (writeErr) {
-			try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) { }
-			return reject(new Error("Failed to write temporary DOCX: " + writeErr.message));
-		}
-
-		// Each LibreOffice instance needs a fully isolated user profile directory.
-		// Without this, parallel instances share the same profile and lock each other
-		// out, causing "source file could not be loaded" errors on the 2nd and 3rd call.
-		// -env:UserInstallation gives each run its own profile; HOME is also set as a
-		// fallback for the javaldx warning in containers.
-		const loProfile = fs.mkdtempSync(path.join(os.tmpdir(), "lo-profile-"));
-
-		execFile(
-			bin,
-			[
-				"--headless", "--norestore", "--nofirststartwizard",
-				`-env:UserInstallation=file://${loProfile}`,
-				"--convert-to", "pdf", "--outdir", tmpDir, docxPath,
-			],
-			{ timeout: 60000, env: { ...process.env, HOME: loProfile } },
-			(err, stdout, stderr) => {
-				// Clean up isolated profile dir
-				try { fs.rmSync(loProfile, { recursive: true, force: true }); } catch (_) { }
-
-				// LibreOffice writes harmless warnings to stderr (e.g. "failed to launch
-				// javaldx") which cause execFile to set err even on success.
-				// Check whether the PDF was actually produced — that is the real signal.
-				const pdfExists = fs.existsSync(pdfPath);
-				if (!pdfExists) {
-					try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) { }
-					const reason = (err && err.message) || stderr || stdout || "unknown reason";
-					return reject(new Error("LibreOffice conversion failed: " + reason));
-				}
-				try {
-					const pdfBuffer = fs.readFileSync(pdfPath);
-					fs.rmSync(tmpDir, { recursive: true, force: true });
-					resolve(pdfBuffer);
-				} catch (readErr) {
-					try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) { }
-					reject(readErr);
-				}
-			}
-		);
-	});
-}
 // Strategy: build the same high-quality DOCX files (with OMML equations and
 // template applied) that the Word download uses, then convert each one to PDF
-// via LibreOffice headless — so the PDF looks identical to the Word document.
-router.post("/api/admin/generate-paper-pdf", requireAdmin, async (req, res) => {
+// with the built-in renderer — so the PDF looks identical to the Word document.
+router.post("/api/admin/generate-paper-pdf", requireAdmin, requireFeature("paperGenerator"), async (req, res) => {
 	try {
 		const { questions, paperTitle, paperSubject, paperChapter, paperTestType, paperClass, templateId } = req.body || {};
 		console.log("[generate-paper-pdf] req.body:", {
@@ -2381,13 +2484,10 @@ router.post("/api/admin/generate-paper-pdf", requireAdmin, async (req, res) => {
 			postProcessDocx(solBuf, tplBase64, { ...headerMeta, mode: "solution" }),
 		]);
 
-		// Step 3: Convert each DOCX → PDF using LibreOffice headless.
-		// Run sequentially — parallel LibreOffice instances can still conflict on
-		// shared system resources even with isolated profiles, causing "source file
-		// could not be loaded" on containers.
+		// Step 3: Convert each DOCX → PDF with the built-in renderer.
+		// Sequential so a big paper never spikes memory on small pods.
 		const qPdf = await docxToPdf(qBuf);
-		// Do not convert answer key PDF via iLovePDF (saves credits)
-		const akPdf = Buffer.from("JVBERi0xLjEKMSAwIG9iagogIDw8IC9UeXBlIC9DYXRhbG9nCiAgICAgL1BhZ2VzIDIgMCBSCiAgPj4KZW5kb2JqCjIgMCBvYmoKICA8PCAvVHlwZSAvUGFnZXMKICAgICAvS2lkcyBbMyAwIFJdCiAgICAgL0NvdW50IDEKICA+PgplbmRvYmoKMyAwIG9iaagogIDw8IC9UeXBlIC9QYWdlCiAgICAgL1BhcmVudCAyIDAgUgogICAgIC9SZXNvdXJjZXMgPDw+PgogICAgIC9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCiAgPj4KZW5kb2JqCnRyYWlsZXIKICA8PCAvUm9vdCAxIDAgUgogID4+CiUlRU9G", "base64");
+		const akPdf = await docxToPdf(akBuf);
 		const solPdf = await docxToPdf(solBuf);
 
 		res.json({
@@ -2411,3 +2511,7 @@ router.post("/api/admin/generate-paper-pdf", requireAdmin, async (req, res) => {
 // GET all STAR Quiz questions
 
 module.exports = router;
+
+// Exported so the worker tier (worker.js) can run these jobs off the API pods.
+module.exports.generatePaperDocxBackground = generatePaperDocxBackground;
+module.exports.generatePaperPdfBackground = generatePaperPdfBackground;

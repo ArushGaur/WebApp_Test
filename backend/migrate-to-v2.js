@@ -1,114 +1,33 @@
 /**
- * One-off migration: old `questions` table (one row per chapter+lecture,
- * questions_json = array of all questions) → new `questions_v2` table
- * (one row per question, with subject/chapter/topic/year as real columns).
+ * migrate-to-v2.js — OBSOLETE, intentionally disabled.
  *
- * USAGE:
- *   cd backend
- *   node migrate-to-v2.js
+ * This was a one-off migration from the very old schema (one row per topic with
+ * a `questions_json` array) into a single `questions_v2` table.
  *
- * Safe to re-run: it always starts by wiping questions_v2 and rebuilding
- * it from the old `questions` table, so the old table is never modified
- * and you can re-run this as many times as you like while testing.
+ * That `questions_v2` table no longer exists in the app. Questions now live in
+ * exactly TWO tables, and every route reads/writes them directly:
  *
- * Requires the `questions_v2` table to already exist — i.e. you've started
- * the server at least once after adding the new CREATE TABLE block to
- * config/db.js (see db.js.patch.txt), or run that DDL manually first.
+ *   • questions      — the regular question bank (no year)
+ *   • pyq_questions  — previous-year questions (year/month/day/shift/number)
+ *
+ * Running the old logic today would DELETE FROM questions_v2 and rebuild a
+ * table nothing uses, so it is disabled rather than left as a footgun.
+ *
+ * What to run instead:
+ *   • node drop-questions-v2.js        — remove a leftover questions_v2
+ *                                        view/table (migrating any rows first)
+ *   • node migrate-to-supabase.js      — one-time import from the legacy local
+ *                                        SQLite file into Supabase
  */
 
-const { db } = require("./config/db");
-const { normalizeQuestion } = require("./utils/helpers");
+console.log("");
+console.log("migrate-to-v2.js is obsolete and does nothing.");
+console.log("");
+console.log("The schema is now: questions (regular bank) + pyq_questions (previous-year).");
+console.log("There is no questions_v2 table to migrate into.");
+console.log("");
+console.log("  \u2022 To clean up a leftover questions_v2:  node drop-questions-v2.js");
+console.log("  \u2022 To import the legacy SQLite data:     node migrate-to-supabase.js");
+console.log("");
 
-// A question's `chapter` field (per your AI extraction JSON, e.g.
-// "Classification of Elements and Periodicity") tells us which subject
-// it belongs to via its `unit`/`subject` field already present on each
-// extracted question (your sample JSON has "subject":"Chemistry" on every
-// question). We trust that field first; if it's missing we fall back to
-// the OLD row's chapter-derived guess... but since you said subject was
-// never tracked as a column before, in practice every question SHOULD
-// already carry its own `subject` from the AI extraction. We log any
-// question missing it so you can spot-check after migration.
-
-async function main() {
-	console.log("[migrate] Wiping questions_v2 …");
-	await db.execute("DELETE FROM questions_v2");
-
-	console.log("[migrate] Reading old `questions` table …");
-	const result = await db.execute("SELECT * FROM questions");
-	console.log(`[migrate] ${result.rows.length} old rows (chapter+lecture groups) found.`);
-
-	let totalInserted = 0;
-	let missingSubject = 0;
-	const missingSubjectSamples = [];
-
-	for (const row of result.rows) {
-		let parsed = [];
-		try {
-			parsed = JSON.parse(row.questions_json || "[]");
-		} catch (e) {
-			console.warn(`[migrate] row id=${row.id} (chapter="${row.chapter}", lecture="${row.lecture}") has corrupted questions_json — skipped.`);
-			continue;
-		}
-		if (!Array.isArray(parsed)) continue;
-
-		const now = Date.now();
-		for (let i = 0; i < parsed.length; i++) {
-			const raw = parsed[i];
-			if (!raw || typeof raw !== "object") continue;
-
-			// Normalize through the SAME function admin.js/extract.js already use,
-			// so raw_json ends up in exactly the shape every route expects to read.
-			const normalized = normalizeQuestion(raw, { preserveRaw: true });
-
-			const subject = String(raw.subject || normalized.subject || "").trim();
-			if (!subject) {
-				missingSubject++;
-				if (missingSubjectSamples.length < 10) {
-					missingSubjectSamples.push({ rowId: row.id, chapter: row.chapter, index: i });
-				}
-			}
-
-			const chapter = String(row.chapter || raw.chapter || "").trim();
-			const topic = String(row.topic || raw.topic || "").trim();
-			const unit = String(raw.unit || normalized.unit || "").trim();
-			const year = raw.year != null ? String(raw.year).trim() : "";
-			const month = raw.month != null ? String(raw.month).trim() : "";
-			const day = raw.day != null ? String(raw.day).trim() : "";
-			const shift = raw.shift != null ? String(raw.shift).trim() : "";
-			const questionNumber = Number.isInteger(raw.questionNumber)
-				? raw.questionNumber
-				: (Number.isInteger(raw.question_number) ? raw.question_number : null);
-			const questionType = String(raw.questionType || raw.question_type || "MCQ").trim() || "MCQ";
-
-			await db.execute({
-				sql: `INSERT INTO questions_v2
-					(subject, unit, chapter, topic, year, month, day, shift,
-					 question_number, question_type, raw_json, created_at, updated_at)
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				args: [
-					subject, unit, chapter, topic, year, month, day, shift,
-					questionNumber, questionType, JSON.stringify(normalized),
-					row.updated_at || now, now,
-				],
-			});
-			totalInserted++;
-		}
-
-		if (totalInserted % 5000 < parsed.length) {
-			console.log(`[migrate] … ${totalInserted} questions inserted so far`);
-		}
-	}
-
-	console.log(`[migrate] Done. Inserted ${totalInserted} questions into questions_v2.`);
-	if (missingSubject) {
-		console.warn(`[migrate] WARNING: ${missingSubject} question(s) had no subject field. Samples:`, missingSubjectSamples);
-		console.warn(`[migrate] These rows have subject = '' in questions_v2 — you'll want to backfill them (e.g. via rename-chapter style bulk UPDATE, or by re-tagging via /api/admin/pyq-tag-questions logic) before relying on subject-based search for them.`);
-	}
-
-	process.exit(0);
-}
-
-main().catch((e) => {
-	console.error("[migrate] FATAL:", e);
-	process.exit(1);
-});
+process.exit(0);

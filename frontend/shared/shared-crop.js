@@ -13,7 +13,7 @@
             optQIndex: -1,  // question index when mode === 'opt'
             optIndex: -1,   // which option (0-3) to update when mode === 'opt'
         };
-
+        
         function _impGetCropImages() {
             return impCropState.mode === 'sol' ? _impSolScreenshots : impQImages;
         }

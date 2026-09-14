@@ -1,11 +1,12 @@
-const CACHE_NAME = "grip-admin-v3";
+const CACHE_NAME = "vyorra-developer-v7";
 
 // Files to cache for offline shell
 const SHELL_FILES = [
-    "/owner.html",
-    "/admin-manifest.json",
-    "/icon-1.jpg",
-    "/icon-512.png",
+    "/developer.html",
+    "/developer-manifest.json",
+    "/triumph.png",
+    "/triumph-192.png",
+    "/triumph-512.png",
     "https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap",
     "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css",
     "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js",
@@ -42,7 +43,7 @@ self.addEventListener("fetch", event => {
     // Always go to network for API calls — never serve stale data
     if (url.pathname.startsWith("/api/")) {
         event.respondWith(
-            fetch(event.request, { 
+            fetch(event.request, {
                 credentials: "include"  // Explicitly include credentials
             }).catch(() =>
                 new Response(JSON.stringify({ error: "You are offline. Please check your connection." }), {
@@ -68,7 +69,7 @@ self.addEventListener("fetch", event => {
         return;
     }
 
-    // Network-first for everything else (owner.html etc)
+    // Network-first for everything else (developer.html etc)
     // Only cache GET requests - Cache API doesn't support POST
     if (event.request.method !== "GET") {
         event.respondWith(fetch(event.request));

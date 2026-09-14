@@ -312,7 +312,10 @@ function exportCSV() {
     const lines = [];
     // Excel-friendly delimiter hint.
     lines.push('sep=,');
-    addRow(lines, ['GRIP PHYSICS - STUDENT PERFORMANCE REPORT']);
+    const _csvInstituteName = (typeof __activeInstitute !== 'undefined' && __activeInstitute && __activeInstitute.name)
+        ? __activeInstitute.name
+        : 'Student Performance';
+    addRow(lines, [_csvInstituteName.toUpperCase() + ' - STUDENT PERFORMANCE REPORT']);
     lines.push('');
 
     addRow(lines, ['Report Info', 'Value']);
@@ -380,7 +383,7 @@ function exportCSV() {
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = url; link.download = `GripPhysics_Student_Report_${now.toISOString().slice(0, 10)}.csv`;
+    link.href = url; link.download = `Vyorra_Student_Report_${now.toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
 }
@@ -645,6 +648,7 @@ function renderRegisteredStudentsTable(data) {
         const safeRoll = escapeHtml(s.rollNumber || "-");
         const safeName = escapeHtml(s.name || "Unnamed");
         const safePhone = escapeHtml(s.phone || "—");
+        const safeEmail = escapeHtml(s.email || "— no email —");
         const statusHtml = s.profileComplete
             ? '<span class="reg-status-chip" style="background:rgba(46,204,113,0.15);color:#2ecc71;border-color:rgba(46,204,113,0.3)">Registered</span>'
             : '<span class="reg-status-chip" style="background:rgba(243,156,18,0.12);color:#f39c12;border-color:rgba(243,156,18,0.3)">Pending</span>';
@@ -654,7 +658,7 @@ function renderRegisteredStudentsTable(data) {
                                         <span class="reg-list-index">${idx + 1}</span>
                                         <div style="min-width:0">
                                             <div class="reg-list-name">${safeName}</div>
-                                            <div class="reg-list-meta">Roll: ${safeRoll} · Phone: ${safePhone}</div>
+                                            <div class="reg-list-meta">${safeEmail} · Roll: ${safeRoll} · Phone: ${safePhone}</div>
                                         </div>
                                     </div>
                                     <div class="reg-list-right">
@@ -768,11 +772,25 @@ function renderRequestsList() {
 async function approveRequest(id, roll, cardId) {
     const card = document.getElementById(cardId);
     if (!card) return;
-    // Show loading state
+    const password = await showPasswordPromptModal("Assign Password", "Set credentials for request approval", roll);
+    if (password === null) return;
+    if (!validatePasswordComplexity(password)) {
+        if (typeof showToast === 'function') {
+            showToast("Password must contain at least 6 characters, including a letter, a number, and a special character.", "error");
+        } else {
+            alert("Password must contain at least 6 characters, including a letter, a number, and a special character.");
+        }
+        return;
+    }
     const actionsEl = card.querySelector('.req-card-actions');
     actionsEl.innerHTML = `<div style="flex:1;text-align:center;padding:8px;font-size:0.82rem;color:var(--text-muted);display:flex;align-items:center;justify-content:center;gap:6px"><span class="spinner" style="width:13px;height:13px;border-width:2px"></span> Approving…</div>`;
     try {
-        const r = await fetch(`${API_BASE}/api/admin/student-requests/${id}/approve`, { method: 'POST', credentials: 'include' });
+        const r = await fetch(`${API_BASE}/api/admin/student-requests/${id}/approve`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password })
+        });
         if (!r.ok) throw new Error('Failed');
         // Animate card out
         card.style.background = 'rgba(46,210,180,0.08)';
@@ -837,7 +855,127 @@ setInterval(() => {
 }, 60000);
 
 /* ── Add Students Popup ─────────────────────────────── */
+function injectAddStuStyles() {
+    if (document.getElementById('addstu-responsive-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'addstu-responsive-styles';
+    style.textContent = `
+        .addstu-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            animation: addstuRowIn 0.18s ease;
+        }
+        .addstu-row-idx {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            flex-shrink: 0;
+        }
+        .addstu-row-inputs {
+            display: flex;
+            flex-wrap: wrap;
+            flex: 1;
+            gap: 8px;
+            min-width: 0;
+        }
+        .addstu-row-inputs input {
+            flex: 1 1 130px;
+            min-width: 110px;
+            background: var(--bg-input);
+            border: 1.5px solid var(--border);
+            border-radius: 9px;
+            padding: 10px 13px;
+            color: var(--text);
+            font-size: 0.88rem;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .addstu-row-remove {
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            border: 1.5px solid rgba(239, 68, 68, 0.35);
+            background: rgba(239, 68, 68, 0.08);
+            color: #ef4444;
+            cursor: pointer;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: all 0.15s;
+        }
+        
+        @media (max-width: 480px) {
+            .addstu-row {
+                align-items: stretch;
+            }
+            .addstu-row-inputs {
+                flex-direction: column;
+                gap: 6px;
+            }
+            .addstu-row-idx {
+                align-self: flex-start;
+                margin-top: 8px;
+            }
+            .addstu-row-remove {
+                align-self: flex-start;
+                margin-top: 8px;
+            }
+        }
+
+        /* Custom Password Prompt Modal Styles */
+        #custom-pwd-prompt-overlay {
+            display: flex;
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            background: rgba(0, 0, 0, 0.55);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            animation: pwdFadeIn 0.2s ease-out;
+        }
+
+        .pwd-prompt-card {
+            background: var(--bg-card);
+            border: 1.5px solid var(--border);
+            border-radius: 20px;
+            width: 100%;
+            max-width: 380px;
+            box-shadow: var(--shadow-modal);
+            animation: pwdPopIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+            overflow: hidden;
+        }
+
+        @keyframes pwdFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes pwdPopIn {
+            from { transform: scale(0.9) translateY(10px); opacity: 0; }
+            to { transform: scale(1) translateY(0); opacity: 1; }
+        }
+    `;
+    document.head.appendChild(style);
+}
+
 function openAddStudentsPopup() {
+    injectAddStuStyles();
     // Reset rows
     const container = document.getElementById('addstu-rows');
     container.innerHTML = '';
@@ -854,6 +992,174 @@ function closeAddStudentsPopup() {
 
 let _addStuRowCount = 0;
 
+function validatePasswordComplexity(password) {
+    if (!password || password.length < 6) return false;
+    const hasLetter = /[a-zA-Z]/.test(password);
+    const hasDigit = /\d/.test(password);
+    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+    return hasLetter && hasDigit && hasSpecial;
+}
+
+function showPasswordPromptModal(title, subtitle, roll) {
+    return new Promise((resolve) => {
+        injectAddStuStyles(); // ensures animations are loaded
+        
+        let existing = document.getElementById('custom-pwd-prompt-overlay');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'custom-pwd-prompt-overlay';
+
+        overlay.innerHTML = `
+            <div class="pwd-prompt-card">
+                <!-- Header -->
+                <div style="padding:22px 24px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px">
+                    <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 4px 14px var(--accent-glow)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                    </div>
+                    <div style="flex:1">
+                        <div style="font-size:1rem;font-weight:800;color:var(--text)">${title}</div>
+                        <div style="font-size:0.75rem;color:var(--text-muted);margin-top:1px">${subtitle}</div>
+                    </div>
+                    <button id="pwd-prompt-close" style="width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;transition:all 0.15s">✕</button>
+                </div>
+                <!-- Body -->
+                <div style="padding:20px 24px">
+                    <div style="margin-bottom:10px;font-size:0.85rem;color:var(--text);font-weight:600">Assign password for student: <span style="font-family:var(--font-mono, monospace);color:var(--accent);font-weight:700">${roll}</span></div>
+                    <div style="position:relative;display:flex;align-items:center">
+                        <input type="password" id="pwd-prompt-input" placeholder="Enter password" autocomplete="new-password"
+                            style="width:100%;background:var(--bg-input);border:1.5px solid var(--border);border-radius:10px;padding:11px 40px 11px 13px;color:var(--text);font-size:0.9rem;font-family:inherit;outline:none;transition:border-color 0.15s,box-shadow 0.15s">
+                        <button id="pwd-prompt-toggle" type="button" style="position:absolute;right:10px;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.1rem;display:flex;align-items:center;justify-content:center;padding:4px;outline:none">👁️</button>
+                    </div>
+                    
+                    <!-- Live rules checklist -->
+                    <div style="margin-top:14px;background:rgba(0,0,0,0.02);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:0.76rem;color:var(--text-muted)">
+                        <div style="font-weight:700;margin-bottom:6px;color:var(--text)">Password Requirements:</div>
+                        <div id="rule-len" style="display:flex;align-items:center;gap:6px;margin-bottom:4px;transition:color 0.15s">❌ Min 6 characters</div>
+                        <div id="rule-let" style="display:flex;align-items:center;gap:6px;margin-bottom:4px;transition:color 0.15s">❌ At least 1 letter (a-z, A-Z)</div>
+                        <div id="rule-num" style="display:flex;align-items:center;gap:6px;margin-bottom:4px;transition:color 0.15s">❌ At least 1 number (0-9)</div>
+                        <div id="rule-spe" style="display:flex;align-items:center;gap:6px;transition:color 0.15s">❌ At least 1 special character</div>
+                    </div>
+                </div>
+                <!-- Footer -->
+                <div style="padding:14px 24px 20px;display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--border)">
+                    <button id="pwd-prompt-cancel" style="padding:10px 20px;background:var(--bg-input);border:1.5px solid var(--border);border-radius:10px;color:var(--text);cursor:pointer;font-size:0.85rem;font-weight:600;font-family:inherit;transition:all 0.15s">Cancel</button>
+                    <button id="pwd-prompt-submit" disabled style="padding:10px 22px;background:linear-gradient(135deg,var(--accent),var(--accent-2));border:none;border-radius:10px;color:#fff;cursor:pointer;font-size:0.85rem;font-weight:700;font-family:inherit;opacity:0.5;cursor:not-allowed;box-shadow:0 2px 14px var(--accent-glow);display:flex;align-items:center;gap:6px;transition:all 0.15s">Confirm</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const input = overlay.querySelector('#pwd-prompt-input');
+        const submitBtn = overlay.querySelector('#pwd-prompt-submit');
+        const cancelBtn = overlay.querySelector('#pwd-prompt-cancel');
+        const closeBtn = overlay.querySelector('#pwd-prompt-close');
+        const toggleBtn = overlay.querySelector('#pwd-prompt-toggle');
+
+        const ruleLen = overlay.querySelector('#rule-len');
+        const ruleLet = overlay.querySelector('#rule-let');
+        const ruleNum = overlay.querySelector('#rule-num');
+        const ruleSpe = overlay.querySelector('#rule-spe');
+
+        cancelBtn.addEventListener('mouseover', () => cancelBtn.style.borderColor = 'var(--border-focus)');
+        cancelBtn.addEventListener('mouseout', () => cancelBtn.style.borderColor = 'var(--border)');
+        closeBtn.addEventListener('mouseover', () => closeBtn.style.color = 'var(--text)');
+        closeBtn.addEventListener('mouseout', () => closeBtn.style.color = 'var(--text-muted)');
+
+        toggleBtn.addEventListener('click', () => {
+            if (input.type === 'password') {
+                input.type = 'text';
+                toggleBtn.textContent = '🙈';
+            } else {
+                input.type = 'password';
+                toggleBtn.textContent = '👁️';
+            }
+        });
+
+        input.addEventListener('focus', () => {
+            input.style.borderColor = 'var(--border-focus)';
+            input.style.boxShadow = '0 0 0 3px var(--accent-glow)';
+        });
+        input.addEventListener('blur', () => {
+            input.style.borderColor = 'var(--border)';
+            input.style.boxShadow = 'none';
+        });
+
+        function updateValidation() {
+            const val = input.value;
+            const meetsLen = val.length >= 6;
+            const meetsLet = /[a-zA-Z]/.test(val);
+            const meetsNum = /\d/.test(val);
+            const meetsSpe = /[!@#$%^&*(),.?":{}|<>]/.test(val);
+
+            function setRuleState(el, passed, text) {
+                if (passed) {
+                    el.innerHTML = `✓ ${text}`;
+                    el.style.color = 'var(--success)';
+                } else {
+                    el.innerHTML = `❌ ${text}`;
+                    el.style.color = 'var(--text-muted)';
+                }
+            }
+
+            setRuleState(ruleLen, meetsLen, 'Min 6 characters');
+            setRuleState(ruleLet, meetsLet, 'At least 1 letter (a-z, A-Z)');
+            setRuleState(ruleNum, meetsNum, 'At least 1 number (0-9)');
+            setRuleState(ruleSpe, meetsSpe, 'At least 1 special character');
+
+            const allPassed = meetsLen && meetsLet && meetsNum && meetsSpe;
+            submitBtn.disabled = !allPassed;
+            if (allPassed) {
+                submitBtn.style.opacity = '1';
+                submitBtn.style.cursor = 'pointer';
+            } else {
+                submitBtn.style.opacity = '0.5';
+                submitBtn.style.cursor = 'not-allowed';
+            }
+        }
+
+        input.addEventListener('input', updateValidation);
+
+        function doSubmit() {
+            if (submitBtn.disabled) return;
+            const password = input.value;
+            cleanup();
+            resolve(password);
+        }
+
+        function doCancel() {
+            cleanup();
+            resolve(null);
+        }
+
+        function cleanup() {
+            overlay.remove();
+        }
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                doSubmit();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                doCancel();
+            }
+        });
+
+        submitBtn.addEventListener('click', doSubmit);
+        cancelBtn.addEventListener('click', doCancel);
+        closeBtn.addEventListener('click', doCancel);
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) doCancel();
+        });
+
+        setTimeout(() => input.focus(), 100);
+    });
+}
+
 function addStuRow(focusNew = false) {
     _addStuRowCount++;
     const id = `addstu-row-${_addStuRowCount}`;
@@ -861,17 +1167,20 @@ function addStuRow(focusNew = false) {
     const container = document.getElementById('addstu-rows');
     const row = document.createElement('div');
     row.id = id;
-    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;animation:addstuRowIn 0.18s ease';
+    row.className = 'addstu-row';
+    // Five details per student. No password field: students sign in with a
+    // one-time code emailed to them, so the email address is the login identity.
+    const _fx = "onfocus=\"this.style.borderColor='var(--border-focus)';this.style.boxShadow='0 0 0 3px var(--accent-glow)'\" onblur=\"this.style.borderColor='var(--border)';this.style.boxShadow='none'\" onkeydown=\"addStuInputKeydown(event, this)\"";
     row.innerHTML = `
-                <div style="width:28px;height:28px;border-radius:50%;background:var(--bg-input);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;color:var(--text-muted);flex-shrink:0">${rowId}</div>
-                <input type="text" placeholder="e.g. GP00${rowId}" autocomplete="off"
-                    style="flex:1;background:var(--bg-input);border:1.5px solid var(--border);border-radius:9px;padding:10px 13px;color:var(--text);font-size:0.88rem;font-family:inherit;outline:none;transition:border-color 0.15s,box-shadow 0.15s"
-                    onfocus="this.style.borderColor='var(--border-focus)';this.style.boxShadow='0 0 0 3px var(--accent-glow)'"
-                    onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'"
-                    onkeydown="addStuInputKeydown(event, this)">
-                <button onclick="removeStuRow('${id}')" title="Remove"
-                    style="width:30px;height:30px;border-radius:8px;border:1.5px solid rgba(239,68,68,0.35);background:rgba(239,68,68,0.08);color:#ef4444;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.15s"
-                    onmouseover="this.style.background='rgba(239,68,68,0.18)'" onmouseout="this.style.background='rgba(239,68,68,0.08)'">×</button>
+                <div class="addstu-row-idx">${rowId}</div>
+                <div class="addstu-row-inputs">
+                    <input type="text" placeholder="Full Name" autocomplete="off" class="addstu-name" ${_fx}>
+                    <input type="text" placeholder="Class" autocomplete="off" class="addstu-class" ${_fx}>
+                    <input type="text" placeholder="Section" autocomplete="off" class="addstu-section" ${_fx}>
+                    <input type="tel" placeholder="Mobile (10 digits)" autocomplete="off" class="addstu-mobile" maxlength="14" ${_fx}>
+                    <input type="email" placeholder="Email (used to log in)" autocomplete="off" spellcheck="false" class="addstu-email" ${_fx}>
+                </div>
+                <button class="addstu-row-remove" onclick="removeStuRow('${id}')" title="Remove">×</button>
             `;
     container.appendChild(row);
     if (focusNew) {
@@ -882,9 +1191,13 @@ function addStuRow(focusNew = false) {
 function removeStuRow(rowId) {
     const el = document.getElementById(rowId);
     if (!el) return;
-    // Don't allow removing the last row
     const rows = document.querySelectorAll('#addstu-rows > div');
-    if (rows.length <= 1) { el.querySelector('input').value = ''; el.querySelector('input').focus(); return; }
+    if (rows.length <= 1) {
+        // Never remove the only row — just blank it out.
+        el.querySelectorAll('input').forEach(i => { i.value = ''; i.style.borderColor = 'var(--border)'; });
+        el.querySelector('input')?.focus();
+        return;
+    }
     el.style.animation = 'addstuRowOut 0.15s ease forwards';
     setTimeout(() => el.remove(), 140);
 }
@@ -892,7 +1205,6 @@ function removeStuRow(rowId) {
 function addStuInputKeydown(e, input) {
     if (e.key === 'Enter') {
         e.preventDefault();
-        // If this is the last input, add new row
         const allInputs = [...document.querySelectorAll('#addstu-rows input')];
         const idx = allInputs.indexOf(input);
         if (idx === allInputs.length - 1) {
@@ -904,20 +1216,66 @@ function addStuInputKeydown(e, input) {
 }
 
 async function submitAddStudents() {
-    const inputs = [...document.querySelectorAll('#addstu-rows input')];
-    const rolls = inputs.map(i => i.value.trim()).filter(Boolean);
-    if (!rolls.length) {
-        const first = inputs[0];
-        if (first) { first.style.borderColor = 'var(--error)'; first.style.boxShadow = '0 0 0 3px rgba(240,142,142,0.2)'; first.focus(); setTimeout(() => { first.style.borderColor = 'var(--border)'; first.style.boxShadow = 'none'; }, 1800); }
+    const rows = [...document.querySelectorAll('#addstu-rows > div')];
+    const students = [];
+    const problems = [];
+
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    const seenEmails = new Set();
+
+    rows.forEach((row, i) => {
+        const get = cls => row.querySelector(cls);
+        const fields = {
+            name: get('.addstu-name'),
+            className: get('.addstu-class'),
+            section: get('.addstu-section'),
+            mobile: get('.addstu-mobile'),
+            email: get('.addstu-email'),
+        };
+        if (!fields.name) return;
+
+        const vals = {
+            name: (fields.name.value || '').trim(),
+            className: (fields.className.value || '').trim(),
+            section: (fields.section.value || '').trim().toUpperCase(),
+            mobile: (fields.mobile.value || '').replace(/\D/g, ''),
+            email: (fields.email.value || '').trim().toLowerCase(),
+        };
+
+        // Completely blank rows are ignored, not reported as errors.
+        const touched = Object.values(vals).some(v => v);
+        Object.values(fields).forEach(f => { f.style.borderColor = 'var(--border)'; });
+        if (!touched) return;
+
+        let bad = false;
+        const flag = key => { fields[key].style.borderColor = 'var(--error)'; bad = true; };
+
+        ['name', 'className', 'section', 'mobile', 'email'].forEach(k => { if (!vals[k]) flag(k); });
+        if (bad) { problems.push(`Row ${i + 1}: all five details are required`); return; }
+
+        if (!EMAIL_RE.test(vals.email)) { flag('email'); problems.push(`Row ${i + 1}: "${vals.email}" is not a valid email`); return; }
+        if (vals.mobile.length !== 10) { flag('mobile'); problems.push(`Row ${i + 1}: mobile must be 10 digits`); return; }
+        if (seenEmails.has(vals.email)) { flag('email'); problems.push(`Row ${i + 1}: ${vals.email} is repeated`); return; }
+
+        seenEmails.add(vals.email);
+        students.push(vals);
+    });
+
+    if (problems.length) {
+        alert("Please fix these rows:\n\n• " + problems.join("\n• "));
         return;
     }
-    // Close the input popup and show progress popup
+
+    if (!students.length) {
+        alert("Please enter at least one student's name, class, section, mobile and email.");
+        return;
+    }
+
     closeAddStudentsPopup();
-    showAddStuProgress(rolls);
+    showAddStuProgress(students);
 }
 
-async function showAddStuProgress(rolls) {
-    // Show progress overlay
+async function showAddStuProgress(students) {
     const overlay = document.getElementById('addstu-progress-overlay');
     const bar = document.getElementById('addstu-progress-bar');
     const label = document.getElementById('addstu-progress-label');
@@ -925,9 +1283,8 @@ async function showAddStuProgress(rolls) {
     overlay.style.display = 'flex';
     bar.style.width = '0%';
     label.textContent = 'Preparing…';
-    countEl.textContent = `0 / ${rolls.length}`;
+    countEl.textContent = `0 / ${students.length}`;
 
-    // Animate progress from 0 → 60% while fetching
     let fakeProgress = 0;
     const fakeInterval = setInterval(() => {
         if (fakeProgress < 60) { fakeProgress += 4; bar.style.width = fakeProgress + '%'; }
@@ -938,20 +1295,19 @@ async function showAddStuProgress(rolls) {
         const r = await fetch(`${API_BASE}/api/admin/registered-students/add`, {
             method: "POST", credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ rollNumbers: rolls.join("\n") }),
+            body: JSON.stringify({ students }),
         });
         const data = await r.json();
         clearInterval(fakeInterval);
         if (!r.ok) throw new Error(data.error || "Failed");
 
-        // Animate to 100%
         label.textContent = 'Saving records…';
         bar.style.transition = 'width 0.4s ease';
         bar.style.width = '90%';
         await new Promise(res => setTimeout(res, 350));
         bar.style.width = '100%';
-        countEl.textContent = `${data.added} / ${rolls.length}`;
-        label.textContent = `✓ Done! Added ${data.added}${data.skipped ? `, ${data.skipped} skipped` : ''}`;
+        countEl.textContent = `${data.added} / ${students.length}`;
+        label.textContent = `✓ Done! Added ${data.added}${data.skipped ? `, ${data.skipped} skipped` : ''}${data.invalid ? `, ${data.invalid} invalid` : ''}`;
         bar.style.background = 'linear-gradient(90deg, var(--success), #63f5c8)';
 
         await new Promise(res => setTimeout(res, 1100));
@@ -986,6 +1342,40 @@ function deleteRegisteredStudent(id, roll) {
 function closeDelStuPopup() {
     document.getElementById('del-stu-overlay').style.display = 'none';
     _pendingDeleteStuId = null;
+}
+
+async function resetStudentPassword(id, roll) {
+    const password = await showPasswordPromptModal("Reset Password", "Change student credentials", roll);
+    if (password === null) return;
+    if (!validatePasswordComplexity(password)) {
+        if (typeof showToast === 'function') {
+            showToast("Password must contain at least 6 characters, including a letter, a number, and a special character.", "error");
+        } else {
+            alert("Password must contain at least 6 characters, including a letter, a number, and a special character.");
+        }
+        return;
+    }
+    try {
+        const r = await fetch(`${API_BASE}/api/admin/registered-students/${id}/reset-password`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ password }),
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || "Failed to reset password");
+        if (typeof showToast === 'function') {
+            showToast("Password reset successfully for student: " + roll, "success");
+        } else {
+            alert("Password reset successfully for student: " + roll);
+        }
+    } catch (e) {
+        if (typeof showToast === 'function') {
+            showToast("Error resetting password: " + e.message, "error");
+        } else {
+            alert("Error resetting password: " + e.message);
+        }
+    }
 }
 
 async function confirmDeleteStudent() {
@@ -1031,9 +1421,9 @@ async function addRegisteredStudents() {
 
 function exportRegisteredStudentsCSV() {
     const safeCell = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const lines = [["Roll Number", "Name", "Class", "Phone", "Age", "Date of Birth", "Status"].map(safeCell).join(",")];
+    const lines = [["Roll Number", "Name", "Class", "Section", "Email", "Phone", "Age", "Date of Birth", "Status"].map(safeCell).join(",")];
     _allRegisteredStudents.forEach(s => {
-        lines.push([s.rollNumber, s.name, s.className, s.phone, s.age, s.dateOfBirth, s.profileComplete ? "Registered" : "Pending"].map(safeCell).join(","));
+        lines.push([s.rollNumber, s.name, s.className, s.section, s.email, s.phone, s.age, s.dateOfBirth, s.profileComplete ? "Registered" : "Pending"].map(safeCell).join(","));
     });
     const blob = new Blob([lines.join("\r\n")], { type: "text/csv" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "registered_students.csv"; a.click();
@@ -1101,23 +1491,24 @@ async function deleteCorrupted() {
 ══════════════════════════════════════════════════════════════════ */
 if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
-        const isClient = window.location.pathname.includes("client.html") || window.location.pathname.includes("client");
-        const swUrl = isClient ? "/client-sw.js" : "/admin-sw.js";
+        const isInstitute = window.location.pathname.includes("institute.html") || window.location.pathname.includes("institute");
+        const swUrl = isInstitute ? "institute-sw.js" : "developer-sw.js";
         navigator.serviceWorker.register(swUrl)
             .then(r => console.log("SW:", r.scope))
             .catch(e => console.warn("SW failed:", e));
     });
 }
 
+
 let _dip = null;
 window.addEventListener("beforeinstallprompt", e => {
     e.preventDefault(); _dip = e;
-    const isClient = window.location.pathname.includes("client.html") || window.location.pathname.includes("client");
-    const appName = isClient ? "Grip Physics Client" : "Grip Physics Admin";
+    const isInstitute = window.location.pathname.includes("institute.html") || window.location.pathname.includes("institute");
+    const appName = isInstitute ? "Triumph Educator" : "Vyorra Developer";
     const b = document.createElement("div");
     b.id = "installBanner";
     b.style.cssText = "position:fixed;bottom:76px;left:50%;transform:translateX(-50%);background:var(--bg-card);border:1px solid rgba(91,95,239,0.3);border-radius:14px;padding:14px 18px;display:flex;align-items:center;gap:12px;z-index:9000;box-shadow:0 8px 32px rgba(0,0,0,0.5);max-width:340px;width:calc(100% - 32px);animation:slideUp 0.3s ease";
-    b.innerHTML = `<span style="font-size:1.6rem">⚛</span><div style="flex:1"><div style="font-weight:700;font-size:0.88rem">Install ${appName}</div><div style="font-size:0.74rem;color:var(--text-dim);margin-top:2px">Add to Home Screen</div></div><div style="display:flex;gap:6px"><button onclick="installApp()" class="btn btn-primary" style="padding:7px 12px;font-size:0.8rem">Install</button><button onclick="dismissInstall()" class="btn btn-ghost" style="padding:7px 10px;font-size:0.8rem">✕</button></div>`;
+    b.innerHTML = `<img src="triumph.png" style="width:28px;height:28px;object-fit:contain;border-radius:6px"><div style="flex:1"><div style="font-weight:700;font-size:0.88rem">Install ${appName}</div><div style="font-size:0.74rem;color:var(--text-dim);margin-top:2px">Add to Home Screen</div></div><div style="display:flex;gap:6px"><button onclick="installApp()" class="btn btn-primary" style="padding:7px 12px;font-size:0.8rem">Install</button><button onclick="dismissInstall()" class="btn btn-ghost" style="padding:7px 10px;font-size:0.8rem">✕</button></div>`;
     document.body.appendChild(b);
 });
 async function installApp() { if (!_dip) return; _dip.prompt(); await _dip.userChoice; _dip = null; dismissInstall(); }
@@ -1207,15 +1598,15 @@ function sqRenderQuestionCards() {
         card.dataset.qidx = i;
         const hasImg = q.questionImage && q.questionImage.length > 0;
         const hasMulti = q.isMultiCorrect || (q.correctIndexes || []).length > 1;
-        const cardIsNumerical = (q.numericalAnswer !== undefined && q.numericalAnswer !== null) || (Array.isArray(q.options) && q.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function(im) { return !im; })));
+        const cardIsNumerical = (q.numericalAnswer !== undefined && q.numericalAnswer !== null) || (Array.isArray(q.options) && q.options.every(function (o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function (im) { return !im; })));
         card.innerHTML = `
                     ${_sqQSelectModeOn ? `<input type="checkbox" class="lec-checkbox" onclick="event.stopPropagation();sqToggleQuestionSelect(event,${i})" ${_sqSelectedQuestions.has(String(i)) ? "checked" : ""}>` : ""}
                     <div class="lecture-card-num" style="font-size:0.8rem;letter-spacing:0.3px">Q${i + 1}</div>
                     <div class="lecture-card-title">${(q.question || "").substring(0, 60)}${(q.question || "").length > 60 ? "…" : ""}</div>
                     <div class="lecture-card-count" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px">
                         ${cardIsNumerical
-                            ? `<span style="color:#a78bfa">🔢 ${escapeHtml(String(q.numericalAnswer ?? q.correct_answer ?? 'N/A'))}</span>`
-                            : `<span>${["A", "B", "C", "D"][(q.correctIndexes || [q.correctIndex || 0])[0]]} correct</span>`}
+                ? `<span style="color:#a78bfa">🔢 ${escapeHtml(String(q.numericalAnswer ?? q.correct_answer ?? 'N/A'))}</span>`
+                : `<span>${["A", "B", "C", "D"][(q.correctIndexes || [q.correctIndex || 0])[0]]} correct</span>`}
                     </div>`;
         card.onclick = (e) => {
             if (e.target.closest("input")) return;
@@ -1485,26 +1876,26 @@ function sqOpenQuestionView(chapter, lecture, qCardIdx) {
     questionsToRender.forEach(([q, i]) => {
         const ci = q.correctIndexes || [q.correctIndex || 0];
         const isMulti = q.isMultiCorrect || ci.length > 1;
-        const isNumerical = (q.numericalAnswer !== undefined && q.numericalAnswer !== null) || (Array.isArray(q.options) && q.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function(im) { return !im; })));
+        const isNumerical = (q.numericalAnswer !== undefined && q.numericalAnswer !== null) || (Array.isArray(q.options) && q.options.every(function (o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function (im) { return !im; })));
         const hasImg = q.questionImage && q.questionImage.length > 0;
-        const imgSrc = hasImg ? (q.questionImage.startsWith('http') ? q.questionImage : `data:image/jpeg;base64,${q.questionImage}`) : "";
+        const imgSrc = hasImg ? ((q.questionImage.startsWith('http') || q.questionImage.startsWith('data:')) ? q.questionImage : `data:image/jpeg;base64,${q.questionImage}`) : "";
         const imgHtml = hasImg ? `<div style="margin-bottom:14px;text-align:center;display:flex;justify-content:center;align-items:center;"><img src="${imgSrc}" alt="Question diagram" style="max-width:100%;max-height:280px;display:block;object-fit:contain;cursor:pointer;border-radius:var(--radius-sm)" onclick="this.style.maxHeight=this.style.maxHeight=='none'?'280px':'none'"></div>` : "";
         const LTRS = ["A", "B", "C", "D"];
         const qDiv = document.createElement("div");
         qDiv.style.cssText = "background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px";
         qDiv.dataset.origIdx = i;
-        const layoutContent = hasImg 
+        const layoutContent = hasImg
             ? `<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
                    <div style="flex:1.3;min-width:280px">
                        <div class="q-render-preview" id="sq_iqe_preview_${i}"></div>
                        <div style="margin-bottom:14px">
                            <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px">${isNumerical ? 'Answer' : 'Options'}</div>
                            ${isNumerical
-                               ? `<div style="padding:8px 12px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;font-size:0.82rem">
+                ? `<div style="padding:8px 12px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;font-size:0.82rem">
                                    <span style="font-weight:700;color:#a78bfa">Numerical Answer: </span>
                                    <span style="color:var(--text);font-weight:600;font-size:1rem">${escapeHtml(String(q.numericalAnswer ?? q.correct_answer ?? 'N/A'))}</span>
                                   </div>`
-                               : LTRS.map((l, oi) => `<div class="opt-render-row ${ci.includes(oi) ? "is-correct" : ""}"><span class="opt-letter">${l}</span><div id="sq_iqe_opt_render_${i}_${oi}"></div>${ci.includes(oi) ? '<span style="margin-left:auto;font-size:0.7rem;color:var(--success);font-weight:700">✓ Correct</span>' : ""}</div>`).join("")}
+                : LTRS.map((l, oi) => `<div class="opt-render-row ${ci.includes(oi) ? "is-correct" : ""}"><span class="opt-letter">${l}</span><div id="sq_iqe_opt_render_${i}_${oi}"></div>${ci.includes(oi) ? '<span style="margin-left:auto;font-size:0.7rem;color:var(--success);font-weight:700">✓ Correct</span>' : ""}</div>`).join("")}
                        </div>
                    </div>
                    <div style="flex:0.7;min-width:280px;max-width:440px;margin-bottom:14px;align-self:stretch;display:flex;flex-direction:column;justify-content:center">
@@ -1515,11 +1906,11 @@ function sqOpenQuestionView(chapter, lecture, qCardIdx) {
                <div style="margin-bottom:14px">
                    <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px">${isNumerical ? 'Answer' : 'Options'}</div>
                    ${isNumerical
-                       ? `<div style="padding:8px 12px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;font-size:0.82rem">
+                ? `<div style="padding:8px 12px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;font-size:0.82rem">
                            <span style="font-weight:700;color:#a78bfa">Numerical Answer: </span>
                            <span style="color:var(--text);font-weight:600;font-size:1rem">${escapeHtml(String(q.numericalAnswer ?? q.correct_answer ?? 'N/A'))}</span>
                           </div>`
-                       : LTRS.map((l, oi) => `<div class="opt-render-row ${ci.includes(oi) ? "is-correct" : ""}"><span class="opt-letter">${l}</span><div id="sq_iqe_opt_render_${i}_${oi}"></div>${ci.includes(oi) ? '<span style="margin-left:auto;font-size:0.7rem;color:var(--success);font-weight:700">✓ Correct</span>' : ""}</div>`).join("")}
+                : LTRS.map((l, oi) => `<div class="opt-render-row ${ci.includes(oi) ? "is-correct" : ""}"><span class="opt-letter">${l}</span><div id="sq_iqe_opt_render_${i}_${oi}"></div>${ci.includes(oi) ? '<span style="margin-left:auto;font-size:0.7rem;color:var(--success);font-weight:700">✓ Correct</span>' : ""}</div>`).join("")}
                </div>`;
 
         qDiv.innerHTML = `
@@ -1537,7 +1928,7 @@ function sqOpenQuestionView(chapter, lecture, qCardIdx) {
 
     setTimeout(() => {
         questionsToRender.forEach(([q, i]) => {
-            const isNumerical = (q.numericalAnswer !== undefined && q.numericalAnswer !== null) || (Array.isArray(q.options) && q.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function(im) { return !im; })));
+            const isNumerical = (q.numericalAnswer !== undefined && q.numericalAnswer !== null) || (Array.isArray(q.options) && q.options.every(function (o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function (im) { return !im; })));
             const prev = document.getElementById(`sq_iqe_preview_${i}`);
             if (prev) { prev.textContent = q.question; if (typeof renderMath === "function") renderMath(prev); }
             if (!isNumerical) {
@@ -1546,7 +1937,7 @@ function sqOpenQuestionView(chapter, lecture, qCardIdx) {
                     if (optRender) {
                         const optImg = Array.isArray(q.optionImages) ? (q.optionImages[oi] || null) : null;
                         if (optImg) {
-                            const imgSrc = optImg.startsWith('http') ? optImg : `data:image/jpeg;base64,${optImg}`;
+                            const imgSrc = (optImg.startsWith('http') || optImg.startsWith('data:')) ? optImg : `data:image/jpeg;base64,${optImg}`;
                             optRender.innerHTML = `<img src="${imgSrc}" alt="Option ${l}" style="max-height:80px;max-width:100%;border-radius:4px;border:1px solid var(--border);object-fit:contain;display:block;margin-top:2px">`;
                         } else {
                             optRender.textContent = (q.options && q.options[oi]) || "";
@@ -1607,9 +1998,9 @@ function sqEnterEditMode() {
     questionsToRender.forEach(([q, i]) => {
         const ci = q.correctIndexes || [q.correctIndex || 0];
         const isMulti = q.isMultiCorrect || ci.length > 1;
-        const isNumerical = (q.numericalAnswer !== undefined && q.numericalAnswer !== null) || (Array.isArray(q.options) && q.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function(im) { return !im; })));
+        const isNumerical = (q.numericalAnswer !== undefined && q.numericalAnswer !== null) || (Array.isArray(q.options) && q.options.every(function (o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function (im) { return !im; })));
         const hasImg = q.questionImage && q.questionImage.length > 0;
-        const imgSrc = hasImg ? (q.questionImage.startsWith('http') ? q.questionImage : `data:image/jpeg;base64,${q.questionImage}`) : "";
+        const imgSrc = hasImg ? ((q.questionImage.startsWith('http') || q.questionImage.startsWith('data:')) ? q.questionImage : `data:image/jpeg;base64,${q.questionImage}`) : "";
         const imgHtml = hasImg ? `<div style="margin-bottom:14px;text-align:center;display:flex;justify-content:center;align-items:center;"><img src="${imgSrc}" alt="Question diagram" style="max-width:100%;max-height:280px;display:block;object-fit:contain;cursor:pointer;border-radius:var(--radius-sm)" onclick="this.style.maxHeight=this.style.maxHeight=='none'?'280px':'none'"></div>` : "";
         const LTRS = ["A", "B", "C", "D"];
         const qDiv = document.createElement("div");
@@ -1645,11 +2036,11 @@ function sqEnterEditMode() {
                         <textarea id="sq_iqe_qt_${i}" rows="2" oninput="sqUpdatePreview(${i});_sqHasUnsavedEdits=true;" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:0.85rem;resize:vertical;outline:none">${escapeHtml(q.question || "")}</textarea>
                     </div>
                     ${isNumerical
-                        ? `<div style="padding:8px 12px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;font-size:0.82rem">
+                ? `<div style="padding:8px 12px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;font-size:0.82rem">
                             <span style="font-weight:700;color:#a78bfa">Numerical Answer: </span>
                             <span style="color:var(--text);font-weight:600;font-size:1rem">${escapeHtml(String(q.numericalAnswer ?? q.correct_answer ?? 'N/A'))}</span>
                            </div>`
-                        : `<div style="margin-bottom:14px">
+                : `<div style="margin-bottom:14px">
                         <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px">Options (rendered)</div>
                         ${LTRS.map((l, oi) => `<div class="opt-render-row ${ci.includes(oi) ? "is-correct" : ""}"><span class="opt-letter">${l}</span><div id="sq_iqe_opt_render_${i}_${oi}"></div></div>`).join("")}
                     </div>
@@ -1685,7 +2076,7 @@ function sqEnterEditMode() {
 
     setTimeout(() => {
         questionsToRender.forEach(([q, i]) => {
-            const isNumerical = (q.numericalAnswer !== undefined && q.numericalAnswer !== null) || (Array.isArray(q.options) && q.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function(im) { return !im; })));
+            const isNumerical = (q.numericalAnswer !== undefined && q.numericalAnswer !== null) || (Array.isArray(q.options) && q.options.every(function (o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function (im) { return !im; })));
             const prev = document.getElementById(`sq_iqe_preview_${i}`);
             if (prev) { prev.textContent = q.question; if (typeof renderMath === "function") renderMath(prev); }
             if (!isNumerical) {
@@ -1694,7 +2085,7 @@ function sqEnterEditMode() {
                     if (optRender) {
                         const optImg = Array.isArray(q.optionImages) ? (q.optionImages[oi] || null) : null;
                         if (optImg) {
-                            const imgSrc = optImg.startsWith('http') ? optImg : `data:image/jpeg;base64,${optImg}`;
+                            const imgSrc = (optImg.startsWith('http') || optImg.startsWith('data:')) ? optImg : `data:image/jpeg;base64,${optImg}`;
                             optRender.innerHTML = `<img src="${imgSrc}" alt="Option ${l}" style="max-height:80px;max-width:100%;border-radius:4px;border:1px solid var(--border);object-fit:contain;display:block;margin-top:2px">`;
                         } else {
                             optRender.textContent = (q.options && q.options[oi]) || "";
@@ -1990,7 +2381,7 @@ async function sqMassDeleteChapters() {
 
 // ═══════════════════════════════════════════════
 //  RENAME CHAPTER (Star Quiz)
-// ═══════════════════════════════════════════════
+// ════════════���══════════════════════════════════
 async function sqRenameChapter(e, encodedCh) {
     e.stopPropagation();
     const ch = decodeURIComponent(encodedCh);
@@ -2649,8 +3040,10 @@ function agChooseDelivery(kind) {
     _ag.delivery = kind;
     if (kind === 'offline') {
         _agShowConfigSub('offline');
+        _agInjectFilters('offline');
     } else if (kind === 'online') {
         _agShowConfigSub('online');
+        _agInjectFilters('online');
 
         const now = new Date();
         const pad = n => String(n).padStart(2, '0');
@@ -3211,7 +3604,11 @@ async function agAssignOnlineTest() {
     if (!_agOtAssignedRolls.length) return showErr('Please select at least one student.');
     if (!_ag.selection.size) return showErr('No questions in your selection.');
 
-    const questionKeys = [..._ag.selection.values()].flatMap(item => {
+    // Ensure question data is loaded so the exam/type filters can inspect real
+    // question objects, then build candidate keys honouring those filters.
+    await _agEnsureSelectionLoaded();
+    const _otCandidates = [];
+    for (const item of _ag.selection.values()) {
         const rows = (typeof allQuestions !== 'undefined' ? allQuestions : []).filter(r => {
             const rs = (typeof getSubjectForRow === 'function' ? getSubjectForRow(r) : null) || 'General';
             if (rs !== item.subject) return false;
@@ -3222,16 +3619,19 @@ async function agAssignOnlineTest() {
             if (item.topic === '(General)' && (r.topic || '(General)') !== '(General)') return false;
             return true;
         });
-        return rows.flatMap(row => {
-            const questionCount = Array.isArray(row.questions) ? row.questions.length : Math.max(0, parseInt(row.questionCount || item.qCount || 0, 10));
-            if (!questionCount) return [];
-            return Array.from({ length: questionCount }, (_, questionIndex) => ({
-                chapter: row.chapter === '(No Chapter)' ? '' : (row.chapter || ''),
-                lecture: row.lecture,
-                questionIndex,
-            }));
+        rows.forEach(row => {
+            if (!Array.isArray(row.questions)) return;
+            row.questions.forEach((q, questionIndex) => {
+                if (!_agPassExamType(q, 'online')) return;
+                _otCandidates.push({
+                    chapter: row.chapter === '(No Chapter)' ? '' : (row.chapter || ''),
+                    lecture: row.lecture,
+                    questionIndex,
+                });
+            });
         });
-    }).sort(() => Math.random() - 0.5).slice(0, requestedCount);
+    }
+    const questionKeys = _otCandidates.sort(() => Math.random() - 0.5).slice(0, requestedCount);
 
     if (!questionKeys.length) return showErr('No questions could be loaded for this selection.');
 
@@ -3289,6 +3689,75 @@ async function agAssignOnlineTest() {
     }
 }
 
+/* ── Auto-generate exam + question-type filters (offline & online) ── */
+// Derive exam for a question object: explicit exam field wins, else subject
+// (Maths → JEE Mains, everything else → NEET) — mirrors the backend rule.
+function _agExamOf(q) {
+    const e = q && (q.exam || q.examName || q.exam_name);
+    if (e) {
+        const s = String(e).toLowerCase();
+        if (s.includes('advanced')) return 'JEE Advanced';
+        if (s.includes('neet')) return 'NEET';
+        if (s.includes('jee') || s.includes('main')) return 'JEE Mains';
+    }
+    const subj = String((q && q.subject) || '').toLowerCase();
+    if (subj.includes('math')) return 'JEE Mains';
+    return 'NEET';
+}
+
+// True if question q passes the exam + type filters for the given panel.
+function _agPassExamType(q, kind) {
+    const pre = kind === 'online' ? 'ag-ot-filter-' : 'ag-filter-';
+    const exVal = document.getElementById(pre + 'exam')?.value || '';
+    const tyVal = document.getElementById(pre + 'type')?.value || '';
+    if (exVal && _agExamOf(q) !== exVal) return false;
+    if (tyVal) {
+        const t = String(q.question_type || q.questionType || 'MCQ').toUpperCase();
+        if (t !== tyVal) return false;
+    }
+    return true;
+}
+
+// Inject the exam + question-type filter selects into the offline/online panel
+// (once). ids: offline ag-filter-exam/ag-filter-type, online ag-ot-filter-*.
+function _agInjectFilters(kind) {
+    const pre = kind === 'online' ? 'ag-ot-filter-' : 'ag-filter-';
+    if (document.getElementById(pre + 'exam')) return;
+    const host = document.getElementById(kind === 'online' ? 'ag-sub-online' : 'ag-sub-offline');
+    if (!host) return;
+    const examOpts = [['', 'All Exams'], ['JEE Mains', 'JEE Mains'], ['JEE Advanced', 'JEE Advanced'], ['NEET', 'NEET']];
+    const typeOpts = [['', 'All Types'], ['MCQ', 'MCQ'], ['MSQ', 'MSQ'], ['INTEGER', 'Numerical'], ['COMPREHENSION', 'Linked Comprehension'], ['ASSERTION_REASON', 'Assertion & Reason'], ['MATRIX_MATCH', 'Matrix Matching']];
+    const sel = (id, opts) => `<select id="${id}" class="ag-input" style="max-width:230px">${opts.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>`;
+    const div = document.createElement('div');
+    div.className = 'ag-config-panel';
+    div.innerHTML = `<div style="font-size:0.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px">🎯 Filter by Exam & Question Type</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">${sel(pre + 'exam', examOpts)}${sel(pre + 'type', typeOpts)}</div>`;
+    host.insertBefore(div, host.firstChild);
+}
+
+// Ensure every row matched by the current selection has its questions loaded,
+// so the online exam/type filters can inspect real question objects.
+async function _agEnsureSelectionLoaded() {
+    const rowsAll = typeof allQuestions !== 'undefined' ? allQuestions : [];
+    const matched = [];
+    for (const item of _ag.selection.values()) {
+        rowsAll.forEach(r => {
+            const rs = (typeof getSubjectForRow === 'function' ? getSubjectForRow(r) : null) || 'General';
+            if (rs !== item.subject) return;
+            if ((r.chapter || '(No Chapter)') !== item.chapter) return;
+            if (item.topic && item.topic !== '__all__' && item.topic !== '(General)') {
+                if ((r.topic || '(General)') !== item.topic) return;
+            }
+            if (item.topic === '(General)' && (r.topic || '(General)') !== '(General)') return;
+            if (!matched.includes(r)) matched.push(r);
+        });
+    }
+    const need = [...new Set(matched.filter(r => r._metaOnly || !Array.isArray(r.questions) || r.questions.length === 0).map(r => r.chapter || null))];
+    if (need.length && typeof ensureChapterLoaded === 'function') {
+        await Promise.all(need.map(ch => ensureChapterLoaded(ch)));
+    }
+}
+
 /* ── Generate Paper ─── */
 async function _agGeneratePaper() {
     const countInput = document.getElementById('ag-qcount');
@@ -3310,7 +3779,7 @@ async function _agGeneratePaper() {
 
     errEl.style.display = 'none';
     const paperTitle = (titleInput?.value || 'Question Paper').trim();
-    const paperClass   = (document.getElementById('ag-class-input')?.value || '').trim();
+    const paperClass = (document.getElementById('ag-class-input')?.value || '').trim();
     const paperSubject = (document.getElementById('ag-subject-input')?.value || '').trim();
     const paperChapter = (document.getElementById('ag-chapter-input')?.value || '').trim();
     const paperTestType = (document.getElementById('ag-test-type-input')?.value || '').trim();
@@ -3413,6 +3882,7 @@ async function _agGeneratePaper() {
                             include = false;
                         }
                         if (!include) return;
+                        if (!_agPassExamType(q, 'offline')) return;
                         pool.push({ row, qi, q, chapter: row.chapter || '(No Chapter)', topic: row.topic || '', lecture: row.lecture });
                     });
                 }
@@ -3434,14 +3904,14 @@ async function _agGeneratePaper() {
         const picked = shuffled.slice(0, actualCount);
 
         // Sort: MCQs first, numerical questions at the end
-        const _agIsNumerical = function(q) {
+        const _agIsNumerical = function (q) {
             if (!q) return false;
             if ((q.question_type || '').toUpperCase() === 'INTEGER' || (q.questionType || '').toUpperCase() === 'INTEGER') return true;
             if (q.numericalAnswer !== undefined && q.numericalAnswer !== null) return true;
-            if (Array.isArray(q.options) && q.options.every(function(o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function(im) { return !im; }))) return true;
+            if (Array.isArray(q.options) && q.options.every(function (o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function (im) { return !im; }))) return true;
             return false;
         };
-        picked.sort(function(a, b) {
+        picked.sort(function (a, b) {
             return (_agIsNumerical(a.q) ? 1 : 0) - (_agIsNumerical(b.q) ? 1 : 0);
         });
 
@@ -3631,17 +4101,17 @@ function _agShowMessage(msg, type) {
     /* ── Owner panel: this guard must not run — all sections are allowed ── */
     if (window.__IS_OWNER_PANEL) return;
 
-    /* ── Allowed sections in client mode ── */
-    var ALLOWED_SECTIONS = ["manageQuestions", "students"];
+    /* ── Allowed sections in institute mode ── */
+    var ALLOWED_SECTIONS = ["manageQuestions", "students", "testResults"];
 
     /* Small toast helper (falls back to console if no toast util) */
     function clientBlockNotice(msg) {
-        msg = msg || "This action is not available on the client panel.";
+        msg = msg || "This action is not available on the institute panel.";
         try {
             if (typeof showToast === "function") { showToast(msg); return; }
             if (typeof toast === "function") { toast(msg); return; }
         } catch (e) { /* ignore */ }
-        console.warn("[client-mode]", msg);
+        console.warn("[institute-mode]", msg);
     }
     window.clientBlockNotice = clientBlockNotice;
 
@@ -3654,24 +4124,24 @@ function _agShowMessage(msg, type) {
 
     function installClientGuards() {
         /* Chapter / topic renaming */
-        blockFn("renameChapter", "Renaming chapters is disabled on the client panel.");
-        blockFn("renameTopic", "Renaming topics is disabled on the client panel.");
+        blockFn("renameChapter", "Renaming chapters is disabled on the institute panel.");
+        blockFn("renameTopic", "Renaming topics is disabled on the institute panel.");
 
         /* Question editing */
-        blockFn("mqEnterEditMode", "Editing questions is disabled on the client panel.");
-        blockFn("saveInlineEdit", "Editing questions is disabled on the client panel.");
+        blockFn("mqEnterEditMode", "Editing questions is disabled on the institute panel.");
+        blockFn("saveInlineEdit", "Editing questions is disabled on the institute panel.");
         blockFn("cancelInlineEdit", "");
 
         /* Deleting questions / bulk deletes within Manage Questions */
-        blockFn("deleteCurrentQuestion", "Deleting questions is disabled on the client panel.");
-        blockFn("massDelete", "Deleting is disabled on the client panel.");
-        blockFn("massDeleteQuestions", "Deleting is disabled on the client panel.");
-        blockFn("toggleSelectMode", "Bulk selection / delete is disabled on the client panel.");
-        blockFn("toggleQuestionSelectMode", "Bulk selection / delete is disabled on the client panel.");
+        blockFn("deleteCurrentQuestion", "Deleting questions is disabled on the institute panel.");
+        blockFn("massDelete", "Deleting is disabled on the institute panel.");
+        blockFn("massDeleteQuestions", "Deleting is disabled on the institute panel.");
+        blockFn("toggleSelectMode", "Bulk selection / delete is disabled on the institute panel.");
+        blockFn("toggleQuestionSelectMode", "Bulk selection / delete is disabled on the institute panel.");
 
         /* Template deletion (upload still allowed) */
-        blockFn("deleteTemplate", "Deleting templates is disabled on the client panel.");
-        blockFn("confirmDeleteTemplate", "Deleting templates is disabled on the client panel.");
+        blockFn("deleteTemplate", "Deleting templates is disabled on the institute panel.");
+        blockFn("confirmDeleteTemplate", "Deleting templates is disabled on the institute panel.");
     }
 
     /* ── Force the page to only ever open allowed sections ── */

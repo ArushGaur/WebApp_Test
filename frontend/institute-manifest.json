@@ -1,23 +1,26 @@
 {
-  "name": "Grip Physics Client",
-  "short_name": "GP Client",
-  "description": "Grip Physics Client Panel — access question library and manage students",
-  "start_url": "/client.html",
+  "name": "Triumph",
+  "short_name": "Triumph",
+  "description": "Triumph Educator Panel — access question library and manage students",
+  "start_url": "/institute.html",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#080714",
   "theme_color": "#080714",
-  "categories": ["education", "productivity"],
+  "categories": [
+    "education",
+    "productivity"
+  ],
   "icons": [
     {
-      "src": "/icon-1.jpg",
+      "src": "/triumph-192.png",
       "sizes": "192x192",
-      "type": "image/jpeg",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/triumph-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
@@ -26,12 +29,12 @@
   "shortcuts": [
     {
       "name": "Question Library",
-      "url": "/client.html#manageQuestions",
+      "url": "/institute.html#manageQuestions",
       "description": "Browse the question library"
     },
     {
       "name": "Students",
-      "url": "/client.html#students",
+      "url": "/institute.html#students",
       "description": "Manage registered students"
     }
   ]

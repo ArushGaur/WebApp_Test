@@ -101,7 +101,8 @@ const _loadingRowPromises = {};
 // Fetch a single row's full data (with questions[]) on demand.
 //
 // CHANGED: this used to call GET /api/admin/question-row/${row._id} —
-// but that endpoint expects a real numeric questions_v2 row id (used by
+// but that endpoint expects a real numeric question row id (from the
+// `questions` / `pyq_questions` tables) (used by
 // showQuestionByRowId() for the paper-wise single-question flow). For a
 // chapter+topic GROUP row (the normal topic/chapter view case), `row._id`
 // is the composite string key (e.g. "Sets::Disjoint Sets"), which is NOT
@@ -465,6 +466,9 @@ function renderSubjectCards(questions) {
     const grid = document.getElementById('subjectCardsGrid'); if (!grid) return;
     const rows = Array.isArray(questions) ? questions : [];
     if (mqBrowseMode === 'paper') {
+        renderPapersView(grid);
+        return;
+        // ── legacy year-based view below (no longer reached) ──
         // Use the year-counts index API — fast, no JSON scanning
         grid.innerHTML = '<p style="color:var(--text-dim);padding:20px;grid-column:1/-1">Loading years…</p>';
         fetch('/api/admin/year-counts', { credentials: 'include' })
@@ -636,7 +640,189 @@ function renderQuestionsForPaper(paper) {
         });
 }
 
-// NEW: open a single question directly by its questions_v2 row id.
+// ═══════════════════════════════════════════════════════════════════════
+// PAPER-WISE VIEW (papers table: exam + year, with JEE/NEET + type filters)
+// Shared by the owner and institute "Paper wise" section.
+// ═══════════════════════════════════════════════════════════════════════
+var _paperFilterExam = '';
+var _paperFilterType = '';
+var _paperViewCache = { id: null, questions: [] };
+
+const _PAPER_TYPE_OPTS = [
+    ['', 'All Types'], ['MCQ', 'MCQ'], ['MSQ', 'MSQ'], ['INTEGER', 'Numerical'],
+    ['COMPREHENSION', 'Linked Comprehension'], ['ASSERTION_REASON', 'Assertion & Reason'],
+    ['MATRIX_MATCH', 'Matrix Matching']
+];
+const _PAPER_EXAM_OPTS = [
+    ['', 'All Exams'], ['JEE Mains', 'JEE Mains'], ['JEE Advanced', 'JEE Advanced'], ['NEET', 'NEET']
+];
+
+function _paperFilterBarHtml() {
+    const sel = (id, opts, val) => `<select id="${id}" onchange="_paperSetFilter('${id === 'paperExamFilter' ? 'exam' : 'type'}', this.value)" style="padding:8px 12px;border-radius:10px;background:var(--bg-input,var(--bg-card));border:1px solid var(--border);color:var(--text);font-size:0.85rem;cursor:pointer">${opts.map(([v, l]) => `<option value="${v}" ${v === val ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+    return `<div style="grid-column:1/-1;display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+        <span style="font-size:0.78rem;color:var(--text-muted);font-weight:600">🎯 Filters:</span>
+        ${sel('paperExamFilter', _PAPER_EXAM_OPTS, _paperFilterExam)}
+        ${sel('paperTypeFilter', _PAPER_TYPE_OPTS, _paperFilterType)}
+    </div>`;
+}
+
+function _paperSetFilter(which, val) {
+    if (which === 'exam') _paperFilterExam = val;
+    else _paperFilterType = val;
+    const grid = document.getElementById('subjectCardsGrid');
+    if (grid) renderPapersView(grid);
+}
+window._paperSetFilter = _paperSetFilter;
+
+// Render the list of papers (grouped by exam) with the exam + type filters.
+function renderPapersView(grid) {
+    const bar = _paperFilterBarHtml();
+    grid.innerHTML = bar + '<p style="color:var(--text-dim);padding:20px;grid-column:1/-1">Loading papers…</p>';
+    let url = '/api/admin/papers';
+    const params = [];
+    if (_paperFilterExam) params.push('exam=' + encodeURIComponent(_paperFilterExam));
+    if (_paperFilterType) params.push('question_type=' + encodeURIComponent(_paperFilterType));
+    if (params.length) url += '?' + params.join('&');
+    fetch(url, { credentials: 'include' })
+        .then(r => r.json())
+        .then(data => {
+            const papers = Array.isArray(data.papers) ? data.papers : [];
+            const byExam = {};
+            // Only show papers that actually have questions (exclude empty Regular rows)
+            papers.filter(p => p.count > 0 || p.year === 'Regular').forEach(p => { (byExam[p.exam] = byExam[p.exam] || []).push(p); });
+            const order = ['JEE Mains', 'JEE Advanced', 'NEET'];
+            const exams = order.filter(e => byExam[e]).concat(Object.keys(byExam).filter(e => !order.includes(e)));
+            if (!exams.length) {
+                grid.innerHTML = bar +
+                    '<div style="grid-column:1/-1;padding:24px;text-align:center">' +
+                    '<p style="color:var(--text-dim);margin-bottom:14px">No PYQ papers found. Click below to rebuild from your question database.</p>' +
+                    '<button onclick="_rebuildPapersNow(this)" style="padding:10px 22px;border-radius:10px;background:var(--accent);color:#fff;border:none;font-weight:700;font-size:0.9rem;cursor:pointer">🔄 Rebuild PYQ Papers</button>' +
+                    '</div>';
+                return;
+            }
+            let html = bar;
+            exams.forEach(ex => {
+                html += `<div style="grid-column:1/-1;font-weight:800;font-size:1rem;color:var(--accent);margin:10px 0 2px;padding-bottom:6px;border-bottom:1px solid var(--border)">${_jsonEscHtml(ex)}</div>`;
+                byExam[ex].forEach(p => {
+                    const safeLabel = (p.label || '').replace(/'/g, "\\'");
+                    html += `<div class="chapter-card" style="border-left:4px solid var(--accent);cursor:pointer" onclick="showPaperById(${p.id}, '${safeLabel}')">
+                        <div class="chapter-card-icon" style="font-size:2rem">📄</div>
+                        <div class="chapter-card-title" style="color:var(--accent)">${_jsonEscHtml(p.label || '')}</div>
+                        <div class="chapter-card-count">${p.count} Question${p.count !== 1 ? 's' : ''}</div>
+                    </div>`;
+                });
+            });
+            grid.innerHTML = html;
+        })
+        .catch(() => { grid.innerHTML = bar + '<p style="color:var(--error,#e5484d);padding:20px;grid-column:1/-1">Failed to load papers.</p>'; });
+}
+
+// Manual rebuild trigger — called from the "Rebuild PYQ Papers" button.
+window._rebuildPapersNow = function (btn) {
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Rebuilding…'; }
+    fetch('/api/admin/papers/rebuild', { method: 'POST', credentials: 'include' })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                showToast && showToast(`✅ Rebuilt ${d.papers} paper(s) with ${d.questions} question(s)`);
+                const grid = document.getElementById('subjectCardsGrid');
+                if (grid) renderPapersView(grid);
+            } else {
+                if (btn) { btn.disabled = false; btn.textContent = '🔄 Rebuild PYQ Papers'; }
+                showToast && showToast('Rebuild failed: ' + (d.error || 'Unknown error'));
+            }
+        })
+        .catch(() => {
+            if (btn) { btn.disabled = false; btn.textContent = '🔄 Rebuild PYQ Papers'; }
+            showToast && showToast('Rebuild request failed.');
+        });
+};
+window.renderPapersView = renderPapersView;
+
+// Open one paper (by papers-table id) and show its questions.
+function showPaperById(id, label, push = true) {
+    mqBrowseMode = 'paper';
+    mqCurrentPaper = id;
+    mqCurrentSubject = null;
+    mqPrevView = 'paper';
+    selectModeOn = false;
+    selectedLectures.clear();
+    lastSelectedChapterIdx = -1;
+    document.getElementById('mq-subject-view').style.display = 'none';
+    document.getElementById('mq-chapter-view').style.display = 'none';
+    document.getElementById('mq-lecture-view').style.display = 'block';
+    document.getElementById('mq-question-view').style.display = 'none';
+    setQuestionSelectButtonVisible(true);
+    if (push) history.pushState({ type: 'mqPaperId', id, label }, '', '');
+    renderQuestionsForPaperById(id, label);
+}
+window.showPaperById = showPaperById;
+
+// Render questions for a single paper id (respects the active type filter).
+function renderQuestionsForPaperById(id, label) {
+    const grid = document.getElementById('lectureCardsGrid'); if (!grid) return;
+    grid.className = "questions-view-grid";
+    document.getElementById('mq-chapter-title').textContent = label || 'Paper';
+    document.getElementById('mq-lecture-count').textContent = `Loading…`;
+    grid.innerHTML = '<p style="color:var(--text-dim);padding:20px">Loading questions…</p>';
+    let url = `/api/admin/papers/${id}`;
+    if (_paperFilterType) url += `?question_type=${encodeURIComponent(_paperFilterType)}`;
+    fetch(url, { credentials: 'include' })
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(data => {
+            const items = Array.isArray(data.questions) ? data.questions : [];
+            _paperViewCache = { id: data.id, questions: items };
+            document.getElementById('mq-lecture-count').textContent = `${items.length} Question${items.length !== 1 ? 's' : ''} · ${_jsonEscHtml(data.label || 'Paper')}`;
+            let qIndex = 1;
+            grid.innerHTML = items.map((item, idx) => {
+                const sq = item.question || {};
+                const isMulti = sq.isMultiCorrect || (sq.correctIndexes || [sq.correctIndex || 0]).length > 1;
+                const previewText = stripMath((sq.question || '').substring(0, 60));
+                const qtype = String(sq.question_type || sq.questionType || 'MCQ').toUpperCase();
+                // Build shift badge for JEE Mains questions that carry month/day/shift metadata.
+                const month = sq._month || sq.month || '';
+                const day = sq._day || sq.day || '';
+                const shift = sq._shift || sq.shift || '';
+                const shiftBadge = (month || day || shift)
+                    ? `<span style="font-size:0.7rem;background:rgba(91,95,239,0.15);color:var(--accent);border-radius:6px;padding:1px 6px;margin-left:4px;font-weight:600">${[month, day, shift].filter(Boolean).join(' · ')}</span>`
+                    : '';
+                const tags = `<div style="font-size:0.72rem;color:var(--text-dim);margin-bottom:4px">${_jsonEscHtml(formatChapterLabel(sq.chapter || '(No Chapter)'))}${sq.topic ? ` · ${_jsonEscHtml(sq.topic)}` : ''} · ${_jsonEscHtml(qtype)}${shiftBadge}</div>`;
+                return `<div class="lecture-card ${isMulti ? 'has-multi' : ''}" style="position:relative" onclick="showPaperQuestionByIndex(${idx})">
+                    <div class="lecture-card-num">Q${qIndex++}</div>
+                    ${tags}
+                    <div class="lecture-card-title">${previewText || 'Empty question'}</div>
+                </div>`;
+            }).join('');
+            if (!items.length) grid.innerHTML = '<p style="color:var(--text-dim);padding:20px">No questions in this paper for the selected filter.</p>';
+        })
+        .catch(() => { grid.innerHTML = '<p style="color:var(--error,#e5484d);padding:20px">Failed to load paper questions.</p>'; });
+}
+window.renderQuestionsForPaperById = renderQuestionsForPaperById;
+
+// Open a single question from the currently-loaded paper (read-only view).
+function showPaperQuestionByIndex(idx) {
+    const item = (_paperViewCache.questions || [])[idx];
+    if (!item) return;
+    const sq = item.question || item;
+    const _id = `paper:${_paperViewCache.id}:${item.paperIndex}`;
+    let gi = allQuestions.findIndex(q => q._id === _id);
+    const wrapped = {
+        _id,
+        chapter: sq.chapter || null,
+        lecture: sq.topic || "",
+        topic: sq.topic || "",
+        updatedAt: 0,
+        questions: [sq],
+        _readonlyPaper: true,
+    };
+    if (gi === -1) { allQuestions.push(wrapped); gi = allQuestions.length - 1; }
+    else { allQuestions[gi] = wrapped; }
+    mqPrevView = 'paper';
+    showQuestionView(gi, 0);
+}
+window.showPaperQuestionByIndex = showPaperQuestionByIndex;
+
+// NEW: open a single question directly by its question row id.
 // Used by paper-wise cards, which only ever have a rowId (no gi/sqIdx —
 // see the comment in renderQuestionsForPaper for why those don't apply
 // here). Fetches the question fresh from the server every time, so it
@@ -710,7 +896,7 @@ function showSubjectView() {
     if (title) title.textContent = mqBrowseMode === 'paper' ? '📄 Papers' : '📚 Subjects';
     if (subtitle) subtitle.textContent = mqBrowseMode === 'paper'
         ? 'Browse by paper → all questions from the same paper are shown together'
-        : 'Browse by subject → chapter → topic → question';
+        : 'Browse by subject → chapter �� topic → question';
     if (chapterBtn) {
         chapterBtn.style.borderColor = mqBrowseMode === 'chapter' ? 'var(--accent)' : 'var(--border)';
         chapterBtn.style.color = mqBrowseMode === 'chapter' ? 'var(--accent)' : 'var(--text-mid)';
@@ -1506,11 +1692,11 @@ async function showQuestionView(gi, sqIdx) {
                        <div class="q-render-preview" id="iqe_preview_${si}"></div>
                        <div id="iqe_tables_intro_${si}"></div>
                        ${isNumerical
-                            ? `<div style="padding:8px 12px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;font-size:0.82rem">
+                ? `<div style="padding:8px 12px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;font-size:0.82rem">
                                     <span style="font-weight:700;color:#a78bfa">Numerical Answer: </span>
                                     <span style="color:var(--text);font-weight:600;font-size:1rem">${String(sub.numericalAnswer ?? sub.correct_answer ?? 'N/A')}</span>
                                </div>`
-                            : `<div style="margin-bottom:14px">
+                : `<div style="margin-bottom:14px">
                                     ${LETTERS.map((l, oi) => `<div class="opt-render-row ${ci.includes(oi) ? "is-correct" : ""}"><span class="opt-letter">${l}</span><div id="iqe_opt_render_${si}_${oi}"></div>${ci.includes(oi) ? '<span style="margin-left:auto;font-size:0.7rem;color:var(--success);font-weight:700">✓ Correct</span>' : ""}</div>`).join("")}
                                     ${isNoneCorrect ? '<div style="margin-top:10px;padding:8px 12px;background:rgba(245,158,11,0.1);border:1px dashed rgba(245,158,11,0.45);border-radius:6px;font-size:0.76rem;color:#f59e0b;font-weight:600">⊘ None of the options is correct — every student gets full marks for this question.</div>' : ""}
                                </div>`}
@@ -1523,11 +1709,11 @@ async function showQuestionView(gi, sqIdx) {
             : `<div class="q-render-preview" id="iqe_preview_${si}"></div>
                <div id="iqe_tables_intro_${si}"></div>
                ${isNumerical
-                    ? `<div style="padding:8px 12px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;font-size:0.82rem">
+                ? `<div style="padding:8px 12px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;font-size:0.82rem">
                             <span style="font-weight:700;color:#a78bfa">Numerical Answer: </span>
                             <span style="color:var(--text);font-weight:600;font-size:1rem">${String(sub.numericalAnswer ?? sub.correct_answer ?? 'N/A')}</span>
                        </div>`
-                    : `<div style="margin-bottom:14px">
+                : `<div style="margin-bottom:14px">
                             ${LETTERS.map((l, oi) => `<div class="opt-render-row ${ci.includes(oi) ? "is-correct" : ""}"><span class="opt-letter">${l}</span><div id="iqe_opt_render_${si}_${oi}"></div>${ci.includes(oi) ? '<span style="margin-left:auto;font-size:0.7rem;color:var(--success);font-weight:700">✓ Correct</span>' : ""}</div>`).join("")}
                             ${isNoneCorrect ? '<div style="margin-top:10px;padding:8px 12px;background:rgba(245,158,11,0.1);border:1px dashed rgba(245,158,11,0.45);border-radius:6px;font-size:0.76rem;color:#f59e0b;font-weight:600">⊘ None of the options is correct — every student gets full marks for this question.</div>' : ""}
                        </div>`}
@@ -2160,13 +2346,17 @@ function toggleMultiCorrect(si) {
 }
 
 function showSavingOverlay(text = "Saving...", subtext = "Please wait") {
-    document.getElementById("savingText").textContent = text;
-    document.getElementById("savingSubtext").textContent = subtext;
-    document.getElementById("savingOverlay").style.display = "flex";
+    const txt = document.getElementById("savingText");
+    const sub = document.getElementById("savingSubtext");
+    const ov = document.getElementById("savingOverlay");
+    if (txt) txt.textContent = text;
+    if (sub) sub.textContent = subtext;
+    if (ov) ov.style.display = "flex";
 }
 
 function hideSavingOverlay() {
-    document.getElementById("savingOverlay").style.display = "none";
+    const ov = document.getElementById("savingOverlay");
+    if (ov) ov.style.display = "none";
 }
 
 async function saveInlineEdit() {
@@ -3109,21 +3299,23 @@ async function jsonUploadSaveAll() {
     const isJeeChapterwise = isJeeMode && _jsonUploadJeeMode === 'chapterwise';
     const isNeetPaper = !isJeeMode && _jsonUploadNeetMode === 'paper';
     let lectureName = "";
+    // Paper-level metadata stamped onto every question for badge display
+    let _paperYear = "", _paperMonth = "", _paperDate = "", _paperShift = "";
     if (isJeePaper) {
-        const year = document.getElementById("jsonUploadYear")?.value;
-        const month = document.getElementById("jsonUploadMonth")?.value;
-        const date = document.getElementById("jsonUploadDate")?.value.trim();
-        const shift = document.getElementById("jsonUploadShift")?.value;
-        if (!year || !month || !date || !shift) {
+        _paperYear = document.getElementById("jsonUploadYear")?.value || "";
+        _paperMonth = document.getElementById("jsonUploadMonth")?.value || "";
+        _paperDate = (document.getElementById("jsonUploadDate")?.value || "").trim();
+        _paperShift = document.getElementById("jsonUploadShift")?.value || "";
+        if (!_paperYear || !_paperMonth || !_paperDate || !_paperShift) {
             showErrorModal("Please fill in all paper details (Year, Month, Date, Shift) before saving.", "Missing Paper Details");
             return;
         }
-        lectureName = `JEE ${year} ${month} ${date} ${shift}`;
+        lectureName = `JEE ${_paperYear} ${_paperMonth} ${_paperDate} ${_paperShift}`;
     }
     if (isNeetPaper) {
-        const year = document.getElementById("jsonUploadNeetPaperYear")?.value;
-        if (!year) { showErrorModal("Please enter the Year for NEET paper upload.", "Missing Year"); return; }
-        lectureName = `NEET ${year}`;
+        _paperYear = document.getElementById("jsonUploadNeetPaperYear")?.value || "";
+        if (!_paperYear) { showErrorModal("Please enter the Year for NEET paper upload.", "Missing Year"); return; }
+        lectureName = `NEET ${_paperYear}`;
     }
 
     if (!_jsonUploadQuestions.length) {
@@ -3218,7 +3410,11 @@ async function jsonUploadSaveAll() {
             numericalAnswer: isInteger ? q.correct_answer : undefined,
             subject: q.subject || "",
             unit: q.unit || "",
-            ...(q.year ? { year: String(q.year) } : {}),
+            // Prefer per-question year/month/date/shift; fall back to paper-level form values
+            ...(String(q.year || _paperYear || "") ? { year: String(q.year || _paperYear) } : {}),
+            ...(_paperMonth && !q.month ? { month: _paperMonth } : (q.month ? { month: String(q.month) } : {})),
+            ...(_paperDate && !q.date && !q.day ? { date: _paperDate } : (q.date ? { date: String(q.date) } : (q.day ? { day: String(q.day) } : {}))),
+            ...(_paperShift && !q.shift ? { shift: _paperShift } : (q.shift ? { shift: String(q.shift) } : {})),
             ...(qTables.length ? { tables: qTables } : {}),
             ...(hasOptionTables ? { optionTables, hasOptionTables: true } : {}),
         });
@@ -3226,6 +3422,21 @@ async function jsonUploadSaveAll() {
 
     // Show saving overlay
     const groups = Object.values(byGroup);
+    // ── Route imported questions into the paper-wise `papers` table ──
+    // PYQ (has a year) → its "<Exam> <year>" paper row; non-PYQ → the exam's
+    // rolling "Regular Ques" row. Exam comes from the JEE/NEET import selector.
+    const _paperExam = isJeeMode ? 'JEE Mains' : 'NEET';
+    const _paperBuckets = {};
+    groups.forEach(g => {
+        (g.questions || []).forEach(nq => {
+            const yr = (nq.year && String(nq.year).trim()) ? String(nq.year).trim() : 'Regular';
+            const isRegular = yr === 'Regular';
+            const label = isRegular ? (isJeeMode ? 'JEE Regular Ques' : 'NEET Regular Ques') : `${_paperExam} ${yr}`;
+            const bkey = `${_paperExam}|||${yr}`;
+            if (!_paperBuckets[bkey]) _paperBuckets[bkey] = { exam: _paperExam, year: yr, label, questions: [] };
+            _paperBuckets[bkey].questions.push(nq);
+        });
+    });
     const totalQs = _jsonUploadQuestions.length;
     const ov = document.createElement("div");
     ov.id = "saveProgressOverlay";
@@ -3286,6 +3497,18 @@ async function jsonUploadSaveAll() {
     }
 
     document.getElementById("saveProgressOverlay")?.remove();
+
+    // Mirror the saved questions into the paper-wise store (best-effort).
+    try {
+        const _buckets = Object.values(_paperBuckets).filter(b => b.questions.length);
+        if (_buckets.length) {
+            await fetch(`${API_BASE}/api/admin/papers/append`, {
+                method: "POST", credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ buckets: _buckets })
+            });
+        }
+    } catch (e) { console.warn("paper-wise routing failed:", e); }
 
     document.getElementById("successModalTitle").textContent = failedChs.length === 0 ? "📋 Saved!" : "Partially Saved";
     document.getElementById("successModalText").textContent = failedChs.length === 0

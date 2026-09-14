@@ -324,6 +324,9 @@
             if (drawerEl) drawerEl.classList.add('active');
 
             try {
+                if (name === "dashboard") {
+                    if (typeof refreshDemoRequestsBadge === "function") refreshDemoRequestsBadge();
+                }
                 if (name === "students") {
                     if (typeof loadRegisteredStudents === "function") loadRegisteredStudents();
                     fetch(`${API_BASE}/api/admin/student-requests`, { credentials: 'include', cache: 'no-store' })
@@ -348,6 +351,9 @@
                             }
                         }).catch(() => {});
                     }
+                }
+                if (name === "demoRequests") {
+                    if (typeof loadDemoRequests === "function") loadDemoRequests();
                 }
                 if (name === "clients") { loadInstitutes(); }
                 if (name === "addQuestion") {
@@ -530,6 +536,86 @@
         ══════════════════════════════════════════════════════════════ */
         let _instDeleteId = null;
 
+        /* ==================================================================
+           Feature + subject control for an institute
+           ------------------------------------------------------------------
+           An institute that only bought the offline question library gets
+           Online Tests / STAR Quiz / Students switched off here, and can be
+           restricted to a few subjects (e.g. Physics + Maths). The institute
+           panel hides those features and the API refuses them server-side.
+           ================================================================== */
+        let SUBJECT_CATALOGUE = null;   // [{ subject, canonical, count }]
+
+        function prettySubject(s) {
+            const str = String(s || "").trim();
+            if (!str) return "";
+            return str.charAt(0).toUpperCase() + str.slice(1);
+        }
+
+        async function loadSubjectCatalogue() {
+            if (SUBJECT_CATALOGUE) return SUBJECT_CATALOGUE;
+            try {
+                const r = await fetch(`${API_BASE}/api/owner/subjects`, { credentials: "include", cache: "no-store" });
+                SUBJECT_CATALOGUE = r.ok ? await r.json() : [];
+            } catch (_) { SUBJECT_CATALOGUE = []; }
+            if (!Array.isArray(SUBJECT_CATALOGUE)) SUBJECT_CATALOGUE = [];
+            return SUBJECT_CATALOGUE;
+        }
+
+        // Render the subject checkboxes, ticking the ones already allowed.
+        async function renderSubjectPicker(selected) {
+            const box = document.getElementById("instSubjectsBox");
+            if (!box) return;
+            const list = await loadSubjectCatalogue();
+            const sel = new Set((selected || []).map(x => String(x || "").trim().toLowerCase()));
+            if (!list.length) {
+                box.innerHTML = `<span style="font-size:0.78rem;color:var(--text-muted)">No subjects found in the question library yet.</span>`;
+                updateSubjectHint();
+                return;
+            }
+            box.innerHTML = list.map((row) => {
+                const canon = String(row.canonical || row.subject || "").toLowerCase();
+                const isOn = sel.has(canon) || sel.has(String(row.subject || "").toLowerCase());
+                return `<label class="inst-perm-item">
+                    <input type="checkbox" class="inst-subject-cb" value="${escHtml(canon)}" ${isOn ? "checked" : ""}
+                        onchange="updateSubjectHint()">
+                    ${escHtml(prettySubject(row.subject))}
+                    <span style="color:var(--text-muted);font-size:0.68rem">(${Number(row.count || 0)})</span>
+                </label>`;
+            }).join("");
+            updateSubjectHint();
+        }
+
+        function selectedSubjects() {
+            return [...document.querySelectorAll(".inst-subject-cb")]
+                .filter(cb => cb.checked)
+                .map(cb => cb.value);
+        }
+
+        function updateSubjectHint() {
+            const hint = document.getElementById("instSubjectsHint");
+            if (!hint) return;
+            const picked = selectedSubjects();
+            hint.textContent = picked.length
+                ? `Only ${picked.map(prettySubject).join(", ")} will be visible to this institute.`
+                : "No restriction - every subject in the library is visible.";
+        }
+
+        function setAllSubjects(on) {
+            document.querySelectorAll(".inst-subject-cb").forEach(cb => { cb.checked = !!on; });
+            updateSubjectHint();
+        }
+
+        // One click: question library + offline paper generator only.
+        function applyLibraryOnlyPreset() {
+            document.getElementById("permOnlineTests").checked = false;
+            document.getElementById("permStarQuiz").checked = false;
+            document.getElementById("permStudentMgmt").checked = false;
+            document.getElementById("permPaperGen").checked = true;
+            document.getElementById("permQuestionBank").checked = true;
+            updateSubjectHint();
+        }
+
         async function loadInstitutes() {
             const grid = document.getElementById("institutesGrid");
             if (!grid) return;
@@ -565,7 +651,11 @@
                     perms.starQuiz !== false ? '✅ STAR Quiz' : '❌ STAR Quiz',
                     perms.paperGenerator !== false ? '✅ Paper Gen' : '❌ Paper Gen',
                     perms.questionBank !== false ? '✅ Q Bank' : '❌ Q Bank',
+                    perms.studentManagement !== false ? '✅ Students' : '❌ Students',
                 ].join(' &nbsp;|&nbsp; ');
+                // Subject whitelist summary (an empty list means every subject is allowed)
+                const subjList = Array.isArray(perms.allowedSubjects) ? perms.allowedSubjects.filter(Boolean) : [];
+                const subjLine = `<div style="font-size:0.72rem;color:var(--text-muted);line-height:1.8">Subjects: <b>${subjList.length ? escHtml(subjList.map(prettySubject).join(", ")) : "All"}</b></div>`;
                 return `<div class="inst-card">
                     <div class="inst-card-header">
                         ${logoHtml}
@@ -580,6 +670,7 @@
                         ${expiry}
                     </div>
                     <div style="font-size:0.72rem;color:var(--text-muted);line-height:1.8">${permsList}</div>
+                    ${subjLine}
                     <div class="inst-actions">
                         <button class="btn btn-ghost" onclick="openEditInstituteModal(${inst.id})">✏️ Edit</button>
                         ${!isDefault ? `<button class="btn btn-ghost" style="color:var(--warn)" onclick="toggleSuspendInstitute(${inst.id}, '${inst.status}')">${inst.status === 'suspended' ? '▶️ Activate' : '⏸ Suspend'}</button>` : ''}
@@ -611,6 +702,8 @@
             document.getElementById("permStarQuiz").checked = true;
             document.getElementById("permPaperGen").checked = true;
             document.getElementById("permQuestionBank").checked = true;
+            document.getElementById("permStudentMgmt").checked = true;
+            renderSubjectPicker([]);
             document.getElementById("instModalError").style.display = "none";
             openModal("instituteModal");
         }
@@ -647,6 +740,8 @@
                 document.getElementById("permStarQuiz").checked = perms.starQuiz !== false;
                 document.getElementById("permPaperGen").checked = perms.paperGenerator !== false;
                 document.getElementById("permQuestionBank").checked = perms.questionBank !== false;
+                document.getElementById("permStudentMgmt").checked = perms.studentManagement !== false;
+                await renderSubjectPicker(Array.isArray(perms.allowedSubjects) ? perms.allowedSubjects : []);
                 document.getElementById("instModalError").style.display = "none";
                 openModal("instituteModal");
             } catch (e) { alert("Error: " + e.message); }
@@ -684,6 +779,9 @@
                 starQuiz: document.getElementById("permStarQuiz").checked,
                 paperGenerator: document.getElementById("permPaperGen").checked,
                 questionBank: document.getElementById("permQuestionBank").checked,
+                studentManagement: document.getElementById("permStudentMgmt").checked,
+                // [] = no restriction; otherwise only these subjects are visible.
+                allowedSubjects: selectedSubjects(),
             };
 
             let plan_expires_at = 0;
@@ -701,6 +799,7 @@
                 if (passcode) fd.append("passcode", passcode);
                 if (teacherPasscode) fd.append("teacherPasscode", teacherPasscode);
                 fd.append("permissions", JSON.stringify(perms));
+                fd.append("allowedSubjects", JSON.stringify(perms.allowedSubjects));
                 fd.append("plan_expires_at", String(plan_expires_at));
                 fd.append("status", status);
                 if (logoFile) fd.append("logo", logoFile);
@@ -767,3 +866,236 @@
 
     
 
+
+
+        /* ══════════════════════════════════════════════════════════════════
+           DEMO REQUESTS
+           Enquiries submitted from the public website form (index.html
+           #demoForm → POST /api/demo-requests). Reviewed here by the owner.
+        ══════════════════════════════════════════════════════════════════ */
+        let _demoRequests = [];
+
+        const DEMO_STATUS_META = {
+            new:       { label: "New",            icon: "🆕", color: "#2563eb" },
+            contacted: { label: "Contacted",      icon: "📞", color: "#d97706" },
+            scheduled: { label: "Demo scheduled", icon: "📅", color: "#7c3aed" },
+            won:       { label: "Converted",      icon: "✅", color: "#059669" },
+            lost:      { label: "Lost",           icon: "❌", color: "#dc2626" }
+        };
+
+        function demoEsc(s) {
+            return String(s == null ? "" : s)
+                .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+        }
+
+        function demoTime(ms) {
+            const n = Number(ms || 0);
+            if (!n) return "—";
+            const d = new Date(n);
+            const diff = Date.now() - n;
+            const mins = Math.floor(diff / 60000);
+            let rel = "";
+            if (mins < 1) rel = "just now";
+            else if (mins < 60) rel = `${mins}m ago`;
+            else if (mins < 1440) rel = `${Math.floor(mins / 60)}h ago`;
+            else rel = `${Math.floor(mins / 1440)}d ago`;
+            return `${d.toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })} · ${rel}`;
+        }
+
+        function updateDemoRequestsBadge(count) {
+            const el = document.getElementById("demoReqBadge");
+            if (!el) return;
+            const n = Number(count || 0);
+            el.textContent = String(n);
+            el.style.display = n > 0 ? "inline-block" : "none";
+        }
+
+        // Cheap badge refresh (used from the dashboard) without rendering cards.
+        async function refreshDemoRequestsBadge() {
+            try {
+                const r = await fetch(`${API_BASE}/api/owner/demo-requests?status=new`, { credentials: "include", cache: "no-store" });
+                if (!r.ok) return;
+                const data = await r.json();
+                updateDemoRequestsBadge(Array.isArray(data) ? data.length : 0);
+            } catch (_) { /* non-fatal */ }
+        }
+
+        async function loadDemoRequests() {
+            const list = document.getElementById("demoReqList");
+            const empty = document.getElementById("demoReqEmpty");
+            if (list) list.innerHTML = `<p style="color:var(--text-muted);padding:12px">Loading requests…</p>`;
+            if (empty) empty.style.display = "none";
+
+            try {
+                const r = await fetch(`${API_BASE}/api/owner/demo-requests`, { credentials: "include", cache: "no-store" });
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                const data = await r.json();
+                _demoRequests = Array.isArray(data) ? data : [];
+            } catch (e) {
+                _demoRequests = [];
+                if (list) list.innerHTML = `<p style="color:var(--error);padding:12px">Could not load demo requests. ${demoEsc(e.message)}</p>`;
+                return;
+            }
+            renderDemoRequests();
+        }
+
+        function renderDemoRequests() {
+            const list = document.getElementById("demoReqList");
+            const empty = document.getElementById("demoReqEmpty");
+            if (!list) return;
+
+            const q = (document.getElementById("demoReqSearch")?.value || "").trim().toLowerCase();
+            const statusFilter = document.getElementById("demoReqStatusFilter")?.value || "";
+            const sizeFilter = document.getElementById("demoReqSizeFilter")?.value || "";
+
+            // Stats always reflect the full set, not the filtered view.
+            const total = _demoRequests.length;
+            const byStatus = (s) => _demoRequests.filter(r => (r.status || "new") === s).length;
+            const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v); };
+            set("demoStatTotal", total);
+            set("demoStatNew", byStatus("new"));
+            set("demoStatContacted", byStatus("contacted"));
+            set("demoStatWon", byStatus("won"));
+            updateDemoRequestsBadge(byStatus("new"));
+
+            const rows = _demoRequests.filter(r => {
+                if (statusFilter && (r.status || "new") !== statusFilter) return false;
+                if (sizeFilter && String(r.students || "") !== sizeFilter) return false;
+                if (!q) return true;
+                return [r.name, r.institute, r.phone, r.email, r.message, r.students]
+                    .some(v => String(v || "").toLowerCase().includes(q));
+            });
+
+            if (!rows.length) {
+                list.innerHTML = "";
+                if (empty) {
+                    empty.style.display = "block";
+                    const h3 = empty.querySelector("h3");
+                    const p = empty.querySelector("p");
+                    if (total === 0) {
+                        if (h3) h3.textContent = "No demo requests yet";
+                        if (p) p.textContent = "Requests from the website form will appear here automatically";
+                    } else {
+                        if (h3) h3.textContent = "No matching requests";
+                        if (p) p.textContent = "Try adjusting your search or filters";
+                    }
+                }
+                return;
+            }
+            if (empty) empty.style.display = "none";
+
+            list.innerHTML = rows.map(r => {
+                const meta = DEMO_STATUS_META[r.status] || DEMO_STATUS_META.new;
+                const phoneDigits = String(r.phone || "").replace(/\D/g, "");
+                const waNumber = phoneDigits.length === 10 ? `91${phoneDigits}` : phoneDigits;
+                const options = Object.keys(DEMO_STATUS_META).map(k =>
+                    `<option value="${k}" ${((r.status || "new") === k) ? "selected" : ""}>${DEMO_STATUS_META[k].icon} ${DEMO_STATUS_META[k].label}</option>`
+                ).join("");
+
+                return `
+                <div class="req-card" id="demoreq-${r.id}">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+                        <div>
+                            <div class="req-card-roll">🏫 ${demoEsc(r.institute) || "—"}</div>
+                            <div class="req-card-name">${demoEsc(r.name) || "—"}</div>
+                        </div>
+                        <span class="badge-pill" style="background:${meta.color}1a;color:${meta.color};white-space:nowrap">
+                            ${meta.icon} ${meta.label}
+                        </span>
+                    </div>
+
+                    <div class="req-card-meta">
+                        <span>📞 ${demoEsc(r.phone) || "—"}</span>
+                        <span>👥 ${demoEsc(r.students) || "Not specified"}</span>
+                        ${r.email ? `<span>✉️ ${demoEsc(r.email)}</span>` : ""}
+                    </div>
+
+                    ${r.message ? `<div style="margin:8px 0;padding:9px 11px;border-radius:9px;background:var(--bg-soft,rgba(127,127,127,.08));font-size:.82rem;line-height:1.5">
+                        <b style="opacity:.7">Wants to fix:</b> ${demoEsc(r.message)}
+                    </div>` : ""}
+
+                    <div class="req-card-time">Received: ${demoEsc(demoTime(r.created_at))}</div>
+
+                    <div class="req-card-actions" style="flex-wrap:wrap;gap:8px">
+                        <select onchange="setDemoRequestStatus(${r.id}, this.value)"
+                            style="padding:7px 10px;border-radius:9px;font-size:.8rem">${options}</select>
+                        ${phoneDigits ? `<a class="btn btn-ghost" href="tel:${demoEsc(phoneDigits)}">📞 Call</a>` : ""}
+                        ${phoneDigits ? `<a class="btn btn-ghost" target="_blank" rel="noopener"
+                            href="https://wa.me/${demoEsc(waNumber)}">💬 WhatsApp</a>` : ""}
+                        <button class="btn btn-danger" onclick="deleteDemoRequest(${r.id})">🗑 Delete</button>
+                    </div>
+                </div>`;
+            }).join("");
+        }
+
+        async function setDemoRequestStatus(id, status) {
+            try {
+                const r = await fetch(`${API_BASE}/api/owner/demo-requests/${id}`, {
+                    method: "PUT",
+                    credentials: "include",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ status })
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+
+                const idx = _demoRequests.findIndex(x => x.id === id);
+                if (idx > -1 && data.request) _demoRequests[idx] = data.request;
+                renderDemoRequests();
+                if (typeof showToast === "function") showToast(`Marked as ${(DEMO_STATUS_META[status] || {}).label || status}`);
+            } catch (e) {
+                if (typeof showToast === "function") showToast(`Could not update: ${e.message}`);
+                else alert(`Could not update: ${e.message}`);
+            }
+        }
+
+        async function deleteDemoRequest(id) {
+            if (!confirm("Delete this demo request permanently?")) return;
+            try {
+                const r = await fetch(`${API_BASE}/api/owner/demo-requests/${id}`, {
+                    method: "DELETE",
+                    credentials: "include"
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+
+                _demoRequests = _demoRequests.filter(x => x.id !== id);
+                renderDemoRequests();
+                if (typeof showToast === "function") showToast("Request deleted");
+            } catch (e) {
+                if (typeof showToast === "function") showToast(`Could not delete: ${e.message}`);
+                else alert(`Could not delete: ${e.message}`);
+            }
+        }
+
+        function exportDemoRequestsCSV() {
+            if (!_demoRequests.length) {
+                if (typeof showToast === "function") showToast("Nothing to export");
+                return;
+            }
+            const cell = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
+            const header = ["Received", "Name", "Institute", "Phone", "Email", "Students", "Status", "Message"];
+            const lines = [header.join(",")].concat(_demoRequests.map(r => [
+                cell(r.created_at ? new Date(Number(r.created_at)).toLocaleString("en-IN") : ""),
+                cell(r.name), cell(r.institute), cell(r.phone), cell(r.email),
+                cell(r.students), cell((DEMO_STATUS_META[r.status] || {}).label || r.status), cell(r.message)
+            ].join(",")));
+
+            const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = `demo-requests-${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(a.href);
+        }
+
+        // Expose for inline handlers in developer.html
+        window.loadDemoRequests = loadDemoRequests;
+        window.renderDemoRequests = renderDemoRequests;
+        window.setDemoRequestStatus = setDemoRequestStatus;
+        window.deleteDemoRequest = deleteDemoRequest;
+        window.exportDemoRequestsCSV = exportDemoRequestsCSV;
+        window.refreshDemoRequestsBadge = refreshDemoRequestsBadge;

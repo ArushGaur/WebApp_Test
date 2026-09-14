@@ -2,9 +2,16 @@ const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 const { db } = require("../config/db");
+// Reads across BOTH question tables (`questions` + `pyq_questions`).
+const { ALL_Q } = require("../utils/questionTables");
 const helpers = require("../utils/helpers");
 const { requireOwner, loginRateLimit, recordLoginFailure, loginFailMap } = require("../middleware/auth");
 const { safeCompare, verifyPasscode, hashPasscode, normalizeStudentRow, normalizeQuestionRow } = helpers;
+const { cloudinary } = require("../services/cloudinary");
+const {
+	normalizePermissions, invalidatePermissions, FEATURE_KEYS, FEATURE_LABELS,
+	canonicalSubject,
+} = require("../utils/permissions");
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE || "dev-admin-passcode-please-change";
@@ -78,7 +85,7 @@ router.post("/api/owner/institutes", requireOwner, upload.single("logo"), async 
 
 		const ins = await db.execute({
 			sql: `INSERT INTO institutes (code, name, logo_url, passcode_hash, teacher_passcode_hash, permissions_json, plan_expires_at, status, created_at)
-			      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+			      VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
 			args: [upperCode, String(name).trim(), logo_url, hash, teacherHash, JSON.stringify(permsObj), expiry, now],
 		});
 
@@ -169,6 +176,36 @@ router.post("/api/owner/institutes/:id/suspend", requireOwner, async (req, res) 
 	}
 });
 
+// GET /api/owner/features — the feature flags the developer panel can toggle
+router.get("/api/owner/features", requireOwner, (req, res) => {
+	res.json({
+		features: FEATURE_KEYS.map((key) => ({ key, label: FEATURE_LABELS[key] || key })),
+	});
+});
+
+// GET /api/owner/subjects — every subject present in the question library, so
+// the developer can tick exactly which ones an institute is allowed to see.
+router.get("/api/owner/subjects", requireOwner, async (req, res) => {
+	try {
+		const r = await db.execute(
+			`SELECT q.subject AS subject, COUNT(*) AS cnt FROM ${ALL_Q}
+			  WHERE q.subject IS NOT NULL AND TRIM(q.subject) <> ''
+			  GROUP BY q.subject ORDER BY cnt DESC`
+		);
+		const seen = new Map();
+		for (const row of r.rows) {
+			const name = String(row.subject || "").trim();
+			if (!name) continue;
+			const key = canonicalSubject(name);
+			if (!seen.has(key)) seen.set(key, { subject: name, canonical: key, count: 0 });
+			seen.get(key).count += Number(row.cnt || 0);
+		}
+		res.json([...seen.values()]);
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed to list subjects" });
+	}
+});
+
 // ── Owner login / logout (separate from admin login) ─────────────────────────
 // The owner uses the same ADMIN_PASSCODE but gets req.session.ownerAdmin=true
 // instead of req.session.admin, so teacher sessions cannot access owner routes.
@@ -234,8 +271,14 @@ router.get("/api/owner/institutes/:id/registered-students", requireOwner, async 
 	try {
 		const instId = Number(req.params.id);
 		if (!instId) return res.status(400).json({ error: "Invalid institute id" });
+		// Explicit columns instead of SELECT *: uses the
+		// idx_rs_inst_created composite index and keeps the payload lean.
 		const result = await db.execute({
-			sql: "SELECT * FROM registered_students WHERE institute_id = ? ORDER BY created_at DESC",
+			sql: `SELECT id, roll_number, name, class_name, section, phone, email, age,
+			             date_of_birth, profile_complete, batch_id, created_at, updated_at
+			        FROM registered_students
+			       WHERE institute_id = ?
+			       ORDER BY created_at DESC`,
 			args: [instId],
 		});
 		res.json(result.rows.map(r => ({
@@ -243,13 +286,43 @@ router.get("/api/owner/institutes/:id/registered-students", requireOwner, async 
 			rollNumber: r.roll_number,
 			name: r.name || "",
 			className: r.class_name || "",
+			section: r.section || "",
+			email: r.email || "",
 			phone: r.phone || "",
 			age: r.age || "",
 			dateOfBirth: r.date_of_birth || "",
+			batchId: r.batch_id || null,
 			profileComplete: !!r.profile_complete,
 			createdAt: r.created_at,
 			updatedAt: r.updated_at,
 		})));
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+// POST /api/owner/institutes/:id/registered-students/add
+// Owner-side "Add Students", for any institute. It reuses the exact same
+// validation helper as the institute panel (name, class, section, mobile,
+// email — no passwords), so the two panels can never drift apart.
+router.post("/api/owner/institutes/:id/registered-students/add", requireOwner, async (req, res) => {
+	try {
+		const instId = Number(req.params.id);
+		if (!instId) return res.status(400).json({ error: "Invalid institute id" });
+
+		const { students } = req.body || {};
+		if (!Array.isArray(students) || !students.length) {
+			return res.status(400).json({ error: "No student records provided" });
+		}
+
+		// Confirm the institute exists before writing rows against its id.
+		const inst = await db.execute({ sql: "SELECT id FROM institutes WHERE id = ? LIMIT 1", args: [instId] });
+		if (!inst.rows.length) return res.status(404).json({ error: "Institute not found" });
+
+		// Lazy require keeps the module graph acyclic at load time.
+		const { addStudentsToInstitute } = require("./admin");
+		const outcome = await addStudentsToInstitute(students, instId);
+		res.json({ success: true, ...outcome });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
@@ -267,8 +340,8 @@ router.get("/api/owner/institutes/:id/online-tests", requireOwner, async (req, r
 		res.json(result.rows.map(r => ({
 			id: r.id,
 			testName: r.test_name,
-			marksCorrect: r.marks_correct,
-			marksWrong: r.marks_wrong,
+			marksCorrect: Number(r.marks_correct),
+			marksWrong: Number(r.marks_wrong),
 			liveAt: r.live_at,
 			endsAt: r.ends_at,
 			questionCount: r.question_count || 0,
@@ -285,8 +358,18 @@ router.get("/api/owner/institutes/:id/test-history", requireOwner, async (req, r
 	try {
 		const instId = Number(req.params.id);
 		if (!instId) return res.status(400).json({ error: "Invalid institute id" });
+		// Never SELECT * here: answers_json, questions_json and time_spent_json
+		// are large blobs that this list view never renders. Fetching only the
+		// summary columns lets Postgres answer straight from idx_th_inst_ts.
 		const result = await db.execute({
-			sql: "SELECT * FROM test_history WHERE institute_id = ? ORDER BY timestamp DESC LIMIT 500",
+			sql: `SELECT id, mobile, student_name, student_class, chapter, lecture, topic,
+			             correct_count, wrong_count, skipped_count, total_questions,
+			             marks_score, max_marks, accuracy_pct, grade, time_taken,
+			             scheme, timestamp, online_test_id
+			        FROM test_history
+			       WHERE institute_id = ?
+			       ORDER BY timestamp DESC
+			       LIMIT 500`,
 			args: [instId],
 		});
 		res.json(result.rows);
@@ -306,7 +389,15 @@ router.get("/api/owner/institutes/:id/test-history", requireOwner, async (req, r
 // GET /api/owner/students  — every student attempt across all institutes
 router.get("/api/owner/students", requireOwner, async (req, res) => {
 	try {
-		const result = await db.execute("SELECT * FROM students ORDER BY time DESC");
+		// PAGINATED. With 200k students this table holds millions of attempt rows;
+		// an unbounded SELECT * would load the entire table into Node's heap and
+		// OOM the pod. Callers pass ?limit= & ?offset= (defaults keep old screens working).
+		const limit = Math.min(Number(req.query.limit) || 500, 2000);
+		const offset = Math.max(Number(req.query.offset) || 0, 0);
+		const result = await db.execute({
+			sql: "SELECT * FROM students ORDER BY time DESC LIMIT ? OFFSET ?",
+			args: [limit, offset],
+		});
 		const rows = result.rows.map(r => {
 			const n = (typeof normalizeStudentRow === "function") ? normalizeStudentRow(r) : r;
 			// Attach institute_id so the UI can group/filter by institute if desired.
@@ -322,7 +413,19 @@ router.get("/api/owner/students", requireOwner, async (req, res) => {
 // GET /api/owner/registered-students  — every registered student across all institutes
 router.get("/api/owner/registered-students", requireOwner, async (req, res) => {
 	try {
-		const result = await db.execute("SELECT * FROM registered_students ORDER BY created_at DESC");
+		// PAGINATED + explicit columns. 200,000 registered students is ~100MB of
+		// JSON if returned in one response — that request alone would stall an
+		// entire API pod for seconds.
+		const limit = Math.min(Number(req.query.limit) || 500, 2000);
+		const offset = Math.max(Number(req.query.offset) || 0, 0);
+		const result = await db.execute({
+			sql: `SELECT id, roll_number, name, class_name, phone, age, date_of_birth,
+				         profile_complete, institute_id, created_at, updated_at
+				    FROM registered_students
+				   ORDER BY created_at DESC
+				   LIMIT ? OFFSET ?`,
+			args: [limit, offset],
+		});
 		res.json(result.rows.map(r => ({
 			id: r.id,
 			rollNumber: r.roll_number,
@@ -341,10 +444,11 @@ router.get("/api/owner/registered-students", requireOwner, async (req, res) => {
 	}
 });
 
-// GET /api/owner/chapters  — every distinct chapter across all institutes (questions table is global)
+// GET /api/owner/chapters  — every distinct chapter across all institutes
+// (the question tables are global, shared by every institute)
 router.get("/api/owner/chapters", requireOwner, async (req, res) => {
 	try {
-		const result = await db.execute("SELECT DISTINCT chapter FROM questions WHERE chapter IS NOT NULL AND chapter != ''");
+		const result = await db.execute(`SELECT DISTINCT chapter FROM ${ALL_Q} WHERE chapter IS NOT NULL AND chapter != ''`);
 		const chapters = result.rows.map(r => r.chapter).filter(Boolean).sort();
 		res.json(chapters);
 	} catch (e) {
@@ -352,10 +456,17 @@ router.get("/api/owner/chapters", requireOwner, async (req, res) => {
 	}
 });
 
-// GET /api/owner/questions  — every question (questions table is global, no institute scoping needed)
+// GET /api/owner/questions  — every question from both tables (global, no institute scoping needed)
 router.get("/api/owner/questions", requireOwner, async (req, res) => {
 	try {
-		const result = await db.execute("SELECT * FROM questions");
+		// PAGINATED. The full question bank is the single largest table in the
+		// system (images + LaTeX). Never stream all of it in one response.
+		const limit = Math.min(Number(req.query.limit) || 1000, 5000);
+		const offset = Math.max(Number(req.query.offset) || 0, 0);
+		const result = await db.execute({
+			sql: `SELECT * FROM ${ALL_Q} LIMIT ? OFFSET ?`,
+			args: [limit, offset],
+		});
 		const rows = result.rows.map(r => (typeof normalizeQuestionRow === "function") ? normalizeQuestionRow(r) : r).filter(Boolean);
 		res.json(rows);
 	} catch (e) {
@@ -372,6 +483,138 @@ router.get("/api/owner/student-requests", requireOwner, async (req, res) => {
 		// Table may not exist on older deployments — degrade gracefully so the
 		// owner dashboard's badge query never breaks the UI.
 		res.json([]);
+	}
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DEMO REQUESTS  —  "Request a demo" form on the public marketing site
+   (frontend/index.html #demoForm) lands here and is reviewed by the owner in
+   the panel's "Demo Requests" section.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const DEMO_STATUSES = ["new", "contacted", "scheduled", "won", "lost"];
+
+function shapeDemoRequest(r) {
+	return {
+		id: r.id,
+		name: r.name || "",
+		institute: r.institute || "",
+		phone: r.phone || "",
+		email: r.email || "",
+		students: r.students || "",
+		message: r.message || "",
+		status: r.status || "new",
+		notes: r.notes || "",
+		source: r.source || "website",
+		created_at: Number(r.created_at || 0),
+		updated_at: Number(r.updated_at || 0),
+	};
+}
+
+// Very light in-memory throttle so the public endpoint cannot be spammed
+// from a single IP. Keyed by IP, allows 5 submissions per 10 minutes.
+const demoSubmitMap = new Map();
+function demoRateLimited(ip) {
+	const now = Date.now();
+	const windowMs = 10 * 60 * 1000;
+	const hits = (demoSubmitMap.get(ip) || []).filter((t) => now - t < windowMs);
+	if (hits.length >= 5) {
+		demoSubmitMap.set(ip, hits);
+		return true;
+	}
+	hits.push(now);
+	demoSubmitMap.set(ip, hits);
+	return false;
+}
+
+// POST /api/demo-requests  — PUBLIC (no session): marketing site form submit
+router.post("/api/demo-requests", async (req, res) => {
+	try {
+		const ip = req.ip || req.connection?.remoteAddress || "unknown";
+		if (demoRateLimited(ip)) {
+			return res.status(429).json({ error: "Too many requests. Please try again later." });
+		}
+
+		const clip = (v, n) => String(v == null ? "" : v).trim().slice(0, n);
+		const name = clip(req.body?.name, 120);
+		const institute = clip(req.body?.institute, 160);
+		const phone = clip(req.body?.phone, 30);
+		const email = clip(req.body?.email, 160);
+		const students = clip(req.body?.students, 40);
+		const message = clip(req.body?.message, 2000);
+
+		if (!name || !institute) return res.status(400).json({ error: "Name and institute are required" });
+		if (phone.replace(/\D/g, "").length < 10) return res.status(400).json({ error: "A valid phone number is required" });
+
+		const now = Date.now();
+		const r = await db.execute({
+			sql: `INSERT INTO demo_requests (name, institute, phone, email, students, message, status, source, created_at, updated_at)
+			      VALUES (?, ?, ?, ?, ?, ?, 'new', 'website', ?, ?)`,
+			args: [name, institute, phone, email, students, message, now, now],
+		});
+		res.json({ success: true, id: r.lastInsertRowid });
+	} catch (e) {
+		console.error("[demo-requests] insert failed:", e.message);
+		res.status(500).json({ error: "Could not save your request. Please try again." });
+	}
+});
+
+// GET /api/owner/demo-requests  — list every request (newest first)
+router.get("/api/owner/demo-requests", requireOwner, async (req, res) => {
+	try {
+		const status = String(req.query.status || "").trim();
+		const q = DEMO_STATUSES.includes(status)
+			? { sql: "SELECT * FROM demo_requests WHERE status = ? ORDER BY created_at DESC", args: [status] }
+			: "SELECT * FROM demo_requests ORDER BY created_at DESC";
+		const result = await db.execute(q);
+		res.json(result.rows.map(shapeDemoRequest));
+	} catch (e) {
+		// Table may be missing on an older deployment — never break the panel.
+		res.json([]);
+	}
+});
+
+// PUT /api/owner/demo-requests/:id  — update status and/or internal notes
+router.put("/api/owner/demo-requests/:id", requireOwner, async (req, res) => {
+	try {
+		const id = Number(req.params.id);
+		if (!id) return res.status(400).json({ error: "Invalid id" });
+
+		const sets = [];
+		const args = [];
+		if (req.body?.status !== undefined) {
+			const status = String(req.body.status || "").trim();
+			if (!DEMO_STATUSES.includes(status)) return res.status(400).json({ error: "Invalid status" });
+			sets.push("status = ?");
+			args.push(status);
+		}
+		if (req.body?.notes !== undefined) {
+			sets.push("notes = ?");
+			args.push(String(req.body.notes || "").slice(0, 2000));
+		}
+		if (!sets.length) return res.status(400).json({ error: "Nothing to update" });
+
+		sets.push("updated_at = ?");
+		args.push(Date.now(), id);
+		await db.execute({ sql: `UPDATE demo_requests SET ${sets.join(", ")} WHERE id = ?`, args });
+
+		const out = await db.execute({ sql: "SELECT * FROM demo_requests WHERE id = ?", args: [id] });
+		if (!out.rows.length) return res.status(404).json({ error: "Request not found" });
+		res.json({ success: true, request: shapeDemoRequest(out.rows[0]) });
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed to update request" });
+	}
+});
+
+// DELETE /api/owner/demo-requests/:id
+router.delete("/api/owner/demo-requests/:id", requireOwner, async (req, res) => {
+	try {
+		const id = Number(req.params.id);
+		if (!id) return res.status(400).json({ error: "Invalid id" });
+		await db.execute({ sql: "DELETE FROM demo_requests WHERE id = ?", args: [id] });
+		res.json({ success: true });
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed to delete request" });
 	}
 });
 

@@ -3,18 +3,58 @@ const router = express.Router();
 const multer = require("multer");
 const { db } = require("../config/db");
 const helpers = require("../utils/helpers");
+const cache = require("../config/cache");
 const { requireAdmin, sessionInstituteId, getDefaultInstituteId } = require("../middleware/auth");
 const {
 	loadQuestions, refreshCache, findQuestion, findQuestionsByPaper,
-	getChapterList, getTopicsForChapter, getQuestionCount, getQuestionCache,
+	getChapterList, getTopicsForChapter, getQuestionCount, getQuestionCache, resolveQuestionKeys,
 } = require("../utils/questions");
-const { normalizeQuestionRow, normalizeQuestion, normalizeStudentRow, parseCorrectIndexesFromQuestion, validateImageRegion } = helpers;
+// The question bank is TWO tables: `questions` (regular) + `pyq_questions`
+// (previous-year). ALL_Q reads across both; the helpers route writes to the
+// right one. There is no `questions_v2` table/view any more.
+const {
+	ALL_Q, PYQ_TABLE, insertQuestion, findQuestionRowById, updateQuestionRowById,
+	deleteQuestionRowById, deleteQuestionsWhere, updateQuestionsWhere,
+} = require("../utils/questionTables");
+const {
+	normalizeQuestionRow, normalizeQuestion, normalizeStudentRow,
+	parseCorrectIndexesFromQuestion, validateImageRegion,
+	// Online tests are shuffled per student, so a teacher reviewing an attempt
+	// must see the paper in the order that student saw it.
+	applyQuestionOrder, parseQuestionOrder,
+} = helpers;
 const { uploadQuestionImages } = require("../services/cloudinary");
+// Per-institute feature flags + subject whitelist (set from the developer panel).
+const {
+	requireFeature, permissionsForRequest, allowedSubjectsFor, hasSubjectLimit,
+	subjectSqlFilter, filterRowsBySubject, isSubjectAllowed,
+} = require("../utils/permissions");
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 } });
+
+/**
+ * Does this chapter contain any question from a subject the institute is
+ * allowed to see? Used to hide whole chapters of blocked subjects.
+ */
+async function chapterAllowed(perms, chapter) {
+	try {
+		const subjFilter = subjectSqlFilter(perms, "q.subject");
+		if (!subjFilter.clause) return true;
+		const ch = decodeURIComponent(chapter || "");
+		const isNone = ch === "_none_" || ch === "";
+		const r = await db.execute({
+			sql: `SELECT 1 FROM ${ALL_Q} WHERE ${isNone ? "(chapter IS NULL OR chapter = '')" : "chapter = ?"}
+			      AND (${subjFilter.clause}) LIMIT 1`,
+			args: isNone ? subjFilter.args : [ch, ...subjFilter.args],
+		});
+		return r.rows.length > 0;
+	} catch (_) {
+		return true;
+	}
+}
 
 function extractYearFromQuestions(questions) {
 	for (const q of (questions || [])) {
@@ -26,6 +66,17 @@ function extractYearFromQuestions(questions) {
 
 router.get("/api/chapters", async (req, res) => {
 	try {
+		// Chapters of blocked subjects must not even be listed.
+		const perms = await permissionsForRequest(req);
+		if (hasSubjectLimit(perms)) {
+			const subjFilter = subjectSqlFilter(perms, "q.subject");
+			const r = await db.execute({
+				sql: `SELECT DISTINCT chapter FROM ${ALL_Q} WHERE ${subjFilter.clause} ORDER BY chapter`,
+				args: subjFilter.args,
+			});
+			const allowed = new Set(r.rows.map((x) => x.chapter || ""));
+			return res.json(getChapterList().filter((c) => allowed.has(c === null ? "" : c)));
+		}
 		res.json(getChapterList());
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
@@ -35,6 +86,8 @@ router.get("/api/chapters", async (req, res) => {
 router.get("/api/lectures/:chapter", async (req, res) => {
 	try {
 		const chapter = req.params.chapter;
+		const perms = await permissionsForRequest(req);
+		if (hasSubjectLimit(perms) && !(await chapterAllowed(perms, chapter))) return res.json([]);
 		const topics = getTopicsForChapter(chapter);
 		res.json(topics);
 	} catch (e) {
@@ -45,6 +98,8 @@ router.get("/api/lectures/:chapter", async (req, res) => {
 // Same data under its real name — prefer this in any new frontend code.
 router.get("/api/topics/:chapter", async (req, res) => {
 	try {
+		const perms = await permissionsForRequest(req);
+		if (hasSubjectLimit(perms) && !(await chapterAllowed(perms, req.params.chapter))) return res.json([]);
 		res.json(getTopicsForChapter(req.params.chapter));
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
@@ -55,9 +110,13 @@ router.get("/api/topics/:chapter", async (req, res) => {
 router.get("/api/subjects", requireAdmin, async (req, res) => {
 	try {
 		const result = await db.execute(
-			"SELECT DISTINCT subject FROM questions_v2 WHERE subject IS NOT NULL AND subject != '' ORDER BY subject"
+			`SELECT DISTINCT subject FROM ${ALL_Q} WHERE subject IS NOT NULL AND subject != '' ORDER BY subject`
 		);
-		res.json(result.rows.map((r) => r.subject));
+		// If the developer panel limited this institute to e.g. Physics + Maths,
+		// every other subject disappears from the whole institute panel.
+		const perms = await permissionsForRequest(req);
+		const visible = filterRowsBySubject(perms, result.rows, (r) => r.subject);
+		res.json(visible.map((r) => r.subject));
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
@@ -100,15 +159,14 @@ router.post("/api/admin/add-question", requireAdmin, async (req, res) => {
 			const questionNumber = Number.isInteger(q.questionNumber) ? q.questionNumber : null;
 			const questionType = String(q.questionType || "MCQ").trim() || "MCQ";
 
-			await db.execute({
-				sql: `INSERT INTO questions_v2
-					(subject, unit, chapter, topic, year, month, day, shift,
-					 question_number, question_type, raw_json, created_at, updated_at)
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				args: [
-					subject, unit, chapter || "", topic, year, month, day, shift,
-					questionNumber, questionType, JSON.stringify(q), now, now,
-				],
+			// Goes to `pyq_questions` when the question carries a year,
+			// otherwise to the regular `questions` bank.
+			await insertQuestion({
+				subject, unit, chapter: chapter || "", topic,
+				year, month, day, shift,
+				questionNumber, questionType,
+				rawJson: JSON.stringify(q),
+				createdAt: now, updatedAt: now,
 			});
 			inserted++;
 		}
@@ -165,7 +223,14 @@ router.post("/api/admin/student/:id/mark-cheater", requireAdmin, async (req, res
 
 router.get("/api/admin/questions", requireAdmin, async (req, res) => {
 	try {
-		const result = await db.execute("SELECT id, chapter, topic, raw_json, updated_at FROM questions_v2 ORDER BY chapter, topic, question_number, id");
+		const perms = await permissionsForRequest(req);
+		const subjFilter = subjectSqlFilter(perms, "q.subject");
+		const result = await db.execute({
+			sql: `SELECT id, chapter, topic, raw_json, updated_at FROM ${ALL_Q}
+			      ${subjFilter.clause ? "WHERE " + subjFilter.clause : ""}
+			      ORDER BY chapter, topic, question_number, id`,
+			args: subjFilter.args,
+		});
 		const groups = {}; // key: chapter::topic
 		for (const row of result.rows) {
 			const key = `${row.chapter || ""}::${row.topic || ""}`;
@@ -195,12 +260,16 @@ router.get("/api/admin/questions", requireAdmin, async (req, res) => {
 // year-index table, no json_extract guesswork to find subject.
 router.get("/api/admin/questions-meta", requireAdmin, async (req, res) => {
 	try {
-		const result = await db.execute(
-			`SELECT chapter, topic, subject, MAX(updated_at) as updated_at, COUNT(*) as qcount
-			 FROM questions_v2
+		const perms = await permissionsForRequest(req);
+		const subjFilter = subjectSqlFilter(perms, "q.subject");
+		const result = await db.execute({
+			sql: `SELECT chapter, topic, MAX(subject) as subject, MAX(updated_at) as updated_at, COUNT(*) as qcount
+			 FROM ${ALL_Q}
+			 ${subjFilter.clause ? "WHERE " + subjFilter.clause : ""}
 			 GROUP BY chapter, topic
-			 ORDER BY chapter, topic`
-		);
+			 ORDER BY chapter, topic`,
+			args: subjFilter.args,
+		});
 		const rows = result.rows.map((row) => ({
 			// CHANGED: was `_id: null` for every row. Since all metadata rows shared
 			// the same null id, the frontend's ensureChapterLoaded() merge (which
@@ -224,7 +293,8 @@ router.get("/api/admin/questions-meta", requireAdmin, async (req, res) => {
 	}
 });
 
-// Fetch a single QUESTION by its questions_v2 row id (was: a whole topic's
+// Fetch a single QUESTION by its row id (looked up in `questions`, then in
+// `pyq_questions` — ids are unique across both) (was: a whole topic's
 // array by row id — that concept doesn't exist any more, since each row IS
 // one question now). If you need a whole topic's questions, use
 // /api/question/:chapter/:lecture instead — same URL/shape as before.
@@ -232,9 +302,8 @@ router.get("/api/admin/question-row/:id", requireAdmin, async (req, res) => {
 	try {
 		const id = Number(req.params.id);
 		if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
-		const result = await db.execute({ sql: "SELECT * FROM questions_v2 WHERE id = ? LIMIT 1", args: [id] });
-		if (!result.rows.length) return res.status(404).json({ error: "Not found" });
-		const row = result.rows[0];
+		const row = await findQuestionRowById(id);
+		if (!row) return res.status(404).json({ error: "Not found" });
 		let raw = {};
 		try { raw = JSON.parse(row.raw_json || "{}"); } catch { raw = {}; }
 		res.json({
@@ -251,7 +320,7 @@ router.get("/api/admin/question-row/:id", requireAdmin, async (req, res) => {
 	}
 });
 
-// Update ONE question row in place (by its real questions_v2 id). Unlike
+// Update ONE question row in place (by its id). Unlike
 // PUT /api/admin/question/:chapter/:lecture (which replaces an entire
 // chapter+topic group), this touches exactly one row — siblings in the
 // same topic are never deleted. Accepts either:
@@ -265,9 +334,8 @@ router.put("/api/admin/question-row/:id", requireAdmin, async (req, res) => {
 		const id = Number(req.params.id);
 		if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
 
-		const existingResult = await db.execute({ sql: "SELECT * FROM questions_v2 WHERE id = ? LIMIT 1", args: [id] });
-		if (!existingResult.rows.length) return res.status(404).json({ error: "Not found" });
-		const existingRow = existingResult.rows[0];
+		const existingRow = await findQuestionRowById(id);
+		if (!existingRow) return res.status(404).json({ error: "Not found" });
 
 		const body = req.body || {};
 		let questionObj = body.question;
@@ -278,18 +346,22 @@ router.put("/api/admin/question-row/:id", requireAdmin, async (req, res) => {
 			return res.status(400).json({ error: "question object is required" });
 		}
 
-		const normalized = normalizeQuestion(questionObj, { preserveRaw: true });
+		let normalized = normalizeQuestion(questionObj, { preserveRaw: true });
+		// This path previously persisted inline base64/SVG straight into raw_json.
+		// Push figures to Cloudinary so the DB row stores URLs instead.
+		[normalized] = await uploadQuestionImages([normalized]);
 		const chapter = body.chapter !== undefined ? String(body.chapter || "").trim() : (existingRow.chapter || "");
 		const topic = (body.topic ?? body.lecture) !== undefined ? String(body.topic ?? body.lecture ?? "").trim() : (existingRow.topic || "");
 		const subject = String(normalized.subject ?? existingRow.subject ?? "").trim();
 		const unit = String(normalized.unit ?? existingRow.unit ?? "").trim();
 		const year = normalized.year != null ? String(normalized.year).trim() : (existingRow.year || "");
 
-		await db.execute({
-			sql: `UPDATE questions_v2
-				SET subject = ?, unit = ?, chapter = ?, topic = ?, year = ?, raw_json = ?, updated_at = ?
-				WHERE id = ?`,
-			args: [subject, unit, chapter, topic, year, JSON.stringify(normalized), Date.now(), id],
+		// Updates the row in place, or moves it between `questions` and
+		// `pyq_questions` (keeping the same id) when a year is added or removed.
+		await updateQuestionRowById(id, {
+			subject, unit, chapter, topic, year,
+			raw_json: JSON.stringify(normalized),
+			updated_at: Date.now(),
 		});
 
 		await refreshCache(existingRow.chapter || "", existingRow.topic || "");
@@ -302,18 +374,18 @@ router.put("/api/admin/question-row/:id", requireAdmin, async (req, res) => {
 	}
 });
 
-// Delete ONE question row by its real questions_v2 id — siblings in the
+// Delete ONE question row by its id �� siblings in the
 // same chapter+topic are untouched.
 router.delete("/api/admin/question-row/:id", requireAdmin, async (req, res) => {
 	try {
 		const id = Number(req.params.id);
 		if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
 
-		const existingResult = await db.execute({ sql: "SELECT chapter, topic FROM questions_v2 WHERE id = ? LIMIT 1", args: [id] });
-		if (!existingResult.rows.length) return res.status(404).json({ error: "Not found" });
-		const { chapter, topic } = existingResult.rows[0];
+		const existingRow = await findQuestionRowById(id);
+		if (!existingRow) return res.status(404).json({ error: "Not found" });
+		const { chapter, topic } = existingRow;
 
-		await db.execute({ sql: "DELETE FROM questions_v2 WHERE id = ?", args: [id] });
+		await deleteQuestionRowById(id);
 		await refreshCache(chapter || "", topic || "");
 		res.json({ success: true });
 	} catch (e) {
@@ -325,11 +397,20 @@ router.delete("/api/admin/question-row/:id", requireAdmin, async (req, res) => {
 router.get("/api/admin/questions-for-chapter/:chapter", requireAdmin, async (req, res) => {
 	try {
 		const chapter = decodeURIComponent(req.params.chapter || "");
+		const perms = await permissionsForRequest(req);
+		const subjFilter = subjectSqlFilter(perms, "q.subject");
+		const extra = subjFilter.clause ? ` AND (${subjFilter.clause})` : "";
 		let result;
 		if (chapter === "_none_" || chapter === "") {
-			result = await db.execute("SELECT id, chapter, topic, raw_json, updated_at FROM questions_v2 WHERE chapter IS NULL OR chapter = '' ORDER BY topic, question_number, id");
+			result = await db.execute({
+				sql: `SELECT id, chapter, topic, raw_json, updated_at FROM ${ALL_Q} WHERE (chapter IS NULL OR chapter = '')${extra} ORDER BY topic, question_number, id`,
+				args: subjFilter.args,
+			});
 		} else {
-			result = await db.execute({ sql: "SELECT id, chapter, topic, raw_json, updated_at FROM questions_v2 WHERE chapter = ? ORDER BY topic, question_number, id", args: [chapter] });
+			result = await db.execute({
+				sql: `SELECT id, chapter, topic, raw_json, updated_at FROM ${ALL_Q} WHERE chapter = ?${extra} ORDER BY topic, question_number, id`,
+				args: [chapter, ...subjFilter.args],
+			});
 		}
 		const groups = {};
 		for (const row of result.rows) {
@@ -368,9 +449,9 @@ router.delete("/api/admin/question/:chapter/:lecture", requireAdmin, async (req,
 		const topic = rawLecture === "_none_" ? "" : rawLecture;
 
 		if (chapter && chapter !== "_none_") {
-			await db.execute({ sql: "DELETE FROM questions_v2 WHERE topic = ? AND chapter = ?", args: [topic, chapter] });
+			await deleteQuestionsWhere("topic = ? AND chapter = ?", [topic, chapter]);
 		} else {
-			await db.execute({ sql: "DELETE FROM questions_v2 WHERE topic = ? AND (chapter IS NULL OR chapter = '')", args: [topic] });
+			await deleteQuestionsWhere("topic = ? AND (chapter IS NULL OR chapter = '')", [topic]);
 		}
 		await refreshCache(chapter === "_none_" ? "" : chapter, topic);
 		res.json({ success: true });
@@ -396,29 +477,24 @@ router.put("/api/admin/question/:chapter/:lecture", requireAdmin, async (req, re
 		let normalizedQuestions = questions.map((q) => normalizeQuestion(q, { preserveRaw: true }));
 		normalizedQuestions = await uploadQuestionImages(normalizedQuestions);
 
-		await db.execute({
-			sql: "DELETE FROM questions_v2 WHERE chapter = ? AND topic = ?",
-			args: [chapterForMatch, oldTopic],
-		});
+		await deleteQuestionsWhere("chapter = ? AND topic = ?", [chapterForMatch, oldTopic]);
 
 		const now = Date.now();
 		for (const q of normalizedQuestions) {
-			await db.execute({
-				sql: `INSERT INTO questions_v2
-					(subject, unit, chapter, topic, year, month, day, shift,
-					 question_number, question_type, raw_json, created_at, updated_at)
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				args: [
-					String(q.subject || "").trim(), String(q.unit || "").trim(),
-					chapterForSave, topicForSave,
-					q.year != null ? String(q.year).trim() : "",
-					q.month != null ? String(q.month).trim() : "",
-					q.day != null ? String(q.day).trim() : "",
-					q.shift != null ? String(q.shift).trim() : "",
-					Number.isInteger(q.questionNumber) ? q.questionNumber : null,
-					String(q.questionType || "MCQ").trim() || "MCQ",
-					JSON.stringify(q), now, now,
-				],
+			await insertQuestion({
+				subject: q.subject,
+				unit: q.unit,
+				chapter: chapterForSave,
+				topic: topicForSave,
+				year: q.year,
+				month: q.month,
+				day: q.day,
+				shift: q.shift,
+				questionNumber: q.questionNumber,
+				questionType: String(q.questionType || "MCQ").trim() || "MCQ",
+				rawJson: JSON.stringify(q),
+				createdAt: now,
+				updatedAt: now,
 			});
 		}
 
@@ -443,9 +519,9 @@ router.post("/api/admin/mass-delete", requireAdmin, async (req, res) => {
 			const topic = it?.topic ?? it?.lecture;
 			if (topic == null) continue;
 			if (chapter) {
-				await db.execute({ sql: "DELETE FROM questions_v2 WHERE topic = ? AND chapter = ?", args: [topic, chapter] });
+				await deleteQuestionsWhere("topic = ? AND chapter = ?", [topic, chapter]);
 			} else {
-				await db.execute({ sql: "DELETE FROM questions_v2 WHERE topic = ? AND (chapter IS NULL OR chapter = '')", args: [topic] });
+				await deleteQuestionsWhere("topic = ? AND (chapter IS NULL OR chapter = '')", [topic]);
 			}
 			await refreshCache(chapter || "", topic);
 			deleted++;
@@ -462,17 +538,18 @@ router.post("/api/admin/rename-chapter", requireAdmin, async (req, res) => {
 		const { oldName, newName } = req.body || {};
 		if (!oldName || !newName) return res.status(400).json({ error: "Missing old or new chapter name." });
 
-		const qr = await db.execute({ sql: "UPDATE questions_v2 SET chapter = ? WHERE chapter = ?", args: [newName, oldName] });
+		// Renames the chapter in BOTH question tables.
+		const questionsUpdated = await updateQuestionsWhere("chapter = ?", [newName], "chapter = ?", [oldName]);
 		const sr = await db.execute({ sql: "UPDATE students SET chapter = ? WHERE chapter = ?", args: [newName, oldName] });
 		const ar = await db.execute({ sql: "UPDATE attempts SET chapter = ? WHERE chapter = ?", args: [newName, oldName] });
-		const total = (qr.rowsAffected || 0) + (sr.rowsAffected || 0) + (ar.rowsAffected || 0);
+		const total = questionsUpdated + (sr.rowsAffected || 0) + (ar.rowsAffected || 0);
 		if (!total) return res.status(404).json({ error: "Chapter not found." });
 
 		await loadQuestions();
 		res.json({
 			success: true,
 			updated: {
-				questions: qr.rowsAffected || 0,
+				questions: questionsUpdated,
 				students: sr.rowsAffected || 0,
 				attempts: ar.rowsAffected || 0,
 				total,
@@ -487,15 +564,16 @@ router.post("/api/admin/rename-topic", requireAdmin, async (req, res) => {
 	try {
 		const { chapter, oldName, newName } = req.body || {};
 		if (!oldName || !newName) return res.status(400).json({ error: "Missing old or new topic name." });
-		let result;
+		// Renames the topic in BOTH question tables.
+		let updated;
 		if (chapter) {
-			result = await db.execute({ sql: "UPDATE questions_v2 SET topic = ? WHERE topic = ? AND chapter = ?", args: [newName, oldName, chapter] });
+			updated = await updateQuestionsWhere("topic = ?", [newName], "topic = ? AND chapter = ?", [oldName, chapter]);
 		} else {
-			result = await db.execute({ sql: "UPDATE questions_v2 SET topic = ? WHERE topic = ?", args: [newName, oldName] });
+			updated = await updateQuestionsWhere("topic = ?", [newName], "topic = ?", [oldName]);
 		}
-		if (!result.rowsAffected) return res.status(404).json({ error: "Topic not found." });
+		if (!updated) return res.status(404).json({ error: "Topic not found." });
 		await loadQuestions();
-		res.json({ success: true, updated: result.rowsAffected });
+		res.json({ success: true, updated });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
@@ -503,20 +581,26 @@ router.post("/api/admin/rename-topic", requireAdmin, async (req, res) => {
 
 
 // ── Year index endpoints ────────────────────────────────────────────────────
-// `year` is now a real column on questions_v2, so this is a plain GROUP BY —
-// no separate question_years table to keep in sync.
+// `year` is a real column on `pyq_questions` (the regular `questions` bank has
+// no year at all), so this is a plain GROUP BY on the PYQ table — no separate
+// question_years table to keep in sync.
 router.get("/api/admin/year-counts", requireAdmin, async (req, res) => {
 	try {
-		const result = await db.execute(
-			"SELECT year, COUNT(*) as count FROM questions_v2 WHERE year IS NOT NULL AND year != '' GROUP BY year ORDER BY year DESC"
-		);
+		const perms = await permissionsForRequest(req);
+		const subjFilter = subjectSqlFilter(perms, "subject");
+		const result = await db.execute({
+			sql: `SELECT year, COUNT(*) as count FROM ${PYQ_TABLE}
+			      WHERE year IS NOT NULL AND year != ''${subjFilter.clause ? " AND (" + subjFilter.clause + ")" : ""}
+			      GROUP BY year ORDER BY year DESC`,
+			args: subjFilter.args,
+		});
 		res.json(result.rows.map(r => ({ year: r.year, count: Number(r.count) })));
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
 });
 
-// THE ACTUAL SPEED FIX: `year` is a real indexed column on questions_v2 now,
+// THE ACTUAL SPEED FIX: `year` is a real indexed column on `pyq_questions`,
 // so this is a plain WHERE — no JOIN, no parsing/looping through every
 // question in unrelated topics, no separate index table that can drift
 // out of sync. This is what used to be slow; now it's exactly as fast as
@@ -526,12 +610,14 @@ router.get("/api/admin/questions-by-year/:year", requireAdmin, async (req, res) 
 		const year = decodeURIComponent(req.params.year || "").trim();
 		if (!year) return res.status(400).json({ error: "Year required" });
 
+		const perms = await permissionsForRequest(req);
+		const subjFilter = subjectSqlFilter(perms, "subject");
 		const result = await db.execute({
 			sql: `SELECT id, chapter, topic, raw_json
-			      FROM questions_v2
-			      WHERE year = ?
+			      FROM ${PYQ_TABLE}
+			      WHERE year = ?${subjFilter.clause ? " AND (" + subjFilter.clause + ")" : ""}
 			      ORDER BY chapter, topic, question_number, id`,
-			args: [year],
+			args: [year, ...subjFilter.args],
 		});
 
 		const questions = result.rows.map((row) => {
@@ -559,8 +645,209 @@ router.get("/api/admin/questions-by-year/:year", requireAdmin, async (req, res) 
 router.get("/api/admin/questions-by-paper", requireAdmin, async (req, res) => {
 	try {
 		const { subject, year, chapter, month, day, shift } = req.query;
+		const perms = await permissionsForRequest(req);
+		if (subject && !isSubjectAllowed(perms, subject)) {
+			return res.json({ count: 0, questions: [] });
+		}
 		const results = await findQuestionsByPaper({ subject, year, chapter, month, day, shift });
-		res.json({ count: results.length, questions: results });
+		const visible = filterRowsBySubject(perms, results, (q) => q.subject || (q.question && q.question.subject));
+		res.json({ count: visible.length, questions: visible });
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PAPER-WISE (exam + year) DENORMALIZED STORE
+// One row per exam+year in the `papers` table, all that paper's questions in a
+// single cell. Powers the "Paper wise" section (owner + institute) and the new
+// JEE/NEET + question-type filters.
+// ═══════════════════════════════════════════════════════════════════════════
+const PAPER_EXAMS = ["JEE Mains", "JEE Advanced", "NEET"];
+
+// PYQ data mapping: Maths → JEE Mains, all other subjects → NEET.
+// An optional examHint (from raw_json.exam) is trusted if present.
+function examForSubject(subject, examHint) {
+	if (examHint) return normalizeExam(examHint);
+	const s = String(subject || "").trim().toLowerCase();
+	if (s === "maths" || s === "math" || s === "mathematics") return "JEE Mains";
+	return "NEET";
+}
+
+// Normalize any incoming exam string to one of PAPER_EXAMS.
+function normalizeExam(e) {
+	const s = String(e || "").trim().toLowerCase();
+	if (s.includes("advanced") || s === "jee_advanced") return "JEE Advanced";
+	if (s.includes("neet")) return "NEET";
+	if (s.includes("jee") || s.includes("main")) return "JEE Mains";
+	return "NEET";
+}
+
+// Append a batch of (already-normalized) question objects into the papers row
+// for (exam, year), creating the row if needed.
+async function appendQuestionsToPaper(exam, year, label, questions) {
+	const ex = normalizeExam(exam);
+	const yr = String(year || "Regular").trim() || "Regular";
+	const lbl = String(label || `${ex} ${yr}`).trim();
+	const now = Date.now();
+	const existing = await db.execute({
+		sql: "SELECT id, questions_json FROM papers WHERE exam = ? AND year = ? LIMIT 1",
+		args: [ex, yr],
+	});
+	let arr = [];
+	let id = null;
+	if (existing.rows.length) {
+		id = existing.rows[0].id;
+		try { arr = JSON.parse(existing.rows[0].questions_json || "[]"); } catch { arr = []; }
+		if (!Array.isArray(arr)) arr = [];
+	}
+	for (const q of questions) arr.push(q);
+	if (id) {
+		await db.execute({
+			sql: "UPDATE papers SET questions_json = ?, question_count = ?, label = ?, updated_at = ? WHERE id = ?",
+			args: [JSON.stringify(arr), arr.length, lbl, now, id],
+		});
+	} else {
+		await db.execute({
+			sql: "INSERT INTO papers (exam, year, label, questions_json, question_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			args: [ex, yr, lbl, JSON.stringify(arr), arr.length, now, now],
+		});
+	}
+}
+
+// ─── Core rebuild logic (also called from server.js on startup) ────────────
+// Reads ALL rows of `pyq_questions`, groups by (exam, year),
+// and rewrites the papers table. Month / day / shift are embedded into each
+// question object so the UI can display shift-level labels for JEE Mains.
+async function rebuildPapersFromPyq() {
+	const result = await db.execute(
+		`SELECT subject, year, month, day, shift, raw_json FROM ${PYQ_TABLE} WHERE year IS NOT NULL AND year != ''`
+	);
+	const grouped = {};
+	for (const row of result.rows) {
+		const year = String(row.year || "").trim();
+		if (!year) continue;
+		let q = {};
+		try { q = JSON.parse(row.raw_json || "{}"); } catch { q = {}; }
+		// Trust embedded exam tag first, otherwise infer from subject.
+		const examHint = q.exam || q.examName || "";
+		const exam = examForSubject(row.subject, examHint);
+		// Attach month / day / shift so the UI can label JEE Mains shifts.
+		if (row.month) q._month = String(row.month).trim();
+		if (row.day) q._day = String(row.day).trim();
+		if (row.shift) q._shift = String(row.shift).trim();
+		q._exam = exam;
+		const key = `${exam}|||${year}`;
+		if (!grouped[key]) grouped[key] = { exam, year, questions: [] };
+		grouped[key].questions.push(q);
+	}
+	// Wipe existing non-Regular rows and rewrite them from scratch.
+	await db.execute("DELETE FROM papers WHERE year != 'Regular'");
+	let papers = 0, total = 0;
+	for (const key of Object.keys(grouped)) {
+		const g = grouped[key];
+		await appendQuestionsToPaper(g.exam, g.year, `${g.exam} ${g.year}`, g.questions);
+		papers++;
+		total += g.questions.length;
+	}
+	// Re-seed the three rolling "Regular" rows so they always exist.
+	const now = Date.now();
+	for (const [ex, yr, lbl] of [
+		["JEE Mains", "Regular", "JEE Regular Ques"],
+		["NEET", "Regular", "NEET Regular Ques"],
+		["JEE Advanced", "Regular", "JEE Advanced Regular Ques"],
+	]) {
+		try {
+			await db.execute({
+				sql: "INSERT OR IGNORE INTO papers (exam, year, label, questions_json, question_count, created_at, updated_at) VALUES (?, ?, ?, '[]', 0, ?, ?)",
+				args: [ex, yr, lbl, now, now],
+			});
+		} catch (_) { }
+	}
+	return { papers, questions: total };
+}
+
+// List papers, optionally filtered by exam and/or question_type. Returns light
+// rows (no question blobs) plus the canonical exam list for the filter UI.
+router.get("/api/admin/papers", requireAdmin, async (req, res) => {
+	try {
+		const { exam, question_type } = req.query;
+		let sql = "SELECT id, exam, year, label, question_count, questions_json FROM papers";
+		const args = [];
+		if (exam && String(exam).trim()) { sql += " WHERE exam = ?"; args.push(normalizeExam(exam)); }
+		sql += " ORDER BY exam, CASE WHEN year = 'Regular' THEN 1 ELSE 0 END, year DESC";
+		const result = await db.execute({ sql, args });
+		const qt = question_type ? String(question_type).trim().toUpperCase() : "";
+		const papers = result.rows.map((r) => {
+			let count = Number(r.question_count) || 0;
+			if (qt) {
+				let arr = [];
+				try { arr = JSON.parse(r.questions_json || "[]"); } catch { arr = []; }
+				count = (Array.isArray(arr) ? arr : []).filter(
+					(q) => String(q.question_type || q.questionType || "MCQ").toUpperCase() === qt
+				).length;
+			}
+			return { id: r.id, exam: r.exam, year: r.year, label: r.label || `${r.exam} ${r.year}`, count };
+		});
+		res.json({ exams: PAPER_EXAMS, papers });
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+// Fetch one paper's questions (optionally filtered by question_type).
+router.get("/api/admin/papers/:id", requireAdmin, async (req, res) => {
+	try {
+		const id = parseInt(req.params.id, 10);
+		const { question_type } = req.query;
+		const result = await db.execute({
+			sql: "SELECT id, exam, year, label, questions_json FROM papers WHERE id = ? LIMIT 1",
+			args: [id],
+		});
+		if (!result.rows.length) return res.status(404).json({ error: "Not found" });
+		const row = result.rows[0];
+		let arr = [];
+		try { arr = JSON.parse(row.questions_json || "[]"); } catch { arr = []; }
+		if (!Array.isArray(arr)) arr = [];
+		const qt = question_type ? String(question_type).trim().toUpperCase() : "";
+		let questions = arr.map((q, i) => ({ paperIndex: i, question: normalizeQuestion(q, { preserveRaw: true }) }));
+		if (qt) {
+			questions = questions.filter(
+				(x) => String(x.question.question_type || x.question.questionType || "MCQ").toUpperCase() === qt
+			);
+		}
+		res.json({ id: row.id, exam: row.exam, year: row.year, label: row.label || `${row.exam} ${row.year}`, count: questions.length, questions });
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+// Append imported questions into paper rows. Body: { buckets: [{exam, year, label, questions}] }.
+// Used by the JSON-import flow to route JEE/NEET uploads into the right paper
+// (PYQ → its year row; non-PYQ → the exam's "Regular Ques" row).
+router.post("/api/admin/papers/append", requireAdmin, async (req, res) => {
+	try {
+		const buckets = Array.isArray(req.body?.buckets) ? req.body.buckets : [];
+		if (!buckets.length) return res.status(400).json({ error: "No buckets provided" });
+		let total = 0;
+		for (const b of buckets) {
+			const qs = Array.isArray(b.questions) ? b.questions.map(normalizeQuestion) : [];
+			if (!qs.length) continue;
+			await appendQuestionsToPaper(b.exam, b.year, b.label, qs);
+			total += qs.length;
+		}
+		res.json({ success: true, added: total });
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+// Rebuild papers table from existing pyq_questions via the rebuildPapersFromPyq() helper.
+// Exposed as a POST endpoint so the admin UI can trigger it manually.
+router.post("/api/admin/papers/rebuild", requireAdmin, async (req, res) => {
+	try {
+		const { papers, questions } = await rebuildPapersFromPyq();
+		res.json({ success: true, papers, questions });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
@@ -571,7 +858,7 @@ router.get("/api/admin/questions-by-paper", requireAdmin, async (req, res) => {
 // frontend "rebuild index" button doesn't 404 — safe to delete once you've
 // updated the frontend to stop calling it.
 router.post("/api/admin/rebuild-year-index", requireAdmin, async (req, res) => {
-	res.json({ success: true, indexed: 0, rows: 0, note: "No-op: questions_v2 has no separate year index to rebuild." });
+	res.json({ success: true, indexed: 0, rows: 0, note: "No-op: year is a real column on pyq_questions — there is no separate year index to rebuild." });
 });
 
 router.post("/api/admin/reload-cache", requireAdmin, async (req, res) => {
@@ -585,23 +872,23 @@ router.post("/api/admin/reload-cache", requireAdmin, async (req, res) => {
 
 // /api/admin/migrate (GET+POST) — these detected corrupted questions_json
 // arrays in the OLD table (a row whose array failed to parse). That failure
-// mode doesn't exist in questions_v2: each row is already one normalized
+// mode doesn't exist in the current schema: each row is already one normalized
 // question object, not a JSON array that can desync internally. Kept as
 // harmless no-ops so old frontend "check for corruption" buttons don't 404;
 // safe to delete both routes once you've updated the frontend.
 router.get("/api/admin/migrate", requireAdmin, async (req, res) => {
-	res.json({ total: 0, corrupted: 0, corruptedLectures: [], note: "No-op: questions_v2 rows can't desync the way old JSON-array rows could." });
+	res.json({ total: 0, corrupted: 0, corruptedLectures: [], note: "No-op: questions / pyq_questions rows can't desync the way old JSON-array rows could." });
 });
 
 router.post("/api/admin/migrate", requireAdmin, async (req, res) => {
-	res.json({ success: true, deleted: 0, message: "No-op: questions_v2 rows can't desync the way old JSON-array rows could." });
+	res.json({ success: true, deleted: 0, message: "No-op: questions / pyq_questions rows can't desync the way old JSON-array rows could." });
 });
 
 
 
 /* ─────────────────────────────────────────────────────────────────────────────
    NEW POWERFUL EXTRACT ROUTE  v2
-   ─────────────────────────────────────────────────────────────────────────────
+   ──────────────────────────────────────────────────────────────────────��──────
    Architecture:
    1. PARALLEL primary extraction  – every image sent to Groq simultaneously
    2. COUNT VERIFICATION           – AI counts visible question numbers per image
@@ -904,7 +1191,7 @@ router.patch("/api/admin/paper-templates/:id", requireAdmin, async (req, res) =>
 });
 
 
-router.get("/api/admin/star-quiz/questions", requireAdmin, async (req, res) => {
+router.get("/api/admin/star-quiz/questions", requireAdmin, requireFeature("starQuiz"), async (req, res) => {
 	try {
 		const result = await db.execute("SELECT * FROM star_quiz_questions ORDER BY chapter, CAST(lecture AS INTEGER)");
 		res.json(result.rows.map(normalizeQuestionRow));
@@ -914,7 +1201,7 @@ router.get("/api/admin/star-quiz/questions", requireAdmin, async (req, res) => {
 });
 
 // GET chapters for STAR Quiz
-router.get("/api/admin/star-quiz/chapters", requireAdmin, async (req, res) => {
+router.get("/api/admin/star-quiz/chapters", requireAdmin, requireFeature("starQuiz"), async (req, res) => {
 	try {
 		const result = await db.execute("SELECT DISTINCT chapter FROM star_quiz_questions WHERE chapter IS NOT NULL AND chapter != '' ORDER BY chapter");
 		res.json(result.rows.map(r => r.chapter));
@@ -924,7 +1211,7 @@ router.get("/api/admin/star-quiz/chapters", requireAdmin, async (req, res) => {
 });
 
 // POST add STAR Quiz questions
-router.post("/api/admin/star-quiz/add-question", requireAdmin, async (req, res) => {
+router.post("/api/admin/star-quiz/add-question", requireAdmin, requireFeature("starQuiz"), async (req, res) => {
 	try {
 		let { chapter, lecture, topic, questions, replace } = req.body || {};
 		if (!chapter || !lecture || !Array.isArray(questions) || !questions.length) {
@@ -955,7 +1242,7 @@ router.post("/api/admin/star-quiz/add-question", requireAdmin, async (req, res) 
 });
 
 // DELETE a STAR Quiz question set
-router.delete("/api/admin/star-quiz/question/:chapter/:lecture", requireAdmin, async (req, res) => {
+router.delete("/api/admin/star-quiz/question/:chapter/:lecture", requireAdmin, requireFeature("starQuiz"), async (req, res) => {
 	try {
 		const chapter = decodeURIComponent(req.params.chapter || "");
 		const lecture = decodeURIComponent(req.params.lecture || "");
@@ -967,7 +1254,7 @@ router.delete("/api/admin/star-quiz/question/:chapter/:lecture", requireAdmin, a
 });
 
 // PUT update a STAR Quiz question set
-router.put("/api/admin/star-quiz/question/:chapter/:lecture", requireAdmin, async (req, res) => {
+router.put("/api/admin/star-quiz/question/:chapter/:lecture", requireAdmin, requireFeature("starQuiz"), async (req, res) => {
 	try {
 		const chapter = decodeURIComponent(req.params.chapter || "");
 		const lecture = decodeURIComponent(req.params.lecture || "");
@@ -985,7 +1272,7 @@ router.put("/api/admin/star-quiz/question/:chapter/:lecture", requireAdmin, asyn
 });
 
 // ── ADMIN: Set access code for a star quiz lecture ───────────────────────────
-router.post("/api/admin/star-quiz/set-code/:chapter/:lecture", requireAdmin, async (req, res) => {
+router.post("/api/admin/star-quiz/set-code/:chapter/:lecture", requireAdmin, requireFeature("starQuiz"), async (req, res) => {
 	try {
 		const chapter = decodeURIComponent(req.params.chapter || "");
 		const lecture = decodeURIComponent(req.params.lecture || "");
@@ -1012,7 +1299,18 @@ router.post("/api/admin/star-quiz/set-code/:chapter/:lecture", requireAdmin, asy
 
 
 // ── ADMIN: create / assign an online test ────────────────────────────────────
-router.post("/api/admin/online-tests", requireAdmin, async (req, res) => {
+/**
+ * Number(x) || fallback silently turns a deliberate 0 into the fallback, which
+ * is why choosing "0 marks for a wrong answer" kept saving as -1. Only fall
+ * back when the value is genuinely missing or not a number.
+ */
+function numOr(value, fallback) {
+	if (value === null || value === undefined || value === "") return fallback;
+	const n = Number(value);
+	return Number.isFinite(n) ? n : fallback;
+}
+
+router.post("/api/admin/online-tests", requireAdmin, requireFeature("onlineTests"), async (req, res) => {
 	try {
 		const { testName, questionKeys, questions, marksCorrect, marksWrong, liveAt, endsAt, durationMinutes, assignedRolls, maxAttempts, isStrict } = req.body || {};
 
@@ -1036,8 +1334,8 @@ router.post("/api/admin/online-tests", requireAdmin, async (req, res) => {
 				JSON.stringify(keys || []),
 				// questions_json kept for backward-compat — empty if keys provided, else legacy data
 				keys ? "[]" : JSON.stringify(legacyQuestions),
-				Number(marksCorrect) || 4,
-				Number(marksWrong) || -1,
+				numOr(marksCorrect, 4),
+				numOr(marksWrong, -1),
 				Number(liveAt) || now,
 				Number(endsAt) || (now + 7 * 24 * 60 * 60 * 1000),
 				JSON.stringify(Array.isArray(assignedRolls) ? assignedRolls : []),
@@ -1055,33 +1353,95 @@ router.post("/api/admin/online-tests", requireAdmin, async (req, res) => {
 });
 
 // ── ADMIN: list all online tests ─────────────────────────────────────────────
-router.get("/api/admin/online-tests", requireAdmin, async (req, res) => {
+router.get("/api/admin/online-tests", requireAdmin, requireFeature("onlineTests"), async (req, res) => {
 	try {
 		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
 		const result = await db.execute({
-			sql: "SELECT id, test_name, marks_correct, marks_wrong, live_at, ends_at, assigned_rolls, created_at FROM online_tests WHERE institute_id = ? ORDER BY created_at DESC",
+			sql: "SELECT id, test_name, marks_correct, marks_wrong, live_at, ends_at, assigned_rolls, created_at, duration_minutes, max_attempts, is_strict FROM online_tests WHERE institute_id = ? ORDER BY created_at DESC",
 			args: [instId],
 		});
 		res.json(result.rows.map(r => ({
 			id: r.id,
 			testName: r.test_name,
-			marksCorrect: r.marks_correct,
-			marksWrong: r.marks_wrong,
+			marksCorrect: numOr(r.marks_correct, 4),
+			marksWrong: numOr(r.marks_wrong, -1),
 			liveAt: r.live_at,
 			endsAt: r.ends_at,
 			assignedRolls: (() => { try { return JSON.parse(r.assigned_rolls || "[]"); } catch { return []; } })(),
 			createdAt: r.created_at,
+			durationMinutes: r.duration_minutes || 90,
+			maxAttempts: r.max_attempts || 1,
+			isStrict: r.is_strict === 1,
 		})));
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
 });
 
+// ── ADMIN: update an online test ─────────────────────────────────────────────
+router.put("/api/admin/online-tests/:id", requireAdmin, requireFeature("onlineTests"), async (req, res) => {
+	try {
+		const testId = Number(req.params.id);
+		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
+		const { testName, questionKeys, questions, marksCorrect, marksWrong, liveAt, endsAt, durationMinutes, assignedRolls, maxAttempts, isStrict } = req.body || {};
+
+		const keys = Array.isArray(questionKeys) && questionKeys.length ? questionKeys : null;
+		const legacyQuestions = Array.isArray(questions) && questions.length ? questions : null;
+
+		let sql = `UPDATE online_tests 
+		           SET test_name = ?, 
+		               marks_correct = ?, 
+		               marks_wrong = ?, 
+		               live_at = ?, 
+		               ends_at = ?, 
+		               assigned_rolls = ?, 
+		               duration_minutes = ?, 
+		               max_attempts = ?, 
+		               is_strict = ?`;
+		const args = [
+			String(testName || "Online Test").trim(),
+			numOr(marksCorrect, 4),
+			numOr(marksWrong, -1),
+			Number(liveAt) || Date.now(),
+			Number(endsAt) || (Date.now() + 7 * 24 * 60 * 60 * 1000),
+			JSON.stringify(Array.isArray(assignedRolls) ? assignedRolls : []),
+			Number(durationMinutes) || 90,
+			Number(maxAttempts) || 1,
+			isStrict ? 1 : 0
+		];
+
+		if (keys || legacyQuestions) {
+			sql += `, question_keys_json = ?, questions_json = ?, question_count = ?`;
+			args.push(
+				JSON.stringify(keys || []),
+				keys ? "[]" : JSON.stringify(legacyQuestions),
+				keys ? keys.length : legacyQuestions.length
+			);
+		}
+
+		sql += ` WHERE id = ? AND institute_id = ?`;
+		args.push(testId, instId);
+
+		const result = await db.execute({ sql, args });
+		if (result.rowsAffected === 0) {
+			return res.status(404).json({ error: "Test not found or unauthorized" });
+		}
+		// The student questions endpoint caches the resolved question set by test
+		// id (see cache.getOrSet in routes/student.js). Without this drop, a
+		// teacher's edit would keep serving the OLD paper for up to the TTL.
+		try { await cache.invalidateTest(testId); } catch (_) { /* cache is best-effort */ }
+		res.json({ success: true });
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed to update online test" });
+	}
+});
+
 // ── ADMIN: delete an online test ─────────────────────────────────────────────
-router.delete("/api/admin/online-tests/:id", requireAdmin, async (req, res) => {
+router.delete("/api/admin/online-tests/:id", requireAdmin, requireFeature("onlineTests"), async (req, res) => {
 	try {
 		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
 		await db.execute({ sql: "DELETE FROM online_tests WHERE id = ? AND institute_id = ?", args: [Number(req.params.id), instId] });
+		try { await cache.invalidateTest(Number(req.params.id)); } catch (_) { /* cache is best-effort */ }
 		res.json({ success: true });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
@@ -1089,41 +1449,158 @@ router.delete("/api/admin/online-tests/:id", requireAdmin, async (req, res) => {
 });
 
 
-// ── ADMIN: add one or multiple roll numbers ──────────────────────────────────
-router.post("/api/admin/registered-students/add", requireAdmin, async (req, res) => {
+// ── ADMIN: fetch questions for a specific online test ─────────────────────────
+router.get("/api/admin/online-tests/:id/questions", requireAdmin, requireFeature("onlineTests"), async (req, res) => {
 	try {
-		const raw = req.body?.rollNumbers; // string (comma/newline separated) or array
-		let rolls = [];
-		if (Array.isArray(raw)) {
-			rolls = raw.map(r => String(r).trim()).filter(Boolean);
-		} else {
-			rolls = String(raw || "").split(/[\n,]+/).map(r => r.trim()).filter(Boolean);
+		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
+		const testId = Number(req.params.id);
+		if (!Number.isFinite(testId)) return res.status(400).json({ error: "Invalid test id" });
+
+		const result = await db.execute({
+			sql: "SELECT question_keys_json, questions_json FROM online_tests WHERE id = ? AND institute_id = ? LIMIT 1",
+			args: [testId, instId],
+		});
+		if (!result.rows.length) return res.status(404).json({ error: "Test not found" });
+
+		const r = result.rows[0];
+		let keys = [];
+		let questions = [];
+		try {
+			keys = JSON.parse(r.question_keys_json || "[]");
+			if (Array.isArray(keys) && keys.length) {
+				questions = await resolveQuestionKeys(keys);
+			} else {
+				questions = JSON.parse(r.questions_json || "[]");
+			}
+		} catch { questions = []; }
+
+		res.json({ success: true, keys, questions });
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed to load questions" });
+	}
+});
+
+
+
+// ── Shared student-creation logic ──────────────────────────────────────
+// Exported so the owner panel (routes/owner.js) can add students to any
+// institute using exactly the same validation and de-duplication rules.
+//
+// Each input row is { name, className, section, mobile, email }.
+// rollNumber is optional — if omitted we mint "R<id>" after insert, because
+// attendance / notifications / student_sessions still join on roll_number.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+async function addStudentsToInstitute(students, instId, now = Date.now()) {
+	let added = 0, skipped = 0, invalid = 0;
+	const errors = [];
+
+	for (const s of students || []) {
+		const name = String(s.name || "").trim();
+		const className = String(s.className || s.class_name || "").trim();
+		const section = String(s.section || "").trim().toUpperCase();
+		const mobile = String(s.mobile || s.phone || "").trim();
+		const email = String(s.email || "").trim().toLowerCase();
+		const label = name || email || "(blank row)";
+
+		// Mobile is optional: the student logs in with a one-time code sent to
+		// their email, so a phone number is only nice-to-have contact detail.
+		if (!name || !className || !section || !email) {
+			invalid++;
+			errors.push({ student: label, reason: "Name, class, section and email are all required" });
+			continue;
 		}
-		if (!rolls.length) return res.status(400).json({ error: "No roll numbers provided" });
+		if (!EMAIL_RE.test(email)) {
+			invalid++;
+			errors.push({ student: label, reason: `"${email}" is not a valid email address` });
+			continue;
+		}
+		// Only validate the number when one was actually supplied.
+		if (mobile && !/^\d{10}$/.test(mobile)) {
+			invalid++;
+			errors.push({ student: label, reason: "Mobile number must be exactly 10 digits" });
+			continue;
+		}
+
+		// The email is the login identity, so it must be unique inside the
+		// institute. Checked up front so we can report a friendly reason instead
+		// of relying on a unique-index violation.
+		const dupe = await db.execute({
+			sql: "SELECT id FROM registered_students WHERE institute_id = ? AND lower(email) = ? LIMIT 1",
+			args: [instId, email],
+		});
+		if (dupe.rows.length) {
+			skipped++;
+			errors.push({ student: label, reason: "This email is already registered in this institute" });
+			continue;
+		}
+
+		const explicitRoll = String(s.rollNumber || "").trim();
+		const provisionalRoll = explicitRoll || `tmp-${now}-${Math.random().toString(36).slice(2, 10)}`;
+
+		try {
+			// profile_complete = 1 immediately: the institute supplies every detail,
+			// so students never see a profile-setup step. password_hash stays NULL
+			// because login is email + one-time code only.
+			const ins = await db.execute({
+				sql: `INSERT INTO registered_students (roll_number, institute_id, name, class_name, section, phone, email, profile_complete, password_hash, created_at, updated_at)
+				      VALUES (?, ?, ?, ?, ?, ?, ?, 1, NULL, ?, ?)`,
+				args: [provisionalRoll, instId, name, className, section, mobile, email, now, now],
+			});
+			const newId = ins.lastInsertRowid;
+			if (!explicitRoll && newId) {
+				await db.execute({
+					sql: "UPDATE registered_students SET roll_number = ? WHERE id = ?",
+					args: [`R${newId}`, newId],
+				});
+			}
+			added++;
+		} catch (e) {
+			skipped++;
+			const msg = String(e && e.message || "");
+			errors.push({
+				student: label,
+				reason: /unique|duplicate/i.test(msg) ? "Already registered in this institute" : (msg || "Could not save this student"),
+			});
+		}
+	}
+
+	return { added, skipped, invalid, errors };
+}
+
+// ── ADMIN: add one or multiple students ──────────────────────────────
+// The institute enters name, class, section, mobile and email. There are no
+// passwords any more — students sign in with an emailed one-time code, so the
+// email address IS the login identity and must be unique inside the institute.
+// roll_number is still minted automatically because attendance, notifications
+// and sessions all join on it.
+router.post("/api/admin/registered-students/add", requireAdmin, requireFeature("studentManagement"), async (req, res) => {
+	try {
+		const { students } = req.body || {};
+		if (!Array.isArray(students) || !students.length) {
+			return res.status(400).json({ error: "No student records provided" });
+		}
 		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
 		const now = Date.now();
-		let added = 0, skipped = 0;
-		for (const roll of rolls) {
-			try {
-				await db.execute({
-					sql: "INSERT INTO registered_students (roll_number, institute_id, created_at, updated_at) VALUES (?, ?, ?, ?)",
-					args: [roll, instId, now, now],
-				});
-				added++;
-			} catch (_) { skipped++; } // UNIQUE constraint → already exists
-		}
-		res.json({ success: true, added, skipped });
+		const outcome = await addStudentsToInstitute(students, instId, now);
+		res.json({ success: true, ...outcome });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
 });
 
 // ── ADMIN: list all registered students ─────────────────────────────────────
-router.get("/api/admin/registered-students", requireAdmin, async (req, res) => {
+router.get("/api/admin/registered-students", requireAdmin, requireFeature("studentManagement"), async (req, res) => {
 	try {
 		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
+		// Explicit column list, not SELECT * — keeps the payload small and stops
+		// future wide columns from being shipped to the browser by accident.
 		const result = await db.execute({
-			sql: "SELECT * FROM registered_students WHERE institute_id = ? ORDER BY created_at DESC",
+			sql: `SELECT id, roll_number, name, class_name, section, phone, email, age,
+			             date_of_birth, profile_complete, batch_id, created_at, updated_at
+			        FROM registered_students
+			       WHERE institute_id = ?
+			       ORDER BY created_at DESC`,
 			args: [instId],
 		});
 		res.json(result.rows.map(r => ({
@@ -1131,9 +1608,12 @@ router.get("/api/admin/registered-students", requireAdmin, async (req, res) => {
 			rollNumber: r.roll_number,
 			name: r.name || "",
 			className: r.class_name || "",
+			section: r.section || "",
+			email: r.email || "",
 			phone: r.phone || "",
 			age: r.age || "",
 			dateOfBirth: r.date_of_birth || "",
+			batchId: r.batch_id || null,
 			profileComplete: !!r.profile_complete,
 			createdAt: r.created_at,
 			updatedAt: r.updated_at,
@@ -1143,20 +1623,260 @@ router.get("/api/admin/registered-students", requireAdmin, async (req, res) => {
 	}
 });
 
-// ── ADMIN: delete a registered student by id ────────────────────────────────
-router.delete("/api/admin/registered-students/:id", requireAdmin, async (req, res) => {
+// ── ADMIN: list all student test history ─────────────────────────────────────
+router.get("/api/admin/test-history", requireAdmin, async (req, res) => {
 	try {
 		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
-		await db.execute({ sql: "DELETE FROM registered_students WHERE id = ? AND institute_id = ?", args: [Number(req.params.id), instId] });
-		res.json({ success: true });
+		const result = await db.execute({
+			sql: "SELECT id, mobile, chapter, lecture, topic, correct_count, wrong_count, skipped_count, total_questions, marks_score, max_marks, accuracy_pct, time_taken, timestamp, student_name, student_class, online_test_id, is_locked FROM test_history WHERE institute_id = ? ORDER BY timestamp DESC",
+			args: [instId],
+		});
+		res.json(result.rows);
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed to load test history" });
+	}
+});
+
+// ── ADMIN: get detailed student test attempt ────────────────────────────────
+router.get("/api/admin/test-attempt-details/:attemptId", requireAdmin, async (req, res) => {
+	try {
+		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
+		const attemptId = Number(req.params.attemptId);
+		if (!Number.isFinite(attemptId)) return res.status(400).json({ error: "Invalid attempt id" });
+
+		// Fetch test attempt
+		const attemptResult = await db.execute({
+			sql: "SELECT id, mobile, chapter, lecture, topic, correct_count, wrong_count, skipped_count, total_questions, marks_score, max_marks, accuracy_pct, grade, time_taken, scheme, timestamp, student_name, student_class, answers_json, online_test_id, is_locked, question_order_json FROM test_history WHERE id = ? AND institute_id = ? LIMIT 1",
+			args: [attemptId, instId],
+		});
+
+		if (!attemptResult.rows.length) {
+			return res.status(404).json({ error: "Attempt not found" });
+		}
+
+		const attempt = attemptResult.rows[0];
+
+		// Fetch questions
+		let questions = [];
+		if (attempt.online_test_id) {
+			const testResult = await db.execute({
+				sql: "SELECT question_keys_json, questions_json FROM online_tests WHERE id = ? AND institute_id = ? LIMIT 1",
+				args: [attempt.online_test_id, instId]
+			});
+			if (testResult.rows.length) {
+				const r = testResult.rows[0];
+				try {
+					const keys = JSON.parse(r.question_keys_json || "[]");
+					if (Array.isArray(keys) && keys.length) {
+						questions = await resolveQuestionKeys(keys);
+					} else {
+						questions = JSON.parse(r.questions_json || "[]");
+					}
+					// Re-order into the sequence this particular student was served, so
+					// the stored answer indexes point at the right questions.
+					questions = applyQuestionOrder(questions, parseQuestionOrder(attempt.question_order_json));
+				} catch (_) { }
+			}
+		} else {
+			// Star quiz / Chapter test
+			const result = await db.execute({
+				sql: "SELECT questions_json FROM star_quiz_questions WHERE chapter = ? AND lecture = ? LIMIT 1",
+				args: [attempt.chapter, attempt.lecture]
+			});
+			if (result.rows.length) {
+				try {
+					questions = JSON.parse(result.rows[0].questions_json || "[]");
+				} catch (_) { }
+			}
+		}
+
+		res.json({
+			attempt: {
+				id: attempt.id,
+				mobile: attempt.mobile,
+				studentName: attempt.student_name,
+				studentClass: attempt.student_class,
+				correctCount: attempt.correct_count,
+				wrongCount: attempt.wrong_count,
+				skippedCount: attempt.skipped_count,
+				totalQuestions: attempt.total_questions,
+				marksScore: attempt.marks_score,
+				maxMarks: attempt.max_marks,
+				accuracyPct: attempt.accuracy_pct,
+				timeTaken: attempt.time_taken,
+				scheme: attempt.scheme,
+				timestamp: attempt.timestamp,
+				isLocked: attempt.is_locked,
+				answers: (() => { try { return JSON.parse(attempt.answers_json || "[]"); } catch { return []; } })()
+			},
+			questions
+		});
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed to load attempt details" });
+	}
+});
+
+// ── ADMIN: delete a registered student by id ────────────────────────────────
+/* ── ADMIN: unlock (or re-lock) a student\'s locked test attempt ──────
+   is_locked =  1  locked by strict mode, student is blocked
+   is_locked = -1  teacher unlocked it, the student may resume
+   is_locked =  0  ordinary completed attempt                        */
+router.post("/api/admin/test-history/:id/unlock", requireAdmin, async (req, res) => {
+	try {
+		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
+		const id = Number(req.params.id);
+		if (!id) return res.status(400).json({ error: "Attempt id is required" });
+		const relock = !!(req.body && req.body.relock);
+		const next = relock ? 1 : -1;
+
+		const cur = await db.execute({
+			sql: "SELECT id, student_name, mobile, is_locked FROM test_history WHERE id = ? AND institute_id = ? LIMIT 1",
+			args: [id, instId],
+		});
+		if (!cur.rows.length) return res.status(404).json({ error: "Attempt not found" });
+
+		await db.execute({
+			sql: "UPDATE test_history SET is_locked = ? WHERE id = ? AND institute_id = ?",
+			args: [next, id, instId],
+		});
+
+		res.json({
+			success: true,
+			id,
+			isLocked: next,
+			studentName: cur.rows[0].student_name || cur.rows[0].mobile || "Student",
+		});
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed to unlock the attempt" });
+	}
+});
+
+// ── ADMIN: remove a student ──────────────────────────────────────────────────
+// The :id segment may be either the numeric primary key OR the roll number
+// (the students list in the portal identifies rows by roll number). Passing a
+// roll number like "STU001" through Number() used to produce NaN, which
+// Postgres rejected with: invalid input syntax for type bigint: "NaN".
+// So branch on the shape of the parameter and match the right column.
+router.delete("/api/admin/registered-students/:id", requireAdmin, requireFeature("studentManagement"), async (req, res) => {
+	try {
+		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
+		const raw = String(req.params.id || "").trim();
+		if (!raw) return res.status(400).json({ error: "Missing student id" });
+
+		const numericId = /^\d+$/.test(raw) ? Number(raw) : null;
+		const result = numericId !== null
+			? await db.execute({
+				sql: "DELETE FROM registered_students WHERE id = ? AND institute_id = ?",
+				args: [numericId, instId],
+			})
+			: await db.execute({
+				sql: "DELETE FROM registered_students WHERE roll_number = ? AND institute_id = ?",
+				args: [raw, instId],
+			});
+
+		const removed = Number(result?.rowsAffected ?? result?.rowCount ?? 0);
+		if (!removed) return res.status(404).json({ error: "Student not found in this institute" });
+		res.json({ success: true, removed });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
 });
 
+// ── ADMIN: edit a student's details ──────────────────────────────────────────
+// Accepts a numeric id or a roll number, same as DELETE above. Only the fields
+// present in the body are written, so a partial edit never blanks the rest.
+// Email is the login identity, so it must stay unique within the institute.
+router.put("/api/admin/registered-students/:id", requireAdmin, requireFeature("studentManagement"), async (req, res) => {
+	try {
+		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
+		const raw = String(req.params.id || "").trim();
+		if (!raw) return res.status(400).json({ error: "Missing student id" });
+
+		const numericId = /^\d+$/.test(raw) ? Number(raw) : null;
+		const findSql = numericId !== null
+			? "SELECT id, roll_number, email FROM registered_students WHERE id = ? AND institute_id = ? LIMIT 1"
+			: "SELECT id, roll_number, email FROM registered_students WHERE roll_number = ? AND institute_id = ? LIMIT 1";
+		const found = await db.execute({ sql: findSql, args: [numericId !== null ? numericId : raw, instId] });
+		const student = found.rows[0];
+		if (!student) return res.status(404).json({ error: "Student not found in this institute" });
+
+		const body = req.body || {};
+		const sets = [];
+		const args = [];
+		const pushIfGiven = (column, value) => { sets.push(`${column} = ?`); args.push(value); };
+
+		if (body.name !== undefined) {
+			const name = String(body.name).trim();
+			if (!name) return res.status(400).json({ error: "Name cannot be empty" });
+			pushIfGiven("name", name);
+		}
+		if (body.className !== undefined) pushIfGiven("class_name", String(body.className).trim().replace(/\s+/g, " "));
+		if (body.section !== undefined) pushIfGiven("section", String(body.section).trim());
+		if (body.mobile !== undefined || body.phone !== undefined) {
+			const digits = String(body.mobile ?? body.phone).replace(/\D/g, "");
+			if (digits && digits.length !== 10) return res.status(400).json({ error: "Mobile number must be 10 digits" });
+			pushIfGiven("phone", digits);
+		}
+		if (body.age !== undefined) pushIfGiven("age", body.age === "" || body.age === null ? null : Number(body.age) || null);
+		if (body.dateOfBirth !== undefined) pushIfGiven("date_of_birth", String(body.dateOfBirth || ""));
+		if (body.email !== undefined) {
+			const email = String(body.email).trim().toLowerCase();
+			if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+				return res.status(400).json({ error: "Please enter a valid email address" });
+			}
+			if (email !== String(student.email || "").toLowerCase()) {
+				const clash = await db.execute({
+					sql: "SELECT id FROM registered_students WHERE LOWER(email) = ? AND institute_id = ? AND id <> ? LIMIT 1",
+					args: [email, instId, student.id],
+				});
+				if (clash.rows.length) return res.status(409).json({ error: "Another student already uses this email" });
+			}
+			pushIfGiven("email", email);
+		}
+
+		if (!sets.length) return res.status(400).json({ error: "Nothing to update" });
+
+		sets.push("updated_at = ?");
+		args.push(Date.now());
+		args.push(student.id, instId);
+
+		await db.execute({
+			sql: `UPDATE registered_students SET ${sets.join(", ")} WHERE id = ? AND institute_id = ?`,
+			args,
+		});
+
+		const after = await db.execute({
+			sql: `SELECT id, roll_number, name, class_name, section, phone, email, age,
+			             date_of_birth, profile_complete, batch_id, updated_at
+			        FROM registered_students WHERE id = ? LIMIT 1`,
+			args: [student.id],
+		});
+		const r = after.rows[0] || {};
+		res.json({
+			success: true,
+			student: {
+				id: r.id,
+				rollNumber: r.roll_number,
+				name: r.name || "",
+				className: r.class_name || "",
+				section: r.section || "",
+				phone: r.phone || "",
+				email: r.email || "",
+				age: r.age || "",
+				dateOfBirth: r.date_of_birth || "",
+				batchId: r.batch_id || null,
+				profileComplete: !!r.profile_complete,
+				updatedAt: r.updated_at,
+			},
+		});
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed to update the student" });
+	}
+});
+
 
 // ── ADMIN: list all pending student requests ─────────────────────────────────
-router.get("/api/admin/student-requests", requireAdmin, async (req, res) => {
+router.get("/api/admin/student-requests", requireAdmin, requireFeature("studentManagement"), async (req, res) => {
 	try {
 		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
 		const result = await db.execute({
@@ -1179,9 +1899,11 @@ router.get("/api/admin/student-requests", requireAdmin, async (req, res) => {
 });
 
 // ── ADMIN: approve a student request (move to registered_students) ───────────
-router.post("/api/admin/student-requests/:id/approve", requireAdmin, async (req, res) => {
+router.post("/api/admin/student-requests/:id/approve", requireAdmin, requireFeature("studentManagement"), async (req, res) => {
 	try {
 		const id = Number(req.params.id);
+		// Passwords were removed in favour of email OTP login, so approval no
+		// longer needs (or accepts) one.
 		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
 		const result = await db.execute({ sql: "SELECT * FROM student_requests WHERE id = ? AND institute_id = ?", args: [id, instId] });
 		if (!result.rows.length) return res.status(404).json({ error: "Request not found" });
@@ -1191,15 +1913,15 @@ router.post("/api/admin/student-requests/:id/approve", requireAdmin, async (req,
 		// the institute_id forward so the approved student belongs to this institute.
 		try {
 			await db.execute({
-				sql: `INSERT INTO registered_students (roll_number, institute_id, name, class_name, phone, age, date_of_birth, profile_complete, created_at, updated_at)
-				      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
-				args: [r.roll_number, instId, r.name, r.class_name, r.phone, r.age, r.date_of_birth, now, now],
+				sql: `INSERT INTO registered_students (roll_number, institute_id, name, class_name, section, phone, email, age, date_of_birth, profile_complete, created_at, updated_at)
+				      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+				args: [r.roll_number, instId, r.name, r.class_name, r.section || "", r.phone, (r.email || "").toLowerCase(), r.age, r.date_of_birth, now, now],
 			});
 		} catch (_) {
 			// Already exists — update with profile details
 			await db.execute({
-				sql: `UPDATE registered_students SET institute_id=?, name=?, class_name=?, phone=?, age=?, date_of_birth=?, profile_complete=1, updated_at=? WHERE roll_number=?`,
-				args: [instId, r.name, r.class_name, r.phone, r.age, r.date_of_birth, now, r.roll_number],
+				sql: `UPDATE registered_students SET institute_id=?, name=?, class_name=?, section=?, phone=?, email=?, age=?, date_of_birth=?, profile_complete=1, updated_at=? WHERE roll_number=? AND institute_id=?`,
+				args: [instId, r.name, r.class_name, r.section || "", r.phone, (r.email || "").toLowerCase(), r.age, r.date_of_birth, now, r.roll_number, instId],
 			});
 		}
 		// Remove from requests
@@ -1211,13 +1933,35 @@ router.post("/api/admin/student-requests/:id/approve", requireAdmin, async (req,
 });
 
 // ── ADMIN: reject a student request (delete from requests) ───────────────────
-router.delete("/api/admin/student-requests/:id", requireAdmin, async (req, res) => {
+router.delete("/api/admin/student-requests/:id", requireAdmin, requireFeature("studentManagement"), async (req, res) => {
 	try {
 		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
 		await db.execute({ sql: "DELETE FROM student_requests WHERE id = ? AND institute_id = ?", args: [Number(req.params.id), instId] });
 		res.json({ success: true });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+
+// ── ADMIN: reset student password ─────────────────────────────────────────
+router.post("/api/admin/registered-students/:id/reset-password", requireAdmin, requireFeature("studentManagement"), async (req, res) => {
+	try {
+		const id = Number(req.params.id);
+		const { password } = req.body || {};
+		if (!password) return res.status(400).json({ error: "Password is required" });
+		if (!helpers.validatePasswordComplexity(password)) {
+			return res.status(400).json({ error: "Password does not meet complexity requirements" });
+		}
+		const instId = sessionInstituteId(req) || (await getDefaultInstituteId());
+		const passwordHash = helpers.hashPasscode(password);
+		await db.execute({
+			sql: "UPDATE registered_students SET password_hash = ? WHERE id = ? AND institute_id = ?",
+			args: [passwordHash, id, instId],
+		});
+		res.json({ success: true });
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed to reset password" });
 	}
 });
 
@@ -1431,6 +2175,27 @@ router.get("/api/admin/attendance/student/:roll", async (req, res) => {
 	}
 });
 
+// ── ATTENDANCE: All-time summary stats for a student ─────────────────
+router.get("/api/admin/attendance/student/:roll/summary", async (req, res) => {
+	try {
+		const roll = req.params.roll;
+		const result = await db.execute({
+			sql: "SELECT status, COUNT(*) as count FROM attendance WHERE roll_number = ? GROUP BY status",
+			args: [roll],
+		});
+		let present = 0, absent = 0;
+		result.rows.forEach(row => {
+			if (row.status === "present") present = Number(row.count);
+			else if (row.status === "absent") absent = Number(row.count);
+		});
+		const total = present + absent;
+		const percent = total > 0 ? Math.round((present / total) * 100) : 0;
+		res.json({ total, present, absent, percent });
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
 // ── NOTIFICATIONS: Get unread for a student ──────────────────────────
 router.get("/api/admin/notifications/:roll", async (req, res) => {
 	try {
@@ -1460,3 +2225,5 @@ router.post("/api/admin/notifications/read", async (req, res) => {
 });
 
 module.exports = router;
+module.exports.rebuildPapersFromPyq = rebuildPapersFromPyq;
+module.exports.addStudentsToInstitute = addStudentsToInstitute;

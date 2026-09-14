@@ -84,10 +84,12 @@ router.post("/api/teacher/logout", (req, res) => {
 	res.json({ success: true });
 });
 
-// ── INSTITUTE login (used by client.html for every institute/client) ──────────
+// ── INSTITUTE login (used by institute.html for every institute/client) ───────
 // Login with a unique institute code (id) + that institute's own passcode.
-// Sets the same `admin`/`teacher` session flags so all requireAdmin routes keep
-// working, and binds req.session.institute_id for server-side data scoping.
+// This ONLY sets institute_id on the session — admin/teacher privileges are NOT
+// granted here. The separate teacher-passcode step (/api/institute/teacher-login)
+// elevates the session. This prevents students (who pick "Student" at step 2)
+// from accidentally inheriting teacher privileges via the shared cookie.
 router.post("/api/institute/login", loginRateLimit, async (req, res) => {
 	try {
 		const code = String(req.body?.code || req.body?.instituteId || "").trim().toUpperCase();
@@ -115,6 +117,8 @@ router.post("/api/institute/login", loginRateLimit, async (req, res) => {
 		loginFailMap.delete(req.ip);
 		req.session.regenerate((err) => {
 			if (err) return res.status(500).json({ error: "Session error" });
+			// Only bind institute_id — do NOT set admin/teacher yet.
+			// Those are granted by /api/institute/teacher-login.
 			req.session.institute_id = inst.id;
 			req.session.loginTime = Date.now();
 			req.session.save((saveErr) => {
@@ -154,7 +158,7 @@ router.get("/api/institute/me", async (req, res) => {
 			permissions,
 			status: inst.status || "active",
 			planExpiresAt: inst.plan_expires_at || 0,
-			isAdmin: !!req.session?.admin,
+			isAdmin: !!(req.session?.admin && req.session?.teacher),
 		});
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
@@ -207,7 +211,31 @@ router.post("/api/institute/teacher-login", loginRateLimit, async (req, res) => 
 	}
 });
 
-// ── Public institute lookup ──────────────────────────────────────────────────
+// ── Public institute lookup (by query param) ─────────────────────────────────
+// Frontend calls GET /api/institute/info?code=TRIUMPH
+router.get("/api/institute/info", async (req, res) => {
+	try {
+		const code = String(req.query.code || "").trim().toUpperCase();
+		if (!code) return res.status(400).json({ error: "Institute code required" });
+		const r = await db.execute({
+			sql: "SELECT code, name, logo_url, status, plan_expires_at FROM institutes WHERE code = ? LIMIT 1",
+			args: [code],
+		});
+		if (!r.rows.length) return res.status(404).json({ error: "Institute not found" });
+		const inst = r.rows[0];
+		if (inst.status && inst.status !== "active") {
+			return res.status(403).json({ error: "This institute account is suspended." });
+		}
+		if (inst.plan_expires_at && Number(inst.plan_expires_at) > 0 && Date.now() > Number(inst.plan_expires_at)) {
+			return res.status(403).json({ error: "This institute's plan has expired." });
+		}
+		res.json({ code: inst.code, name: inst.name, logoUrl: inst.logo_url || "" });
+	} catch (e) {
+		res.status(500).json({ error: e.message || "Failed" });
+	}
+});
+
+// ── Public institute lookup (by param) ──────────────────────────────────────
 // Returns minimal public info (code + name + logo) for an institute by code.
 // Used by the embedded student portal to display the right branding without
 // requiring an admin/teacher session. Does NOT expose passcode or permissions.

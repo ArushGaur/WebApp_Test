@@ -1,5 +1,5 @@
 /* ════════════════════════════════════════════════════════════════════════
-   GRIP PHYSICS — OWNER PANEL
+   VYORRA — DEVELOPER PANEL
    Visual identity: Deep Teal — both light and dark themes.
    Light mode: crisp seafoam-white surfaces with teal accents — clean, clinical.
    Dark mode: deep aqua-black base with cyan-teal signal — focused, cool.
@@ -2190,6 +2190,51 @@ tr:hover td {
     font-size: 0.72rem !important;
 }
 
+/* ── ONLINE TEST SUCCESS TOAST ── */
+#ot-success-toast {
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%) translateY(0);
+    z-index: 999999;
+    background: var(--bg-card);
+    border: 2px solid rgba(46,210,180,0.4);
+    color: var(--text);
+    padding: 18px 28px;
+    border-radius: 16px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(46,210,180,0.08);
+    font: 500 1rem 'Outfit', sans-serif;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+#ot-success-toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    animation: otSuccessIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+#ot-success-toast.fade-out {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+@keyframes otSuccessIn {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(30px) scale(0.92);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0) scale(1);
+    }
+}
+
 .lecture-card-meta {
     font-size: 0.76rem;
     color: var(--text-dim);
@@ -3010,6 +3055,12 @@ tr:hover td {
     transition: var(--transition);
 }
 
+#mobileMenuBtn.drawer-open {
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
+}
+
 #mobileMenuBtn span {
     display: block;
     width: 20px;
@@ -3045,7 +3096,7 @@ tr:hover td {
     background: var(--bg-sidebar);
     border-right: 1px solid var(--border);
     z-index: 250;
-    padding: 70px 12px 24px;
+    padding: 20px 12px 24px;
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -4652,10 +4703,12 @@ tr:hover td {
 #ag-modal-body::-webkit-scrollbar {
     width: 6px;
 }
+
 #ag-modal-body::-webkit-scrollbar-thumb {
     background: rgba(45, 212, 191, 0.25);
     border-radius: 10px;
 }
+
 #ag-modal-body::-webkit-scrollbar-thumb:hover {
     background: rgba(45, 212, 191, 0.45);
 }
@@ -4938,7 +4991,7 @@ tr:hover td {
     margin-left: 12px;
 }
 
-.ag-topic-card > div:last-child {
+.ag-topic-card>div:last-child {
     font-size: 0.72rem !important;
     font-weight: 700 !important;
     color: var(--accent) !important;
