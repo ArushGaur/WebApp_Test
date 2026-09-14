@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Institute Panel — Vyorra</title>
     <meta name="robots" content="noindex, nofollow">
-    <link rel="canonical" href="https://vyorra.in/institute">
+    <link rel="canonical" href="https://vyorradev.vercel.app/institute">
     <link rel="manifest" href="institute-manifest.json">
     <link rel="icon" type="image/png" href="triumph-192.png" id="favicon">
     <link rel="apple-touch-icon" href="triumph-192.png" id="appleIcon">
@@ -4941,8 +4941,14 @@
             cursor: pointer;
         }
 
-        .etf-crumb button:hover { text-decoration: underline; }
-        .etf-crumb .cur { color: var(--ink); font-weight: 700; }
+        .etf-crumb button:hover {
+            text-decoration: underline;
+        }
+
+        .etf-crumb .cur {
+            color: var(--ink);
+            font-weight: 700;
+        }
 
         .etf-grid {
             display: grid;
@@ -4986,7 +4992,10 @@
             box-shadow: var(--shadow-lift);
         }
 
-        .etf-card.has-sel { border-color: var(--teal-deep); background: var(--soft); }
+        .etf-card.has-sel {
+            border-color: var(--teal-deep);
+            background: var(--soft);
+        }
 
         .etf-ico {
             width: 34px;
@@ -5027,7 +5036,11 @@
             font-weight: 700;
         }
 
-        .etf-ar { margin-left: auto; color: var(--ink-muted); flex: none; }
+        .etf-ar {
+            margin-left: auto;
+            color: var(--ink-muted);
+            flex: none;
+        }
 
         .stu-select-list {
             max-height: 230px;
@@ -7853,8 +7866,8 @@
                             <input type="text" id="authInstPass" name="institute-passcode" data-masked="1"
                                 autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                                 data-lpignore="true" data-form-type="other"
-                                style="-webkit-text-security:disc;text-security:disc"
-                                placeholder="Institute passcode" required>
+                                style="-webkit-text-security:disc;text-security:disc" placeholder="Institute passcode"
+                                required>
                             <button type="button" class="inp-toggle"
                                 onclick="__togglePw('authInstPass', this)">Show</button>
                         </div>
@@ -7903,8 +7916,8 @@
                             <input type="text" id="authTeacherPass" name="teacher-passcode" data-masked="1"
                                 autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                                 data-lpignore="true" data-form-type="other"
-                                style="-webkit-text-security:disc;text-security:disc"
-                                placeholder="Teacher passcode" required>
+                                style="-webkit-text-security:disc;text-security:disc" placeholder="Teacher passcode"
+                                required>
                             <button type="button" class="inp-toggle"
                                 onclick="__togglePw('authTeacherPass', this)">Show</button>
                         </div>
@@ -8016,7 +8029,8 @@
                     </div>
                     <div class="topbar-actions">
                         <button class="icon-btn" title="Toggle theme" onclick="toggleTheme()">🌙</button>
-                        <button class="icon-btn" title="Paper templates" onclick="window.instOpenTemplateManager()">📄</button>
+                        <button class="icon-btn" title="Paper templates"
+                            onclick="window.instOpenTemplateManager()">📄</button>
                     </div>
                 </header>
 
@@ -8265,7 +8279,9 @@
                 <!-- LEVEL 4 · Questions (card view for a topic) -->
                 <div class="subview" id="qv-questions">
                     <div class="crumb-bar">
-                        <button class="back-btn" id="qv-questions-back" onclick="window._instPaperCache && window._instPaperCache.isPaper ? instShowMode('paper') : showView('qv-topics')">← Back</button>
+                        <button class="back-btn" id="qv-questions-back"
+                            onclick="window._instPaperCache && window._instPaperCache.isPaper ? instShowMode('paper') : showView('qv-topics')">←
+                            Back</button>
                         <span class="crumb-trail">/ <b id="qlib-chapter-label2">Kinematics</b> / <b
                                 id="qlib-active-topic">Projectile Motion</b> · <span id="qlib-topic-q-count">0</span>
                             questions</span>
@@ -8698,7 +8714,8 @@
                             Back</button><span class="crumb-trail">/ Class 11 · <b>Section A</b> · 6 shown of 62</span>
                     </div>
                     <div class="toolbar">
-                        <div class="search-box">🔍 <input id="att-search" placeholder="Search students…" oninput="__inst.filterAttendance(this.value)"></div>
+                        <div class="search-box">🔍 <input id="att-search" placeholder="Search students…"
+                                oninput="__inst.filterAttendance(this.value)"></div>
                         <button class="ghost-btn" onclick="__inst.attSelectAll(true)">Select all</button>
                         <button class="ghost-btn" onclick="__inst.attSelectAll(false)">Clear</button>
                     </div>
@@ -8756,8 +8773,8 @@
                          saves checked = present and unchecked = absent. -->
                     <div class="bulk-bar">
                         <div class="bulk-sum"><span class="dot p"></span> <b id="p-count">0</b>&nbsp;checked <span
-                                style="opacity:.4">·</span> <span class="dot a"></span> <b
-                                id="a-count">0</b>&nbsp;will be absent</div>
+                                style="opacity:.4">·</span> <span class="dot a"></span> <b id="a-count">0</b>&nbsp;will
+                            be absent</div>
                         <button class="mark-btn" id="att-mark-btn" onclick="__inst.commitAttendance()">✓ Mark
                             Attendance</button>
                     </div>
@@ -9022,7 +9039,8 @@
                                             style="width:8%"></span><span class="ss" style="width:8%"></span></div>
                                     <div
                                         style="display:flex;justify-content:space-between;margin-top:9px;font-size:.72rem;color:var(--ink-muted)">
-                                        <span>⏱ 24m 12s</span><span class="status-pill done">Submitted</span></div>
+                                        <span>⏱ 24m 12s</span><span class="status-pill done">Submitted</span>
+                                    </div>
                                 </div>
                                 <div class="rml-item" onclick="openStudentStats('PV')">
                                     <div class="rml-top"><span class="stud-av"
@@ -9034,7 +9052,8 @@
                                             style="width:16%"></span><span class="ss" style="width:12%"></span></div>
                                     <div
                                         style="display:flex;justify-content:space-between;margin-top:9px;font-size:.72rem;color:var(--ink-muted)">
-                                        <span>⏱ 27m 45s</span><span class="status-pill done">Submitted</span></div>
+                                        <span>⏱ 27m 45s</span><span class="status-pill done">Submitted</span>
+                                    </div>
                                 </div>
                                 <div class="rml-item" onclick="openStudentStats('RG')">
                                     <div class="rml-top"><span class="stud-av"
@@ -9047,7 +9066,8 @@
                                             style="width:30%"></span><span class="ss" style="width:20%"></span></div>
                                     <div
                                         style="display:flex;justify-content:space-between;margin-top:9px;font-size:.72rem;color:var(--ink-muted)">
-                                        <span>⏱ 29m 58s</span><span class="status-pill danger">🔒 Locked</span></div>
+                                        <span>⏱ 29m 58s</span><span class="status-pill danger">🔒 Locked</span>
+                                    </div>
                                 </div>
                             </div>
                             <div class="pagination"><button>←</button><button
@@ -9068,7 +9088,8 @@
                             <div class="legend-item"><span class="dot a"></span> Incorrect <span class="val"
                                     style="color:var(--rose)">384 (16%)</span></div>
                             <div class="legend-item"><span class="dot" style="background:#c7d8d1"></span> Unanswered
-                                <span class="val" style="color:var(--ink-muted)">382 (16%)</span></div>
+                                <span class="val" style="color:var(--ink-muted)">382 (16%)</span>
+                            </div>
                             <div
                                 style="margin-top:16px;padding:13px 15px;background:var(--input-bg);border-radius:14px;font-size:.76rem;color:var(--ink-dim);line-height:1.5">
                                 💡 <b style="color:var(--ink)">Insight:</b> Projectile Motion questions had the lowest
@@ -9402,8 +9423,8 @@
                 <div class="form-field full">
                     <label>Enrolled Students <span id="et-stu-count" style="color:var(--teal-deep)"></span></label>
                     <div class="et-toolbar">
-                        <div class="search-box">🔍 <input id="et-stu-search"
-                                placeholder="Search students…" oninput="filterEditStudents()"></div>
+                        <div class="search-box">🔍 <input id="et-stu-search" placeholder="Search students…"
+                                oninput="filterEditStudents()"></div>
                         <button class="ghost-btn" onclick="selectAllEditStudents(true)">Select all</button>
                         <button class="ghost-btn" onclick="selectAllEditStudents(false)">Clear</button>
                     </div>
@@ -9559,8 +9580,15 @@
         }
 
         @keyframes icPop {
-            from { opacity: 0; transform: translateY(16px) scale(.96); }
-            to { opacity: 1; transform: none; }
+            from {
+                opacity: 0;
+                transform: translateY(16px) scale(.96);
+            }
+
+            to {
+                opacity: 1;
+                transform: none;
+            }
         }
 
         .ic-ico {
@@ -9614,7 +9642,9 @@
             color: var(--ink-dim, #5b6f6a);
         }
 
-        .ic-cancel:hover { filter: brightness(.95); }
+        .ic-cancel:hover {
+            filter: brightness(.95);
+        }
 
         .ic-ok {
             background: #d95f5f;
@@ -9625,10 +9655,14 @@
             background: var(--teal-deep, #1f8a75);
         }
 
-        .ic-ok:hover { filter: brightness(1.07); }
+        .ic-ok:hover {
+            filter: brightness(1.07);
+        }
 
         @media (max-width:520px) {
-            .ic-foot { flex-direction: column-reverse; }
+            .ic-foot {
+                flex-direction: column-reverse;
+            }
         }
     </style>
 
@@ -10370,21 +10404,21 @@
 
             // Tables
             const allTables = Array.isArray(sq.tables) ? sq.tables : [];
-            const optPos = { option_a:0, option_b:1, option_c:2, option_d:3, option_1:0, option_2:1, option_3:2, option_4:3 };
-            const optTables = [null,null,null,null];
-            if (Array.isArray(sq.optionTables)) for (let i=0;i<4;i++) if (sq.optionTables[i]) optTables[i]=sq.optionTables[i];
-            allTables.forEach(t => { const p=String(t&&t.position||'').toLowerCase(); if (Object.prototype.hasOwnProperty.call(optPos,p)&&!optTables[optPos[p]]) optTables[optPos[p]]=t; });
-            const introTables = allTables.filter(t => { const p=String(t&&t.position||'').toLowerCase(); return p!=='after_options'&&!Object.prototype.hasOwnProperty.call(optPos,p); });
-            const afterOptTables = allTables.filter(t => String(t&&t.position||'').toLowerCase()==='after_options');
+            const optPos = { option_a: 0, option_b: 1, option_c: 2, option_d: 3, option_1: 0, option_2: 1, option_3: 2, option_4: 3 };
+            const optTables = [null, null, null, null];
+            if (Array.isArray(sq.optionTables)) for (let i = 0; i < 4; i++) if (sq.optionTables[i]) optTables[i] = sq.optionTables[i];
+            allTables.forEach(t => { const p = String(t && t.position || '').toLowerCase(); if (Object.prototype.hasOwnProperty.call(optPos, p) && !optTables[optPos[p]]) optTables[optPos[p]] = t; });
+            const introTables = allTables.filter(t => { const p = String(t && t.position || '').toLowerCase(); return p !== 'after_options' && !Object.prototype.hasOwnProperty.call(optPos, p); });
+            const afterOptTables = allTables.filter(t => String(t && t.position || '').toLowerCase() === 'after_options');
 
             // Options HTML
-            let optHtml = opts.map((opt,i) => ({
+            let optHtml = opts.map((opt, i) => ({
                 opt, i
-            })).filter(o => (o.opt!==''&&o.opt!=null)||optImgs[o.i]||optTables[o.i]).map(({opt,i}) => {
+            })).filter(o => (o.opt !== '' && o.opt != null) || optImgs[o.i] || optTables[o.i]).map(({ opt, i }) => {
                 const oimg = optImgs[i] ? `<img src="${imgSrc(optImgs[i])}" alt="" style="max-height:96px;max-width:100%;object-fit:contain;border-radius:8px;display:block;margin-top:6px" onerror="this.style.display='none'">` : '';
                 const otbl = optTables[i] ? renderTables([optTables[i]]) : '';
                 const isC = correctSet.has(i);
-                return `<div class="q-opt ${isC?'correct':''}"><span class="opt-key">${String.fromCharCode(65+i)}</span> <span class="opt-body">${oimg ? '' : (opt||'')}${oimg}${otbl}</span>${isC?'<span class="opt-tag">✓ CORRECT ANSWER</span>':''}</div>`;
+                return `<div class="q-opt ${isC ? 'correct' : ''}"><span class="opt-key">${String.fromCharCode(65 + i)}</span> <span class="opt-body">${oimg ? '' : (opt || '')}${oimg}${otbl}</span>${isC ? '<span class="opt-tag">✓ CORRECT ANSWER</span>' : ''}</div>`;
             }).join('');
 
             // Numerical / no-options fallback
@@ -10394,27 +10428,27 @@
             }
 
             // Answer / numerical lines
-            const correctLetters = [...correctSet].sort((a,b)=>a-b).map(i=>String.fromCharCode(65+i)).join(', ');
+            const correctLetters = [...correctSet].sort((a, b) => a - b).map(i => String.fromCharCode(65 + i)).join(', ');
             const ansLine = (!isNumerical && correctLetters) ? `<div class="q-answer-line">Correct Answer: <b>${correctLetters}</b></div>` : '';
             const numAns = isNumerical ? `<div class="q-num-answer"><span class="q-num-ico">#</span><span class="q-num-txt"><span class="q-num-lbl">Numerical Answer</span><span class="q-num-val">${_instEsc(String(sq.numericalAnswer))}</span></span></div>` : '';
 
             // Solution
-            const solItems = (Array.isArray(sq.solutions)&&sq.solutions.length) ? sq.solutions : (sq.solution?[{text:String(sq.solution)}]:[]);
-            let solTextHtml='', solImgHtml='';
+            const solItems = (Array.isArray(sq.solutions) && sq.solutions.length) ? sq.solutions : (sq.solution ? [{ text: String(sq.solution) }] : []);
+            let solTextHtml = '', solImgHtml = '';
             solItems.filter(Boolean).forEach(s => {
                 if (typeof s === 'string') s = { text: s };
                 if (s.text) solTextHtml += `<div class="q-solution-text">${solText(s.text)}</div>`;
-                const imgs = Array.isArray(s.images)?s.images.filter(Boolean):(s.image?[s.image]:[]);
+                const imgs = Array.isArray(s.images) ? s.images.filter(Boolean) : (s.image ? [s.image] : []);
                 imgs.forEach(im => { solImgHtml += `<img src="${imgSrc(im)}" onerror="this.style.display='none'">`; });
             });
-            const solution = (solTextHtml.trim()||solImgHtml)
-                ? `<div class="q-solution"><div class="q-solution-label">💡 Solution</div><div class="q-sol-body${solImgHtml?' has-img':''}"><div class="q-sol-text-col">${solTextHtml}</div>${solImgHtml?`<div class="q-sol-img-col">${solImgHtml}</div>`:''}</div></div>`
+            const solution = (solTextHtml.trim() || solImgHtml)
+                ? `<div class="q-solution"><div class="q-solution-label">💡 Solution</div><div class="q-sol-body${solImgHtml ? ' has-img' : ''}"><div class="q-sol-text-col">${solTextHtml}</div>${solImgHtml ? `<div class="q-sol-img-col">${solImgHtml}</div>` : ''}</div></div>`
                 : '';
 
             // Meta
-            const examName = sq.exam||sq.examName||sq.exam_name||'';
-            const examTxt = examName ? (String(examName)+(sq.year?' '+sq.year:'')) : (sq.year?'Year: '+sq.year:'');
-            const typeBadge = isNumerical?'<span class="q-meta">📋 NUMERICAL</span>':(sq.isMultiCorrect?'<span class="q-meta">📋 MULTI-CORRECT</span>':'');
+            const examName = sq.exam || sq.examName || sq.exam_name || '';
+            const examTxt = examName ? (String(examName) + (sq.year ? ' ' + sq.year : '')) : (sq.year ? 'Year: ' + sq.year : '');
+            const typeBadge = isNumerical ? '<span class="q-meta">📋 NUMERICAL</span>' : (sq.isMultiCorrect ? '<span class="q-meta">📋 MULTI-CORRECT</span>' : '');
 
             const optsBlock = qImgSrc
                 ? `<div class="q-body has-img"><div class="q-opts-col">${optHtml}</div><div class="q-img-col"><img src="${qImgSrc}" alt="" onerror="this.closest('.q-img-col').style.display='none'"></div></div>`
@@ -10422,16 +10456,16 @@
 
             panel.innerHTML = `
                 <div class="q-meta-row">
-                    <span class="q-meta hl">${_instEsc(cache.label||'Paper')}</span>
-                    <span class="q-meta">${_instEsc(sq.chapter||'')}${sq.topic?' · '+_instEsc(sq.topic):''}</span>
-                    <span class="q-meta">Q${idx+1} of ${(cache.items||[]).length}</span>
-                    ${examTxt?`<span class="q-meta">${_instEsc(examTxt)}</span>`:''}
+                    <span class="q-meta hl">${_instEsc(cache.label || 'Paper')}</span>
+                    <span class="q-meta">${_instEsc(sq.chapter || '')}${sq.topic ? ' · ' + _instEsc(sq.topic) : ''}</span>
+                    <span class="q-meta">Q${idx + 1} of ${(cache.items || []).length}</span>
+                    ${examTxt ? `<span class="q-meta">${_instEsc(examTxt)}</span>` : ''}
                     ${typeBadge}
                 </div>
-                <p class="q-text">${sq.question||sq.text||''}</p>
-                ${introTables.length?renderTables(introTables):''}
+                <p class="q-text">${sq.question || sq.text || ''}</p>
+                ${introTables.length ? renderTables(introTables) : ''}
                 ${optsBlock}
-                ${afterOptTables.length?renderTables(afterOptTables):''}
+                ${afterOptTables.length ? renderTables(afterOptTables) : ''}
                 ${ansLine}
                 ${numAns}
                 ${solution}`;
@@ -14208,7 +14242,7 @@
                     const avail = pickedBySubj[s].length;
                     return `<div style="margin-bottom:14px">
                         <label style="display:block;font-size:.82rem;font-weight:700;color:var(--ink-dim);margin-bottom:5px">${esc(s)} <span style="font-weight:400;color:var(--ink-muted)">(${avail} available)</span></label>
-                        <input type="number" id="wiz-sc-${esc(s.replace(/\s+/g,'_'))}" min="1" max="${avail}" value="${avail}"
+                        <input type="number" id="wiz-sc-${esc(s.replace(/\s+/g, '_'))}" min="1" max="${avail}" value="${avail}"
                             style="width:100%;padding:10px 13px;border:1.5px solid var(--line,#dce8e3);border-radius:10px;font-size:1rem;background:var(--soft,#f5fbf9);color:inherit;box-sizing:border-box">
                     </div>`;
                 }).join('');
@@ -14264,7 +14298,7 @@
                 Object.entries(counts).forEach(([s, n]) => {
                     const arr = (bySubj[s] || []).slice();
                     // Shuffle
-                    for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
+                    for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[arr[i], arr[j]] = [arr[j], arr[i]]; }
                     result.push(...arr.slice(0, n));
                 });
                 return result;
@@ -14499,7 +14533,7 @@
                 // spinner: for offline papers the form opens right away and the
                 // questions keep loading in the background while it is filled in.
                 const gathering = wizGatherQuestions();
-                gathering.catch(() => {});
+                gathering.catch(() => { });
                 if (type === 'offline') _wizOpenOfflineFormEarly(name);
                 try {
                     if (type !== 'offline') toast('Gathering questions…');
@@ -14566,7 +14600,7 @@
                     if (nqWrap) nqWrap.style.display = '';
                     instShowScreen('ipb-screen-offline');
                     _wizFormLoading(true);
-                } catch (_) {}
+                } catch (_) { }
             }
 
             // Keeps Generate disabled (with a status line) until questions land.
@@ -14583,56 +14617,56 @@
             }
 
             async function _wizDoFinish(type, name, picked, pickedBySubj) {
-                    if (type === 'offline') {
-                        const fk = wizSelKeys()[0] || '';
-                        const firstSubj = picked[0]?.subj || (fk ? wizSplit(fk).subject : '');
-                        const firstChap = fk ? wizSplit(fk).chapter : '';
-                        window._wizOfflineQuestions = picked.map(p => p.q);
-                        // Store per-subject breakdown so instRunOffline can use it
-                        window._wizPickedBySubj = pickedBySubj || null;
-                        const wo = document.getElementById('wiz-overlay'); if (wo) wo.classList.remove('open');
-                        const m = instGenModalEl(); m.classList.add('open');
-                        const _sv = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
-                        _sv('inst-paper-title', name);
-                        _sv('inst-paper-subject', firstSubj);
-                        _sv('inst-paper-chapter', firstChap);
-                        _sv('inst-paper-class', '');
-                        _sv('inst-paper-testtype', 'Chapter Test');
-                        _sv('inst-paper-numq', picked.length);
-                        const _nq = document.getElementById('inst-paper-numq'); if (_nq) _nq.max = picked.length;
-                        // Inject per-subject count fields for multi-subject offline
-                        const _isMultiSubj = pickedBySubj && Object.keys(pickedBySubj).length > 1;
-                        if (_isMultiSubj) {
-                            const subjects = Object.keys(pickedBySubj);
-                            let html = '<div id="ipb-subj-counts" style="margin-bottom:4px">';
-                            html += '<div style="font-size:.75rem;font-weight:700;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Questions per Subject</div>';
-                            html += subjects.map(s => {
-                                const avail = pickedBySubj[s].length;
-                                const sid = 'ipb-sc-' + s.replace(/\s+/g, '_');
-                                return `<div class="ipb-field" style="margin-bottom:8px"><label>${esc(s)} <span style="font-weight:400;color:var(--ink-muted)">(${avail} available)</span></label><input type="number" id="${sid}" min="1" max="${avail}" value="${avail}"></div>`;
-                            }).join('');
-                            html += '</div>';
-                            const existing = document.getElementById('ipb-subj-counts');
-                            const numqF = document.getElementById('inst-paper-numq')?.closest('.ipb-field');
-                            if (existing) { existing.outerHTML = html; }
-                            else if (numqF) { numqF.insertAdjacentHTML('beforebegin', html); }
-                        } else {
-                            const existing = document.getElementById('ipb-subj-counts');
-                            if (existing) existing.remove();
-                        }
-                        const _os = document.getElementById('ipb-off-sub'); if (_os) _os.textContent = picked.length + ' question' + (picked.length !== 1 ? 's' : '') + ' available - choose how many to include';
-                        instShowScreen('ipb-screen-offline');
-                        // Hide/show numq AFTER the screen is visible (DOM is fully ready)
-                        const _numqWrap = document.getElementById('inst-paper-numq')?.closest('.ipb-field');
-                        if (_numqWrap) _numqWrap.style.display = _isMultiSubj ? 'none' : '';
-                        _wizFormLoading(false);
+                if (type === 'offline') {
+                    const fk = wizSelKeys()[0] || '';
+                    const firstSubj = picked[0]?.subj || (fk ? wizSplit(fk).subject : '');
+                    const firstChap = fk ? wizSplit(fk).chapter : '';
+                    window._wizOfflineQuestions = picked.map(p => p.q);
+                    // Store per-subject breakdown so instRunOffline can use it
+                    window._wizPickedBySubj = pickedBySubj || null;
+                    const wo = document.getElementById('wiz-overlay'); if (wo) wo.classList.remove('open');
+                    const m = instGenModalEl(); m.classList.add('open');
+                    const _sv = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+                    _sv('inst-paper-title', name);
+                    _sv('inst-paper-subject', firstSubj);
+                    _sv('inst-paper-chapter', firstChap);
+                    _sv('inst-paper-class', '');
+                    _sv('inst-paper-testtype', 'Chapter Test');
+                    _sv('inst-paper-numq', picked.length);
+                    const _nq = document.getElementById('inst-paper-numq'); if (_nq) _nq.max = picked.length;
+                    // Inject per-subject count fields for multi-subject offline
+                    const _isMultiSubj = pickedBySubj && Object.keys(pickedBySubj).length > 1;
+                    if (_isMultiSubj) {
+                        const subjects = Object.keys(pickedBySubj);
+                        let html = '<div id="ipb-subj-counts" style="margin-bottom:4px">';
+                        html += '<div style="font-size:.75rem;font-weight:700;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Questions per Subject</div>';
+                        html += subjects.map(s => {
+                            const avail = pickedBySubj[s].length;
+                            const sid = 'ipb-sc-' + s.replace(/\s+/g, '_');
+                            return `<div class="ipb-field" style="margin-bottom:8px"><label>${esc(s)} <span style="font-weight:400;color:var(--ink-muted)">(${avail} available)</span></label><input type="number" id="${sid}" min="1" max="${avail}" value="${avail}"></div>`;
+                        }).join('');
+                        html += '</div>';
+                        const existing = document.getElementById('ipb-subj-counts');
+                        const numqF = document.getElementById('inst-paper-numq')?.closest('.ipb-field');
+                        if (existing) { existing.outerHTML = html; }
+                        else if (numqF) { numqF.insertAdjacentHTML('beforebegin', html); }
                     } else {
-                        const questionKeys = picked.map(p => ({ chapter: p.chapter, lecture: p.lecture, questionIndex: p.questionIndex }));
-                        IOT.open({
-                            questionKeys, suggestedName: name,
-                            onSuccess: async () => { try { await loadOnlineTests(); } catch (_) { } wizShowDone('online', questionKeys.length); renderDashboard(); }
-                        });
+                        const existing = document.getElementById('ipb-subj-counts');
+                        if (existing) existing.remove();
                     }
+                    const _os = document.getElementById('ipb-off-sub'); if (_os) _os.textContent = picked.length + ' question' + (picked.length !== 1 ? 's' : '') + ' available - choose how many to include';
+                    instShowScreen('ipb-screen-offline');
+                    // Hide/show numq AFTER the screen is visible (DOM is fully ready)
+                    const _numqWrap = document.getElementById('inst-paper-numq')?.closest('.ipb-field');
+                    if (_numqWrap) _numqWrap.style.display = _isMultiSubj ? 'none' : '';
+                    _wizFormLoading(false);
+                } else {
+                    const questionKeys = picked.map(p => ({ chapter: p.chapter, lecture: p.lecture, questionIndex: p.questionIndex }));
+                    IOT.open({
+                        questionKeys, suggestedName: name,
+                        onSuccess: async () => { try { await loadOnlineTests(); } catch (_) { } wizShowDone('online', questionKeys.length); renderDashboard(); }
+                    });
+                }
             }
 
             /* ══════════════════════ ADD TO PAPER (basket) ══════════════════════ */
@@ -15353,7 +15387,7 @@
                         if (el) el.style.borderColor = '';
                         // Shuffle arr and take v
                         const copy = arr.slice();
-                        for (let i = copy.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [copy[i], copy[j]] = [copy[j], copy[i]]; }
+                        for (let i = copy.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[copy[i], copy[j]] = [copy[j], copy[i]]; }
                         result.push(...copy.slice(0, Math.min(v, copy.length)));
                     });
                     if (!valid) { toast('Please enter a valid count for each subject'); return; }
@@ -15561,4 +15595,5 @@
     <script src="shared/shared-svg.js"></script>
     <script src="shared/shared-pool.js"></script>
 </body>
+
 </html>

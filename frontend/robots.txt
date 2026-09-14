@@ -39,4 +39,4 @@ Crawl-delay: 10
 User-agent: SemrushBot
 Crawl-delay: 10
 
-Sitemap: https://vyorra.in/sitemap.xml
+Sitemap: https://vyorradev.vercel.app/sitemap.xml
