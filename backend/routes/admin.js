@@ -16,6 +16,8 @@ const {
 	ALL_Q, PYQ_TABLE, insertQuestion, findQuestionRowById, updateQuestionRowById,
 	deleteQuestionRowById, deleteQuestionsWhere, updateQuestionsWhere,
 } = require("../utils/questionTables");
+// `pyq_year_wise` — the subject+year index that backs paper-wise search.
+const yearWise = require("../utils/pyqYearWise");
 const {
 	normalizeQuestionRow, normalizeQuestion, normalizeStudentRow,
 	parseCorrectIndexesFromQuestion, validateImageRegion,
@@ -663,25 +665,8 @@ router.get("/api/admin/questions-by-paper", requireAdmin, async (req, res) => {
 // single cell. Powers the "Paper wise" section (owner + institute) and the new
 // JEE/NEET + question-type filters.
 // ═══════════════════════════════════════════════════════════════════════════
-const PAPER_EXAMS = ["JEE Mains", "JEE Advanced", "NEET"];
-
-// PYQ data mapping: Maths → JEE Mains, all other subjects → NEET.
-// An optional examHint (from raw_json.exam) is trusted if present.
-function examForSubject(subject, examHint) {
-	if (examHint) return normalizeExam(examHint);
-	const s = String(subject || "").trim().toLowerCase();
-	if (s === "maths" || s === "math" || s === "mathematics") return "JEE Mains";
-	return "NEET";
-}
-
-// Normalize any incoming exam string to one of PAPER_EXAMS.
-function normalizeExam(e) {
-	const s = String(e || "").trim().toLowerCase();
-	if (s.includes("advanced") || s === "jee_advanced") return "JEE Advanced";
-	if (s.includes("neet")) return "NEET";
-	if (s.includes("jee") || s.includes("main")) return "JEE Mains";
-	return "NEET";
-}
+// Exam naming + subject→exam mapping live with the index so both stay in sync.
+const { PAPER_EXAMS, examForSubject, normalizeExam } = yearWise;
 
 // Append a batch of (already-normalized) question objects into the papers row
 // for (exam, year), creating the row if needed.
@@ -720,51 +705,26 @@ async function appendQuestionsToPaper(exam, year, label, questions) {
 // and rewrites the papers table. Month / day / shift are embedded into each
 // question object so the UI can display shift-level labels for JEE Mains.
 async function rebuildPapersFromPyq() {
-	const result = await db.execute(
-		`SELECT subject, year, month, day, shift, raw_json FROM ${PYQ_TABLE} WHERE year IS NOT NULL AND year != ''`
-	);
-	const grouped = {};
-	for (const row of result.rows) {
-		const year = String(row.year || "").trim();
-		if (!year) continue;
-		let q = {};
-		try { q = JSON.parse(row.raw_json || "{}"); } catch { q = {}; }
-		// Trust embedded exam tag first, otherwise infer from subject.
-		const examHint = q.exam || q.examName || "";
-		const exam = examForSubject(row.subject, examHint);
-		// Attach month / day / shift so the UI can label JEE Mains shifts.
-		if (row.month) q._month = String(row.month).trim();
-		if (row.day) q._day = String(row.day).trim();
-		if (row.shift) q._shift = String(row.shift).trim();
-		q._exam = exam;
-		const key = `${exam}|||${year}`;
-		if (!grouped[key]) grouped[key] = { exam, year, questions: [] };
-		grouped[key].questions.push(q);
-	}
-	// Wipe existing non-Regular rows and rewrite them from scratch.
-	await db.execute("DELETE FROM papers WHERE year != 'Regular'");
-	let papers = 0, total = 0;
-	for (const key of Object.keys(grouped)) {
-		const g = grouped[key];
-		await appendQuestionsToPaper(g.exam, g.year, `${g.exam} ${g.year}`, g.questions);
-		papers++;
-		total += g.questions.length;
-	}
-	// Re-seed the three rolling "Regular" rows so they always exist.
-	const now = Date.now();
-	for (const [ex, yr, lbl] of [
-		["JEE Mains", "Regular", "JEE Regular Ques"],
-		["NEET", "Regular", "NEET Regular Ques"],
-		["JEE Advanced", "Regular", "JEE Advanced Regular Ques"],
+	// Rebuilding a paper now means rebuilding the subject+year index: it holds
+	// the questions, while `papers` only keeps the stable id + label per
+	// (exam, year). No more multi-megabyte JSON blobs to rewrite.
+	const { papers, questions } = await yearWise.rebuildYearWise();
+
+	// Give the three rolling "Regular" (non-PYQ) buckets their friendly labels.
+	for (const [ex, lbl] of [
+		["JEE Mains", "JEE Regular Ques"],
+		["NEET", "NEET Regular Ques"],
+		["JEE Advanced", "JEE Advanced Regular Ques"],
 	]) {
 		try {
+			await yearWise.ensurePaperRow(ex, "Regular");
 			await db.execute({
-				sql: "INSERT OR IGNORE INTO papers (exam, year, label, questions_json, question_count, created_at, updated_at) VALUES (?, ?, ?, '[]', 0, ?, ?)",
-				args: [ex, yr, lbl, now, now],
+				sql: "UPDATE papers SET label = ? WHERE exam = ? AND year = 'Regular'",
+				args: [lbl, ex],
 			});
 		} catch (_) { }
 	}
-	return { papers, questions: total };
+	return { papers, questions };
 }
 
 // List papers, optionally filtered by exam and/or question_type. Returns light
@@ -778,14 +738,26 @@ router.get("/api/admin/papers", requireAdmin, async (req, res) => {
 		sql += " ORDER BY exam, CASE WHEN year = 'Regular' THEN 1 ELSE 0 END, year DESC";
 		const result = await db.execute({ sql, args });
 		const qt = question_type ? String(question_type).trim().toUpperCase() : "";
+
+		// PYQ counts come from ONE grouped scan of the year-wise index (which has
+		// question_type as a real indexed column), instead of parsing every
+		// paper's question blob just to count matching rows.
+		const counts = await yearWise.paperCounts({ exam, question_type: qt });
+
 		const papers = result.rows.map((r) => {
-			let count = Number(r.question_count) || 0;
-			if (qt) {
-				let arr = [];
-				try { arr = JSON.parse(r.questions_json || "[]"); } catch { arr = []; }
-				count = (Array.isArray(arr) ? arr : []).filter(
-					(q) => String(q.question_type || q.questionType || "MCQ").toUpperCase() === qt
-				).length;
+			let count;
+			if (r.year === "Regular") {
+				// Non-PYQ "Regular" buckets still live in the papers blob.
+				count = Number(r.question_count) || 0;
+				if (qt) {
+					let arr = [];
+					try { arr = JSON.parse(r.questions_json || "[]"); } catch { arr = []; }
+					count = (Array.isArray(arr) ? arr : []).filter(
+						(q) => String(q.question_type || q.questionType || "MCQ").toUpperCase() === qt
+					).length;
+				}
+			} else {
+				count = counts.get(`${r.exam}|||${r.year}`) || 0;
 			}
 			return { id: r.id, exam: r.exam, year: r.year, label: r.label || `${r.exam} ${r.year}`, count };
 		});
@@ -800,22 +772,52 @@ router.get("/api/admin/papers/:id", requireAdmin, async (req, res) => {
 	try {
 		const id = parseInt(req.params.id, 10);
 		const { question_type } = req.query;
+		const { subject } = req.query;
 		const result = await db.execute({
 			sql: "SELECT id, exam, year, label, questions_json FROM papers WHERE id = ? LIMIT 1",
 			args: [id],
 		});
 		if (!result.rows.length) return res.status(404).json({ error: "Not found" });
 		const row = result.rows[0];
-		let arr = [];
-		try { arr = JSON.parse(row.questions_json || "[]"); } catch { arr = []; }
-		if (!Array.isArray(arr)) arr = [];
 		const qt = question_type ? String(question_type).trim().toUpperCase() : "";
-		let questions = arr.map((q, i) => ({ paperIndex: i, question: normalizeQuestion(q, { preserveRaw: true }) }));
-		if (qt) {
-			questions = questions.filter(
-				(x) => String(x.question.question_type || x.question.questionType || "MCQ").toUpperCase() === qt
-			);
+		const perms = await permissionsForRequest(req);
+		let questions;
+
+		if (row.year !== "Regular") {
+			// PYQ paper: straight indexed lookup on (exam, year) — the type and
+			// subject filters are pushed into SQL rather than applied in JS.
+			const rows = await yearWise.paperQuestions({
+				exam: row.exam, year: row.year, question_type: qt, subject,
+			});
+			questions = rows.map((r, i) => {
+				let raw = {};
+				try { raw = JSON.parse(r.raw_json || "{}"); } catch { raw = {}; }
+				const q = normalizeQuestion(raw, { preserveRaw: true });
+				// Backfill the paper metadata the UI badges read.
+				if (r.subject && !q.subject) q.subject = r.subject;
+				if (r.chapter && !q.chapter) q.chapter = r.chapter;
+				if (r.topic && !q.topic) q.topic = r.topic;
+				if (r.month) q._month = r.month;
+				if (r.day) q._day = r.day;
+				if (r.shift) q._shift = r.shift;
+				q._exam = r.exam;
+				return { paperIndex: i, rowId: r.pyq_id, question: q };
+			});
+		} else {
+			// "Regular" (non-PYQ) bucket still reads from the papers blob.
+			let arr = [];
+			try { arr = JSON.parse(row.questions_json || "[]"); } catch { arr = []; }
+			if (!Array.isArray(arr)) arr = [];
+			questions = arr.map((q, i) => ({ paperIndex: i, question: normalizeQuestion(q, { preserveRaw: true }) }));
+			if (qt) {
+				questions = questions.filter(
+					(x) => String(x.question.question_type || x.question.questionType || "MCQ").toUpperCase() === qt
+				);
+			}
 		}
+
+		// Respect the institute's subject whitelist, same as every other read.
+		questions = filterRowsBySubject(perms, questions, (x) => x.question && x.question.subject);
 		res.json({ id: row.id, exam: row.exam, year: row.year, label: row.label || `${row.exam} ${row.year}`, count: questions.length, questions });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
@@ -829,14 +831,22 @@ router.post("/api/admin/papers/append", requireAdmin, async (req, res) => {
 	try {
 		const buckets = Array.isArray(req.body?.buckets) ? req.body.buckets : [];
 		if (!buckets.length) return res.status(400).json({ error: "No buckets provided" });
-		let total = 0;
+		let total = 0, skipped = 0;
 		for (const b of buckets) {
 			const qs = Array.isArray(b.questions) ? b.questions.map(normalizeQuestion) : [];
 			if (!qs.length) continue;
+			// PYQ buckets are already in pyq_year_wise — add-question mirrors every
+			// PYQ insert into the index automatically. Appending them here too
+			// would show each imported question twice in paper-wise.
+			if (String(b.year || "").trim() && String(b.year).trim() !== "Regular") {
+				skipped += qs.length;
+				await yearWise.ensurePaperRow(b.exam, b.year);
+				continue;
+			}
 			await appendQuestionsToPaper(b.exam, b.year, b.label, qs);
 			total += qs.length;
 		}
-		res.json({ success: true, added: total });
+		res.json({ success: true, added: total, indexed: skipped });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
@@ -1378,7 +1388,7 @@ router.get("/api/admin/online-tests", requireAdmin, requireFeature("onlineTests"
 	}
 });
 
-// ── ADMIN: update an online test ─────────────────────────────────────────────
+// ── ADMIN: update an online test ─────────���───────────────────────────────────
 router.put("/api/admin/online-tests/:id", requireAdmin, requireFeature("onlineTests"), async (req, res) => {
 	try {
 		const testId = Number(req.params.id);

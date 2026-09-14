@@ -3517,6 +3517,11 @@ async function jsonUploadSaveAll() {
             : `${savedQ} questions saved across ${groups.length} chapter-topic-lecture group(s) in NEET mode. Check Manage section.`)
         : `Saved: ${savedQ}. Failed: ${failedChs.join(", ")}.`;
     openModal("successModal");
+    // Everything landed in the DB, so the refresh/close guard can stand down.
+    // On a partial save the remaining work is still only in memory, so stay dirty.
+    if (failedChs.length === 0 && typeof window.vyImportGuardMarkSaved === "function") {
+        window.vyImportGuardMarkSaved();
+    }
     await loadQuestionsAdmin();
     if (typeof loadChaptersAdmin === "function") loadChaptersAdmin();
 }

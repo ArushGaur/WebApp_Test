@@ -39,7 +39,7 @@ process.on("uncaughtException", (err) => {
 				}
 			}
 		}
-	} catch (_) { }
+	} catch (_) {}
 	// Let the orchestrator restart us rather than run in an unknown state.
 	setTimeout(() => process.exit(1), 250).unref?.();
 });
@@ -68,7 +68,7 @@ function containerMemoryMB() {
 				// Ignore the "no limit" sentinel some kernels report.
 				if (bytes > 0 && bytes < Number.MAX_SAFE_INTEGER / 2) return Math.floor(bytes / 1048576);
 			}
-		} catch (_) { }
+		} catch (_) {}
 	}
 	return Math.floor(os.totalmem() / 1048576);
 }
@@ -389,7 +389,7 @@ function startServer() {
 			closing = true;
 			logger.warn({ signal }, "shutting down");
 			server.close(async () => {
-				try { await db.pool.end(); } catch (_) { }
+				try { await db.pool.end(); } catch (_) {}
 				await closeRedis();
 				process.exit(0);
 			});
@@ -415,7 +415,12 @@ function startServer() {
 			const paperCount = await db.execute(
 				"SELECT COUNT(*) AS c FROM papers WHERE year != 'Regular'"
 			);
-			if (Number((paperCount.rows[0] || {}).c || 0) > 0) return;
+			// The questions now live in `pyq_year_wise`, so an empty index means a
+			// rebuild is needed even when the papers registry already has rows
+			// (e.g. the first boot after this upgrade).
+			const indexCount = await db.execute("SELECT COUNT(*) AS c FROM pyq_year_wise");
+			const indexEmpty = Number((indexCount.rows[0] || {}).c || 0) === 0;
+			if (Number((paperCount.rows[0] || {}).c || 0) > 0 && !indexEmpty) return;
 
 			logger.info({ pyqTotal }, "papers: auto-rebuilding");
 			const rebuildFn = adminRouterRef.rebuildPapersFromPyq;

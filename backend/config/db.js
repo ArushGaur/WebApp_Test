@@ -327,6 +327,18 @@ async function initDB(TEACHER_PASSCODE, hashPasscode) {
 		`CREATE INDEX IF NOT EXISTS idx_pyq_subject_year ON pyq_questions(subject, year)`,
 		`CREATE INDEX IF NOT EXISTS idx_pyq_year ON pyq_questions(year)`,
 
+		// ── pyq_year_wise — SUBJECT + YEAR view of the PYQ bank ───────────────
+		// Same questions as `pyq_questions`, but keyed for paper-wise search
+		// (subject + year + derived exam) instead of chapter/topic browsing.
+		// Derived table: pyq_questions stays the source of truth, every PYQ write
+		// mirrors into here, and utils/pyqYearWise.js can rebuild it from scratch.
+		`CREATE TABLE IF NOT EXISTS pyq_year_wise (id BIGSERIAL PRIMARY KEY, pyq_id BIGINT UNIQUE, subject TEXT NOT NULL DEFAULT '', year TEXT NOT NULL DEFAULT '', exam TEXT NOT NULL DEFAULT '', month TEXT DEFAULT '', day TEXT DEFAULT '', shift TEXT DEFAULT '', question_number INTEGER, question_type TEXT NOT NULL DEFAULT 'MCQ', chapter TEXT DEFAULT '', topic TEXT DEFAULT '', raw_json TEXT NOT NULL DEFAULT '{}', created_at BIGINT DEFAULT 0, updated_at BIGINT DEFAULT 0)`,
+		`CREATE INDEX IF NOT EXISTS idx_pyq_yw_subject_year ON pyq_year_wise(subject, year)`,
+		`CREATE INDEX IF NOT EXISTS idx_pyq_yw_exam_year ON pyq_year_wise(exam, year)`,
+		`CREATE INDEX IF NOT EXISTS idx_pyq_yw_year ON pyq_year_wise(year)`,
+		`CREATE INDEX IF NOT EXISTS idx_pyq_yw_exam_year_type ON pyq_year_wise(exam, year, question_type)`,
+		`CREATE INDEX IF NOT EXISTS idx_pyq_yw_pyq_id ON pyq_year_wise(pyq_id)`,
+
 		// ── Student / test / institute tables ─────────────────────────────────
 		`CREATE TABLE IF NOT EXISTS students (id BIGSERIAL PRIMARY KEY, mobile TEXT NOT NULL, lecture TEXT NOT NULL, name TEXT, place TEXT, class_name TEXT, chapter TEXT, answers_json TEXT DEFAULT '[]', correct_count INTEGER DEFAULT 0, total_questions INTEGER DEFAULT 0, time BIGINT DEFAULT 0, cheat_flag INTEGER DEFAULT 0, institute_id BIGINT DEFAULT NULL, UNIQUE(mobile, lecture))`,
 		`CREATE TABLE IF NOT EXISTS attempts (id BIGSERIAL PRIMARY KEY, mobile TEXT NOT NULL, chapter TEXT, lecture TEXT NOT NULL, time BIGINT DEFAULT 0, institute_id BIGINT DEFAULT NULL)`,

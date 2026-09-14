@@ -28,6 +28,19 @@ const { db } = require("../config/db");
  * ─────────────────────────────────────────────────────────────────────────
  */
 
+// Derived subject+year index over the PYQ table. Every write below that
+// touches a PYQ row mirrors into it so paper-wise search stays in sync.
+// Mirroring is best-effort: an index failure must never fail the real write.
+const yearWise = require("./pyqYearWise");
+
+async function mirror(fn, label) {
+	try {
+		await fn();
+	} catch (e) {
+		console.warn(`[pyq_year_wise] ${label} mirror failed:`, e.message);
+	}
+}
+
 const BANK_TABLE = "questions";
 const PYQ_TABLE = "pyq_questions";
 
@@ -109,7 +122,9 @@ async function insertQuestion(input) {
 				r.question_number, r.question_type, r.raw_json, r.created_at, r.updated_at,
 			],
 		});
-		return { id: res.lastInsertRowid, table: PYQ_TABLE };
+		const newId = res.lastInsertRowid;
+		await mirror(() => yearWise.syncPyqRow(newId, r), "insert");
+		return { id: newId, table: PYQ_TABLE };
 	}
 	const res = await db.execute({
 		sql: `INSERT INTO ${BANK_TABLE}
@@ -225,6 +240,9 @@ async function updateQuestionRowById(id, patch = {}) {
 				],
 			});
 		}
+		// Keep the year-wise index aligned with the edit: a row that is still
+		// PYQ gets re-synced, one that never was stays absent.
+		if (to === PYQ_TABLE) await mirror(() => yearWise.syncPyqRow(id, merged), "update");
 		return { id, table: to, moved: false, previousTable: from };
 	}
 
@@ -253,6 +271,9 @@ async function updateQuestionRowById(id, patch = {}) {
 		});
 	}
 	await db.execute({ sql: `DELETE FROM ${from} WHERE id = ?`, args: [id] });
+	// Crossed the bank/PYQ boundary: add to or drop from the year-wise index.
+	if (to === PYQ_TABLE) await mirror(() => yearWise.syncPyqRow(id, merged), "move-in");
+	else await mirror(() => yearWise.removePyqRow(id), "move-out");
 	return { id, table: to, moved: true, previousTable: from };
 }
 
@@ -260,6 +281,7 @@ async function updateQuestionRowById(id, patch = {}) {
 async function deleteQuestionRowById(id) {
 	const a = await db.execute({ sql: `DELETE FROM ${PYQ_TABLE} WHERE id = ?`, args: [id] });
 	const b = await db.execute({ sql: `DELETE FROM ${BANK_TABLE} WHERE id = ?`, args: [id] });
+	await mirror(() => yearWise.removePyqRow(id), "delete");
 	return (a.rowsAffected || 0) + (b.rowsAffected || 0);
 }
 
@@ -278,6 +300,9 @@ async function deleteQuestionsWhere(whereSql, args = []) {
 		});
 		deleted += res.rowsAffected || 0;
 	}
+	// The clause only references columns shared by both tables, and the
+	// year-wise index carries the same ones, so it applies unchanged.
+	await mirror(() => yearWise.removeWhere(whereSql, args), "delete-where");
 	return deleted;
 }
 
@@ -297,6 +322,9 @@ async function updateQuestionsWhere(setSql, setArgs = [], whereSql = "TRUE", whe
 		});
 		updated += res.rowsAffected || 0;
 	}
+	// Chapter/topic renames must land on the index too, or paper-wise rows
+	// would keep showing the old labels.
+	await mirror(() => yearWise.updateWhere(setSql, setArgs, whereSql, whereArgs), "update-where");
 	return updated;
 }
 

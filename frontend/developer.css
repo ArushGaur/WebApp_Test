@@ -4671,6 +4671,86 @@ tr:hover td {
     flex-shrink: 0;
 }
 
+/* ── "Auto Generate" launch button ───────────────────────────────────────
+   Deep-teal on-brand: accent → accent-2 gradient with an inner highlight and
+   a tinted glow instead of a flat fill, so it reads premium rather than dull.
+   --ag-btn-text keeps the label readable on each theme's gradient (near-black
+   on the bright dark-mode teal, white on the deeper light-mode teal). */
+.ag-launch-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    color: var(--ag-btn-text);
+    font-size: 0.88rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    font-family: inherit;
+    flex-shrink: 0;
+    white-space: nowrap;
+    position: relative;
+    overflow: hidden;
+    box-shadow:
+        0 4px 16px var(--accent-glow),
+        inset 0 1px 0 rgba(255, 255, 255, 0.28);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+/* Sheen sweep on hover — the "premium" cue, kept subtle and GPU-cheap. */
+.ag-launch-btn::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, 0.34) 50%, transparent 65%);
+    transform: translateX(-120%);
+    transition: transform 0.55s ease;
+    pointer-events: none;
+}
+
+.ag-launch-btn:hover {
+    transform: translateY(-2px);
+    filter: saturate(1.06);
+    box-shadow:
+        0 10px 26px var(--accent-glow),
+        inset 0 1px 0 rgba(255, 255, 255, 0.34);
+}
+
+.ag-launch-btn:hover::after {
+    transform: translateX(120%);
+}
+
+.ag-launch-btn:active {
+    transform: translateY(0);
+    box-shadow:
+        0 3px 10px var(--accent-glow),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.ag-launch-btn:focus-visible {
+    outline: 2px solid var(--accent-2);
+    outline-offset: 2px;
+}
+
+.ag-launch-btn svg {
+    flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .ag-launch-btn,
+    .ag-launch-btn::after {
+        transition: none;
+    }
+
+    .ag-launch-btn:hover {
+        transform: none;
+    }
+}
+
 #ag-modal-header button.ag-close-btn {
     background: var(--bg-input);
     border: 1px solid var(--border);

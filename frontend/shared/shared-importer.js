@@ -5,7 +5,7 @@
 /** Convert a File object to a base64 string (no data: prefix) */
 
 /* ══════════════════════════════════════════════════════════════════
-   IMPORT FROM SCREENSHOT — v_2
+   IMPORT FROM SCREENSHOT — v2
    ─────────────────────────────────────────────────────────────────
    Architecture:
      • 3-step wizard: Upload → Extract (live progress) → Review/Save
@@ -2405,3 +2405,200 @@ function jsonUploadClearFile() {
 function _jsonEscHtml(str) {
     return String(str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   IMPORT GUARD — warn before losing unsaved review progress
+   ───────────────────────────────────────────────────────────────────
+   Reviewing a parsed file (fixing chapters/topics, pasting diagrams)
+   lives entirely in memory: `_jsonUploadQuestions` + `_jsonUploadImages`.
+   A refresh or tab close throws all of it away, so both paths now ask
+   first.
+
+   Two different mechanisms, because browsers only allow one of them to
+   be customised:
+     • F5 / Ctrl+R / Cmd+R  → keydown is cancellable, so we show our own
+       themed popup and never let the reload start.
+     • Tab close, window close, back/forward, address-bar navigation →
+       only the browser's own native "Leave site?" dialog is permitted.
+       Custom HTML is blocked here by every modern browser as an
+       anti-phishing measure; `beforeunload` merely opts us in to it.
+═══════════════════════════════════════════════════════════════════ */
+(function initImportGuard() {
+    let _guardSaved = false; // true right after a clean save
+
+    /** Unsaved review work = parsed questions that have not been saved yet. */
+    function isDirty() {
+        try {
+            if (_guardSaved) return false;
+            if (Array.isArray(_jsonUploadQuestions) && _jsonUploadQuestions.length) return true;
+            // Images with no questions shouldn't happen, but never lose them.
+            return !!(_jsonUploadImages && Object.keys(_jsonUploadImages).length);
+        } catch (e) { return false; }
+    }
+
+    function pastedImageCount() {
+        try {
+            return Object.values(_jsonUploadImages || {}).reduce((n, v) => {
+                if (!v) return n;
+                return n + (Array.isArray(v) ? v.filter(Boolean).length : 1);
+            }, 0);
+        } catch (e) { return 0; }
+    }
+
+    /* ── Themed popup ───────────────────────────────────────────────── */
+    function injectStyles() {
+        if (document.getElementById("vy-import-guard-styles")) return;
+        const st = document.createElement("style");
+        st.id = "vy-import-guard-styles";
+        st.textContent = `
+#vyImportGuardPopup{position:fixed;inset:0;z-index:100000;display:none;
+  align-items:center;justify-content:center;padding:20px;
+  background:rgba(4,12,12,0.72);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+#vyImportGuardPopup.active{display:flex}
+#vyImportGuardPopup .vig-box{width:100%;max-width:440px;background:var(--bg-card,#0d1a1b);
+  border:1px solid var(--border,rgba(46,204,196,0.15));border-radius:var(--radius,16px);
+  padding:26px 24px;text-align:center;font-family:inherit;
+  box-shadow:0 24px 60px rgba(0,0,0,0.45);opacity:0;transform:scale(0.92)}
+#vyImportGuardPopup .vig-icon{font-size:2.1rem;line-height:1;margin-bottom:12px}
+#vyImportGuardPopup .vig-title{font-size:1.12rem;font-weight:800;color:var(--text,#d8f4f2);
+  margin-bottom:8px;font-family:var(--font-display,inherit)}
+#vyImportGuardPopup .vig-body{font-size:0.86rem;line-height:1.55;color:var(--text-dim,#7abfba);margin-bottom:14px}
+#vyImportGuardPopup .vig-tag{display:inline-block;font-size:0.68rem;font-weight:800;letter-spacing:0.08em;
+  text-transform:uppercase;padding:5px 11px;border-radius:999px;margin-bottom:18px;
+  color:var(--warn,#f4bc72);background:rgba(244,188,114,0.12);border:1px solid rgba(244,188,114,0.3)}
+#vyImportGuardPopup .vig-row{display:flex;gap:10px;flex-wrap:wrap}
+#vyImportGuardPopup .vig-row button{flex:1;min-width:150px;padding:11px 16px;border-radius:var(--radius-sm,11px);
+  font-family:inherit;font-size:0.85rem;font-weight:700;cursor:pointer;transition:transform .16s ease,box-shadow .16s ease,filter .16s ease}
+#vyImportGuardPopup .vig-stay{border:1px solid var(--accent,#2eccc4);color:var(--ag-btn-text,#050e0e);
+  background:linear-gradient(135deg,var(--accent,#2eccc4),var(--accent-2,#6de8e2));
+  box-shadow:0 4px 16px var(--accent-glow,rgba(46,204,196,0.2)),inset 0 1px 0 rgba(255,255,255,0.28)}
+#vyImportGuardPopup .vig-stay:hover{transform:translateY(-2px);filter:saturate(1.06)}
+#vyImportGuardPopup .vig-leave{background:transparent;border:1px solid var(--border,rgba(46,204,196,0.15));color:var(--text-dim,#7abfba)}
+#vyImportGuardPopup .vig-leave:hover{border-color:var(--error,#f07878);color:var(--error,#f07878);background:rgba(240,120,120,0.08)}
+@media (prefers-reduced-motion:reduce){#vyImportGuardPopup .vig-box{transition:none!important}
+  #vyImportGuardPopup .vig-row button:hover{transform:none}}`;
+        document.head.appendChild(st);
+    }
+
+    let _resolver = null;
+
+    function buildPopup() {
+        let el = document.getElementById("vyImportGuardPopup");
+        if (el) return el;
+        injectStyles();
+        el = document.createElement("div");
+        el.id = "vyImportGuardPopup";
+        el.setAttribute("role", "dialog");
+        el.setAttribute("aria-modal", "true");
+        el.innerHTML = `
+            <div class="vig-box">
+                <div class="vig-icon">\u26A0\uFE0F</div>
+                <div class="vig-title">Unsaved import in progress</div>
+                <div class="vig-body" id="vigBody"></div>
+                <div class="vig-tag">Reloading discards everything</div>
+                <div class="vig-row">
+                    <button type="button" class="vig-stay">Keep reviewing</button>
+                    <button type="button" class="vig-leave">Reload anyway</button>
+                </div>
+            </div>`;
+        el.querySelector(".vig-stay").addEventListener("click", () => close(false));
+        el.querySelector(".vig-leave").addEventListener("click", () => close(true));
+        // Clicking the dim backdrop is the safe choice: stay.
+        el.addEventListener("click", e => { if (e.target === el) close(false); });
+        document.body.appendChild(el);
+        return el;
+    }
+
+    function close(confirmed) {
+        const el = document.getElementById("vyImportGuardPopup");
+        if (el) el.classList.remove("active");
+        const r = _resolver; _resolver = null;
+        if (r) r(confirmed);
+    }
+
+    /** Shows the popup; resolves true if the user chose to lose the work. */
+    function confirmLeave() {
+        const el = buildPopup();
+        const qs = (Array.isArray(_jsonUploadQuestions) ? _jsonUploadQuestions.length : 0);
+        const imgs = pastedImageCount();
+        const bits = [`${qs} question${qs === 1 ? "" : "s"}`];
+        if (imgs) bits.push(`${imgs} pasted image${imgs === 1 ? "" : "s"}`);
+        const body = el.querySelector("#vigBody");
+        if (body) {
+            body.textContent = `You have ${bits.join(" and ")} under review that have not been saved to the
+                question bank yet. Reloading the page will discard them and you will need to
+                upload and review the file again.`.replace(/\s+/g, " ");
+        }
+        el.classList.add("active");
+        const box = el.querySelector(".vig-box");
+        if (box) {
+            box.style.transition = "none";
+            box.style.opacity = "0";
+            box.style.transform = "scale(0.92)";
+            requestAnimationFrame(() => {
+                box.style.transition = "transform .22s cubic-bezier(.34,1.56,.64,1), opacity .18s ease";
+                box.style.opacity = "1";
+                box.style.transform = "scale(1)";
+            });
+        }
+        setTimeout(() => { el.querySelector(".vig-stay")?.focus(); }, 40);
+        return new Promise(res => { _resolver = res; });
+    }
+
+    /* ── F5 / Ctrl+R / Cmd+R ────────────────────────────────────────── */
+    // Capture phase so we run before any other handler, and so the key
+    // never reaches the browser's reload action.
+    document.addEventListener("keydown", function (e) {
+        const key = (e.key || "").toLowerCase();
+        const isReload = key === "f5" || ((e.ctrlKey || e.metaKey) && key === "r");
+        if (!isReload) return;
+        if (document.getElementById("vyImportGuardPopup")?.classList.contains("active")) {
+            e.preventDefault(); e.stopPropagation(); return false; // already asking
+        }
+        if (!isDirty()) return;
+        e.preventDefault();
+        e.stopPropagation();
+        confirmLeave().then(ok => {
+            if (!ok) return;
+            // Honour the user's choice without re-triggering this guard.
+            window.removeEventListener("beforeunload", onBeforeUnload);
+            location.reload();
+        });
+        return false;
+    }, true);
+
+    // Esc closes the popup as "stay".
+    document.addEventListener("keydown", function (e) {
+        if ((e.key || "") !== "Escape") return;
+        if (document.getElementById("vyImportGuardPopup")?.classList.contains("active")) close(false);
+    }, true);
+
+    /* ── Tab / window close, back, address bar ──────────────────────── */
+    function onBeforeUnload(e) {
+        if (!isDirty()) return;
+        e.preventDefault();
+        e.returnValue = ""; // required by older browsers to show the dialog
+        return "";
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+
+    /* ── Save/clear integration ─────────────────────────────────────── */
+    // Called by jsonUploadSaveAll once everything landed in the DB.
+    window.vyImportGuardMarkSaved = function () { _guardSaved = true; };
+    // Any fresh parse or re-render means there is new work to protect.
+    window.vyImportGuardMarkDirty = function () { _guardSaved = false; };
+    window.vyImportGuardIsDirty = isDirty;
+
+    // `_jsonUploadRenderPreview` lives in shared-manager.js, which loads after
+    // this file, so wrap it once both scripts have executed.
+    window.addEventListener("load", function () {
+        const orig = window._jsonUploadRenderPreview;
+        if (typeof orig !== "function" || orig.__vyGuardWrapped) return;
+        const wrapped = function () {
+            _guardSaved = false;
+            return orig.apply(this, arguments);
+        };
+        wrapped.__vyGuardWrapped = true;
+        window._jsonUploadRenderPreview = wrapped;
+    });
+})();
