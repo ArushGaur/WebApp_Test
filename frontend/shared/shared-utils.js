@@ -3,7 +3,7 @@
         ══════════════════════════════════════════════════════════════════ */
 const API_BASE = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
     ? `http://${window.location.host}`
-    : (window.location.hostname.endsWith(".github.io") ? "https://vyorra-krrsh.sevalla.app" : "");
+    : (window.location.hostname.endsWith(".github.io") ? "https://vyorradev-oocif.sevalla.app" : "");
 console.log("API_BASE set to:", API_BASE);
 console.log("Location:", window.location.href);
 const LETTERS = ["A", "B", "C", "D"];

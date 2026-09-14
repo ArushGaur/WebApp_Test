@@ -39,7 +39,7 @@ process.on("uncaughtException", (err) => {
 				}
 			}
 		}
-	} catch (_) {}
+	} catch (_) { }
 	// Let the orchestrator restart us rather than run in an unknown state.
 	setTimeout(() => process.exit(1), 250).unref?.();
 });
@@ -68,7 +68,7 @@ function containerMemoryMB() {
 				// Ignore the "no limit" sentinel some kernels report.
 				if (bytes > 0 && bytes < Number.MAX_SAFE_INTEGER / 2) return Math.floor(bytes / 1048576);
 			}
-		} catch (_) {}
+		} catch (_) { }
 	}
 	return Math.floor(os.totalmem() / 1048576);
 }
@@ -177,7 +177,7 @@ function startServer() {
 
 	/* ── CORS ──────────────────────────────────────────────────────────────── */
 	const allowedOrigins = [
-		"https://vyorra-krrsh.sevalla.app",
+		"https://vyorradev-oocif.sevalla.app",
 		"https://triumph-educator.vercel.app",
 		"http://localhost:3000",
 		"http://localhost:8080",
@@ -389,7 +389,7 @@ function startServer() {
 			closing = true;
 			logger.warn({ signal }, "shutting down");
 			server.close(async () => {
-				try { await db.pool.end(); } catch (_) {}
+				try { await db.pool.end(); } catch (_) { }
 				await closeRedis();
 				process.exit(0);
 			});
