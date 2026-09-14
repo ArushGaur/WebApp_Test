@@ -862,7 +862,7 @@ function impBuildSolutionHTML(solutions, qi) {
             html += '<div style="margin-bottom:8px">';
             html += '<label style="padding:3px 9px;background:rgba(86,169,255,0.06);border:1px dashed rgba(86,169,255,0.25);border-radius:4px;font-size:0.7rem;color:var(--accent);cursor:pointer;font-family:\'Outfit\',sans-serif;display:inline-flex;align-items:center;gap:3px" title="Add another image to this solution">+ Add image<input type="file" accept="image/*" multiple style="display:none" onchange="impAddSolImagesToEntry(' + qi + ',' + sIdx + ',this)"></label>';
             if (_impSolScreenshots && _impSolScreenshots.length > 0) {
-                html += ' <button onclick="impOpenSolCropModal(' + qi + ',' + sIdx + ')" style="padding:3px 9px;background:rgba(86,169,255,0.06);border:1px dashed rgba(86,169,255,0.25);border-radius:4px;font-size:0.7rem;color:var(--accent);cursor:pointer;font-family:\'Outfit\',sans-serif">✂ Crop from screenshot</button>';
+                html += ' <button onclick="impOpenSolCropModal(' + qi + ',' + sIdx + ')" style="padding:3px 9px;background:rgba(86,169,255,0.06);border:1px dashed rgba(86,169,255,0.25);border-radius:4px;font-size:0.7rem;color:var(--accent);cursor:pointer;font-family:\'Outfit\',sans-serif">��� Crop from screenshot</button>';
             }
             html += '</div>';
             // Solution text — use placeholder div; text will be set via textContent + renderMath post-render
@@ -1958,58 +1958,104 @@ let _jsonUploadExamType = "jee_mains"; // "jee_mains" | "neet"
 let _jsonUploadNeetMode = "chapterwise"; // "chapterwise" | "paper"
 let _jsonUploadJeeMode = "paper"; // "chapterwise" | "paper"
 
+/* ── Import exam tabs ──────────────────────────────────────────────────
+   The selected tab is the AUTHORITATIVE exam for everything in the file.
+   Nothing is inferred from the subject any more: Physics and Chemistry
+   exist in JEE Mains, JEE Advanced and NEET alike, so guessing from the
+   subject is what previously filed JEE Physics/Chemistry under NEET.
+
+   "Regular" = non-PYQ practice questions. These carry no year, which is
+   exactly how the backend tells PYQ from non-PYQ (isPyq = year present),
+   so they land in the `questions` table rather than `pyq_questions`.
+─────────────────────────────────────────────────────────────────────── */
+const _IMP_EXAM_TABS = {
+    jee_mains: {
+        btn: 'jsonUploadExamJee', exam: 'JEE Mains', pyq: true,
+        hint: 'Everything in this file is saved as a <strong>JEE Mains PYQ</strong>.'
+    },
+    jee_advanced: {
+        btn: 'jsonUploadExamAdv', exam: 'JEE Advanced', pyq: true,
+        hint: 'Everything in this file is saved as a <strong>JEE Advanced PYQ</strong>.'
+    },
+    neet: {
+        btn: 'jsonUploadExamNeet', exam: 'NEET', pyq: true,
+        hint: 'Everything in this file is saved as a <strong>NEET PYQ</strong>.'
+    },
+    regular: {
+        btn: 'jsonUploadExamRegular', exam: null, pyq: false,
+        hint: 'Saved as <strong>regular (non-PYQ)</strong> questions \u2014 no year is stored, so they go to the normal question bank, not the PYQ table.'
+    },
+};
+
+/** The exam every question in this import belongs to. */
+function jsonUploadExamForImport() {
+    if (_jsonUploadExamType === 'regular') {
+        return document.getElementById('jsonUploadRegularExam')?.value || 'JEE Mains';
+    }
+    return (_IMP_EXAM_TABS[_jsonUploadExamType] || _IMP_EXAM_TABS.jee_mains).exam;
+}
+
+/** False for the Regular tab, which stores non-PYQ questions. */
+function jsonUploadIsPyqImport() {
+    return (_IMP_EXAM_TABS[_jsonUploadExamType] || _IMP_EXAM_TABS.jee_mains).pyq;
+}
+
 function jsonUploadSetExamType(type) {
-    const selected = type === 'neet' ? 'neet' : 'jee_mains';
+    const selected = _IMP_EXAM_TABS[type] ? type : 'jee_mains';
     _jsonUploadExamType = selected;
 
-    const jeeBtn = document.getElementById("jsonUploadExamJee");
-    const neetBtn = document.getElementById("jsonUploadExamNeet");
-    const details = document.getElementById("jsonUploadPaperDetails");
-    const infoNote = document.getElementById("jsonUploadInfoNote");
-    const neetMode = document.getElementById("jsonUploadNeetModeBlock");
-    const jeeMode = document.getElementById("jsonUploadJeeModeBlock");
+    // Tab highlight
+    Object.entries(_IMP_EXAM_TABS).forEach(([key, cfg]) => {
+        const btn = document.getElementById(cfg.btn);
+        if (btn) btn.classList.toggle('active', key === selected);
+    });
 
-    if (jeeBtn) {
-        jeeBtn.style.border = selected === 'jee_mains' ? "1px solid var(--accent)" : "1px solid var(--border)";
-        jeeBtn.style.background = selected === 'jee_mains' ? "rgba(86,169,255,0.12)" : "var(--bg-card)";
-        jeeBtn.style.color = selected === 'jee_mains' ? "#56a9ff" : "var(--text)";
-    }
-    if (neetBtn) {
-        neetBtn.style.border = selected === 'neet' ? "1px solid var(--accent)" : "1px solid var(--border)";
-        neetBtn.style.background = selected === 'neet' ? "rgba(86,169,255,0.12)" : "var(--bg-card)";
-        neetBtn.style.color = selected === 'neet' ? "#56a9ff" : "var(--text)";
-    }
+    const isJeeLike = selected === 'jee_mains' || selected === 'jee_advanced';
+    const jeeMode = document.getElementById('jsonUploadJeeModeBlock');
+    const neetMode = document.getElementById('jsonUploadNeetModeBlock');
+    const regularBlock = document.getElementById('jsonUploadRegularBlock');
+    const details = document.getElementById('jsonUploadPaperDetails');
+    const infoNote = document.getElementById('jsonUploadInfoNote');
+    const tabHint = document.getElementById('jsonUploadExamTabHint');
 
-    // Show/hide sub-mode blocks
-    if (jeeMode) jeeMode.style.display = selected === 'jee_mains' ? 'block' : 'none';
+    // JEE Mains and JEE Advanced share the chapterwise/paper sub-mode.
+    if (jeeMode) jeeMode.style.display = isJeeLike ? 'block' : 'none';
     if (neetMode) neetMode.style.display = selected === 'neet' ? 'block' : 'none';
+    if (regularBlock) regularBlock.style.display = selected === 'regular' ? 'block' : 'none';
 
-    // Paper Details: only visible for JEE paper mode
-    if (details) details.style.display = (selected === 'jee_mains' && _jsonUploadJeeMode === 'paper') ? 'block' : 'none';
+    // Year/Month/Date/Shift only matter for a dated JEE paper upload.
+    if (details) details.style.display = (isJeeLike && _jsonUploadJeeMode === 'paper') ? 'block' : 'none';
+
+    if (tabHint) tabHint.innerHTML = _IMP_EXAM_TABS[selected].hint;
+
+    if (selected === 'neet') {
+        try { jsonUploadSetNeetMode(_jsonUploadNeetMode); } catch (e) { /* not yet defined */ }
+    }
 
     if (infoNote) {
-        if (selected === 'jee_mains') {
-            if (_jsonUploadJeeMode === 'paper') {
-                infoNote.style.display = 'block';
-                infoNote.innerHTML = `<strong style="color:var(--accent-2)">How it works:</strong>
-                                Fill in the paper details (Year, Month, Date, Shift) and upload the JSON file extracted by
-                                Gemini.
-                                All questions will be previewed with their tags (Subject, Chapter, Topic) and you can attach
-                                multiple images to each question and solution.
-                                Questions are stored according to their Subject, Chapter, and Topic tagging and will appear
-                                in the Manage section grouped by Subject → Chapter → Topic → Question.
-                                Supports MCQ, MSQ (multi-correct), and Integer type questions.`;
-            } else {
-                infoNote.style.display = 'block';
-                infoNote.innerHTML = `<strong style="color:var(--accent-2)">Chapterwise Upload:</strong>
-                                Upload a JSON file with JEE questions tagged by chapter and topic.
-                                Questions are stored grouped by Chapter → Topic — no paper date needed.
-                                Ideal for uploading chapter-wise JEE practice question sets.`;
-            }
+        if (isJeeLike) {
+            const label = _IMP_EXAM_TABS[selected].exam;
+            infoNote.style.display = 'block';
+            infoNote.innerHTML = _jsonUploadJeeMode === 'paper'
+                ? `<strong style="color:var(--accent-2)">How it works:</strong>
+                   Fill in the paper details (Year, Month, Date, Shift) and upload the JSON file extracted by
+                   Gemini. All questions will be previewed with their tags (Subject, Chapter, Topic) and you can
+                   attach multiple images to each question and solution. They are stored as
+                   <strong>${label}</strong> PYQs, grouped in Manage by Subject \u2192 Chapter \u2192 Topic \u2192 Question,
+                   and in Paper wise under <strong>${label} &lt;year&gt;</strong>.
+                   Supports MCQ, MSQ (multi-correct), and Integer type questions.`
+                : `<strong style="color:var(--accent-2)">Chapterwise Upload:</strong>
+                   Upload a JSON file with <strong>${label}</strong> questions tagged by chapter and topic.
+                   Questions are stored grouped by Chapter \u2192 Topic \u2014 no paper date needed.
+                   A question carrying its own year is still saved as a ${label} PYQ.`;
+        } else if (selected === 'regular') {
+            infoNote.style.display = 'block';
+            infoNote.innerHTML = `<strong style="color:var(--accent-2)">Regular (non-PYQ) Upload:</strong>
+                   For practice questions that are not from a past paper. Any year present in the JSON is
+                   ignored, so these are saved to the normal question bank and appear in Paper wise under the
+                   selected stream's <strong>Regular Ques</strong> bucket.`;
         } else {
             infoNote.style.display = 'none';
-            // initialize NEET sub-mode UI
-            try { jsonUploadSetNeetMode(_jsonUploadNeetMode); } catch (e) { /* ignore if not yet defined */ }
         }
     }
 }
@@ -2033,24 +2079,10 @@ function jsonUploadSetJeeMode(mode) {
     }
     // Show Paper Details only for paper mode
     if (details) details.style.display = m === 'paper' ? 'block' : 'none';
-    // Update info note
-    if (infoNote && _jsonUploadExamType === 'jee_mains') {
-        infoNote.style.display = 'block';
-        if (m === 'paper') {
-            infoNote.innerHTML = `<strong style="color:var(--accent-2)">How it works:</strong>
-                        Fill in the paper details (Year, Month, Date, Shift) and upload the JSON file extracted by
-                        Gemini.
-                        All questions will be previewed with their tags (Subject, Chapter, Topic) and you can attach
-                        multiple images to each question and solution.
-                        Questions are stored according to their Subject, Chapter, and Topic tagging and will appear
-                        in the Manage section grouped by Subject → Chapter → Topic → Question.
-                        Supports MCQ, MSQ (multi-correct), and Integer type questions.`;
-        } else {
-            infoNote.innerHTML = `<strong style="color:var(--accent-2)">Chapterwise Upload:</strong>
-                        Upload a JSON file with JEE questions tagged by chapter and topic.
-                        Questions are stored grouped by Chapter → Topic — no paper date needed.
-                        Ideal for uploading chapter-wise JEE practice question sets.`;
-        }
+    // Both JEE tabs share this sub-mode, so let jsonUploadSetExamType own the
+    // wording — it knows which exam is selected.
+    if (_jsonUploadExamType === 'jee_mains' || _jsonUploadExamType === 'jee_advanced') {
+        jsonUploadSetExamType(_jsonUploadExamType);
     }
 }
 

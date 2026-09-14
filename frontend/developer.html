@@ -483,17 +483,32 @@
                             style="background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:12px">
                             <div style="font-size:0.82rem;font-weight:700;color:var(--text-dim);margin-bottom:8px">🏛️
                                 JSON Upload Mode</div>
-                            <div style="display:flex;gap:10px;flex-wrap:wrap">
-                                <button id="jsonUploadExamJee" type="button"
-                                    onclick="jsonUploadSetExamType('jee_mains')"
-                                    style="flex:1;min-width:140px;padding:10px 12px;border-radius:var(--radius-sm);border:1px solid var(--accent);background:rgba(86,169,255,0.12);color:#56a9ff;cursor:pointer;font-weight:700;font-size:0.82rem">
-                                    JEE Mains
-                                </button>
-                                <button id="jsonUploadExamNeet" type="button" onclick="jsonUploadSetExamType('neet')"
-                                    style="flex:1;min-width:140px;padding:10px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg-card);color:var(--text);cursor:pointer;font-weight:700;font-size:0.82rem">
-                                    NEET
-                                </button>
+                            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                                <button id="jsonUploadExamJee" type="button" class="imp-exam-tab active"
+                                    onclick="jsonUploadSetExamType('jee_mains')">JEE Mains</button>
+                                <button id="jsonUploadExamAdv" type="button" class="imp-exam-tab"
+                                    onclick="jsonUploadSetExamType('jee_advanced')">JEE Advanced</button>
+                                <button id="jsonUploadExamNeet" type="button" class="imp-exam-tab"
+                                    onclick="jsonUploadSetExamType('neet')">NEET</button>
+                                <button id="jsonUploadExamRegular" type="button" class="imp-exam-tab"
+                                    onclick="jsonUploadSetExamType('regular')">Regular (non-PYQ)</button>
                             </div>
+                            <div id="jsonUploadExamTabHint"
+                                style="font-size:0.72rem;color:var(--text-muted);margin-top:8px"></div>
+                        </div>
+
+                        <!-- Regular (non-PYQ): no year is stored, so pick which
+                             exam's rolling "Regular Ques" bucket it belongs to. -->
+                        <div id="jsonUploadRegularBlock" style="display:none;margin-bottom:12px">
+                            <label
+                                style="font-size:0.78rem;font-weight:700;color:var(--text-dim);display:block;margin-bottom:8px">Exam
+                                stream for these regular questions</label>
+                            <select id="jsonUploadRegularExam"
+                                style="width:100%;max-width:260px;padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);color:var(--text);font-family:inherit;font-size:0.82rem">
+                                <option value="JEE Mains">JEE Mains</option>
+                                <option value="JEE Advanced">JEE Advanced</option>
+                                <option value="NEET">NEET</option>
+                            </select>
                         </div>
 
                         <!-- JEE sub-mode: Chapterwise or Paper Upload -->
@@ -2856,7 +2871,7 @@
                                 style="width:100%;padding:10px;background:linear-gradient(135deg,rgba(86,169,255,0.12),rgba(46,210,180,0.08));border:1.5px solid var(--accent);border-radius:9px;color:var(--accent);cursor:pointer;font-size:0.85rem;font-weight:700;font-family:inherit;transition:all .18s;letter-spacing:0.2px"
                                 onmouseover="this.style.background='var(--accent-glow)'"
                                 onmouseout="this.style.background='linear-gradient(135deg,rgba(86,169,255,0.12),rgba(46,210,180,0.08))'">
-                                👥 Select Students
+                                �� Select Students
                             </button>
                         </div>
                     </div>

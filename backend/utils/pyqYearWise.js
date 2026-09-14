@@ -27,22 +27,37 @@ const { db } = require("../config/db");
 const YEAR_TABLE = "pyq_year_wise";
 const PAPER_EXAMS = ["JEE Mains", "JEE Advanced", "NEET"];
 
-// Normalize any incoming exam string to one of PAPER_EXAMS.
-function normalizeExam(e) {
+// Exact match only — returns null when the string names no known exam, so
+// callers can tell "unknown" apart from "defaulted".
+function normalizeExamStrict(e) {
 	const s = String(e || "").trim().toLowerCase();
-	if (s.includes("advanced") || s === "jee_advanced") return "JEE Advanced";
+	if (!s) return null;
+	if (s.includes("advanced") || s === "jee_advanced" || s === "jeeadv") return "JEE Advanced";
 	if (s.includes("neet")) return "NEET";
 	if (s.includes("jee") || s.includes("main")) return "JEE Mains";
-	return "NEET";
+	return null;
 }
 
-// PYQ data mapping: Maths → JEE Mains, all other subjects → NEET.
-// An explicit exam tag on the question (raw_json.exam) always wins.
+// Where a question goes when nothing identifies its exam. Overridable so a
+// NEET-first workspace can flip the default without a code change.
+const DEFAULT_EXAM = normalizeExamStrict(process.env.DEFAULT_PYQ_EXAM) || "JEE Mains";
+
+// Normalize any incoming exam string to one of PAPER_EXAMS.
+function normalizeExam(e) {
+	return normalizeExamStrict(e) || DEFAULT_EXAM;
+}
+
+// Biology is NEET-only; every other subject is shared between JEE and NEET,
+// so the subject alone cannot identify the exam. The old rule here mapped
+// "not Maths" → NEET, which filed every JEE Physics/Chemistry question under
+// NEET. Now only a real signal decides, and anything unknown falls back to
+// DEFAULT_EXAM instead of being guessed from the subject.
 function examForSubject(subject, examHint) {
-	if (examHint) return normalizeExam(examHint);
+	const hinted = normalizeExamStrict(examHint);
+	if (hinted) return hinted;
 	const s = String(subject || "").trim().toLowerCase();
-	if (s === "maths" || s === "math" || s === "mathematics") return "JEE Mains";
-	return "NEET";
+	if (s === "biology" || s === "botany" || s === "zoology") return "NEET";
+	return DEFAULT_EXAM;
 }
 
 function str(v) {
@@ -96,7 +111,12 @@ async function syncPyqRow(id, row = {}) {
 	if (!year || id == null) return;
 	const raw = readRaw(row.raw_json);
 	const subject = str(row.subject);
-	const exam = examForSubject(subject, raw.exam || raw.examName || raw.exam_name || "");
+	// `_exam` is what the importer stamps from the selected exam tab; the
+	// other spellings can arrive from AI-extracted JSON.
+	const exam = examForSubject(
+		subject,
+		row.exam || raw._exam || raw.exam || raw.examName || raw.exam_name || ""
+	);
 	const now = Date.now();
 
 	// Replace-on-write: one row per pyq_questions.id, so re-saving a question
@@ -169,7 +189,12 @@ async function rebuildYearWise() {
 		if (!year) continue;
 		const raw = readRaw(row.raw_json);
 		const subject = str(row.subject);
-		const exam = examForSubject(subject, raw.exam || raw.examName || raw.exam_name || "");
+		// `_exam` is what the importer stamps from the selected exam tab; the
+		// other spellings can arrive from AI-extracted JSON.
+		const exam = examForSubject(
+			subject,
+			row.exam || raw._exam || raw.exam || raw.examName || raw.exam_name || ""
+		);
 		await db.execute({
 			sql: `INSERT INTO ${YEAR_TABLE}
 				(pyq_id, subject, year, exam, month, day, shift, question_number,

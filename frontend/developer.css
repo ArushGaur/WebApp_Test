@@ -4671,6 +4671,41 @@ tr:hover td {
     flex-shrink: 0;
 }
 
+/* ── Import → exam tabs (JEE Mains / JEE Advanced / NEET / Regular) ──────
+   The selected tab decides which exam the uploaded PYQs belong to, so the
+   active state needs to be unmistakable rather than a faint tint. */
+.imp-exam-tab {
+    flex: 1;
+    min-width: 132px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 0.82rem;
+    transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.imp-exam-tab:hover {
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+.imp-exam-tab.active {
+    border-color: var(--accent);
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: var(--ag-btn-text);
+    box-shadow: 0 3px 12px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.imp-exam-tab:focus-visible {
+    outline: 2px solid var(--accent-2);
+    outline-offset: 2px;
+}
+
 /* ── "Auto Generate" launch button ───────────────────────────────────────
    Deep-teal on-brand: accent → accent-2 gradient with an inner highlight and
    a tinted glow instead of a flat fill, so it reads premium rather than dull.

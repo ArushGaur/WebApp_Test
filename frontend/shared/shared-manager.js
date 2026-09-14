@@ -3294,10 +3294,14 @@ function jsonUploadRemoveImage(idx, type, optIdx) {
 // async function _impSaveAllPYQ() { await jsonUploadSaveAll(); }
 
 async function jsonUploadSaveAll() {
-    const isJeeMode = _jsonUploadExamType === 'jee_mains';
+    // The selected tab is authoritative: it names the exam and says whether
+    // these are PYQs at all. Nothing is inferred from the subject.
+    const _importExam = jsonUploadExamForImport();   // "JEE Mains" | "JEE Advanced" | "NEET"
+    const _importIsPyq = jsonUploadIsPyqImport();    // false on the Regular tab
+    const isJeeMode = _jsonUploadExamType === 'jee_mains' || _jsonUploadExamType === 'jee_advanced';
     const isJeePaper = isJeeMode && _jsonUploadJeeMode === 'paper';
     const isJeeChapterwise = isJeeMode && _jsonUploadJeeMode === 'chapterwise';
-    const isNeetPaper = !isJeeMode && _jsonUploadNeetMode === 'paper';
+    const isNeetPaper = _jsonUploadExamType === 'neet' && _jsonUploadNeetMode === 'paper';
     let lectureName = "";
     // Paper-level metadata stamped onto every question for badge display
     let _paperYear = "", _paperMonth = "", _paperDate = "", _paperShift = "";
@@ -3310,12 +3314,12 @@ async function jsonUploadSaveAll() {
             showErrorModal("Please fill in all paper details (Year, Month, Date, Shift) before saving.", "Missing Paper Details");
             return;
         }
-        lectureName = `JEE ${_paperYear} ${_paperMonth} ${_paperDate} ${_paperShift}`;
+        lectureName = `${_importExam} ${_paperYear} ${_paperMonth} ${_paperDate} ${_paperShift}`;
     }
     if (isNeetPaper) {
         _paperYear = document.getElementById("jsonUploadNeetPaperYear")?.value || "";
         if (!_paperYear) { showErrorModal("Please enter the Year for NEET paper upload.", "Missing Year"); return; }
-        lectureName = `NEET ${_paperYear}`;
+        lectureName = `${_importExam} ${_paperYear}`;
     }
 
     if (!_jsonUploadQuestions.length) {
@@ -3410,8 +3414,13 @@ async function jsonUploadSaveAll() {
             numericalAnswer: isInteger ? q.correct_answer : undefined,
             subject: q.subject || "",
             unit: q.unit || "",
-            // Prefer per-question year/month/date/shift; fall back to paper-level form values
-            ...(String(q.year || _paperYear || "") ? { year: String(q.year || _paperYear) } : {}),
+            // Stamped from the selected tab so the backend never has to guess
+            // the exam from the subject.
+            exam: _importExam,
+            // Prefer per-question year/month/date/shift; fall back to paper-level form values.
+            // The Regular tab drops the year entirely — an absent year is exactly
+            // how the backend classifies a question as non-PYQ.
+            ...(_importIsPyq && String(q.year || _paperYear || "") ? { year: String(q.year || _paperYear) } : {}),
             ...(_paperMonth && !q.month ? { month: _paperMonth } : (q.month ? { month: String(q.month) } : {})),
             ...(_paperDate && !q.date && !q.day ? { date: _paperDate } : (q.date ? { date: String(q.date) } : (q.day ? { day: String(q.day) } : {}))),
             ...(_paperShift && !q.shift ? { shift: _paperShift } : (q.shift ? { shift: String(q.shift) } : {})),
@@ -3425,13 +3434,18 @@ async function jsonUploadSaveAll() {
     // ── Route imported questions into the paper-wise `papers` table ──
     // PYQ (has a year) → its "<Exam> <year>" paper row; non-PYQ → the exam's
     // rolling "Regular Ques" row. Exam comes from the JEE/NEET import selector.
-    const _paperExam = isJeeMode ? 'JEE Mains' : 'NEET';
+    const _paperExam = _importExam;
+    const _regularLabels = {
+        'JEE Mains': 'JEE Regular Ques',
+        'JEE Advanced': 'JEE Advanced Regular Ques',
+        'NEET': 'NEET Regular Ques',
+    };
     const _paperBuckets = {};
     groups.forEach(g => {
         (g.questions || []).forEach(nq => {
             const yr = (nq.year && String(nq.year).trim()) ? String(nq.year).trim() : 'Regular';
             const isRegular = yr === 'Regular';
-            const label = isRegular ? (isJeeMode ? 'JEE Regular Ques' : 'NEET Regular Ques') : `${_paperExam} ${yr}`;
+            const label = isRegular ? (_regularLabels[_paperExam] || `${_paperExam} Regular Ques`) : `${_paperExam} ${yr}`;
             const bkey = `${_paperExam}|||${yr}`;
             if (!_paperBuckets[bkey]) _paperBuckets[bkey] = { exam: _paperExam, year: yr, label, questions: [] };
             _paperBuckets[bkey].questions.push(nq);
@@ -3444,7 +3458,7 @@ async function jsonUploadSaveAll() {
     ov.innerHTML = `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:18px;padding:36px 44px;display:flex;flex-direction:column;align-items:center;gap:14px;min-width:340px;box-shadow:0 12px 48px rgba(0,0,0,0.45)">
                 <div style="font-size:3rem;line-height:1">📋</div>
                 <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Saving Questions…</div>
-                <div style="font-size:0.78rem;color:var(--text-muted)">${isJeeMode ? lectureName : 'NEET mode (using JSON metadata)'}</div>
+                <div style="font-size:0.78rem;color:var(--text-muted)">${lectureName || `${_importExam}${_importIsPyq ? '' : ' \u2014 regular (non-PYQ)'}`}</div>
                 <div style="width:300px;height:9px;background:rgba(255,255,255,0.06);border-radius:8px;overflow:hidden">
                     <div id="jsonProgBar" style="height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-2));border-radius:8px;transition:width 0.3s;width:0%"></div>
                 </div>
