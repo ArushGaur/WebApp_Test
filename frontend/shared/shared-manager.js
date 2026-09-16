@@ -411,6 +411,7 @@ function getPaperLabel(row) {
 function getAllQuestionsWithYear() {
     const out = [];
     allQuestions.forEach((row, gi) => {
+        if (_mqIsPaperInjectedRow(row)) return; // never let paper-wise wrappers leak into browse views
         (row.questions || []).forEach((q, sqIdx) => {
             const year = q?.year ? String(q.year).trim() : 'Unknown Year';
             out.push({ year, question: q, row, gi, sqIdx });
@@ -464,7 +465,7 @@ function setManageBrowseMode(mode) {
 
 function renderSubjectCards(questions) {
     const grid = document.getElementById('subjectCardsGrid'); if (!grid) return;
-    const rows = Array.isArray(questions) ? questions : [];
+    const rows = (Array.isArray(questions) ? questions : []).filter(q => !_mqIsPaperInjectedRow(q));
     if (mqBrowseMode === 'paper') {
         renderPapersView(grid);
         return;
@@ -540,7 +541,7 @@ function showChaptersForSubject(subj) {
     mqBrowseMode = 'chapter';
     mqCurrentSubject = subj;
     mqCurrentPaper = null;
-    const filtered = allQuestions.filter(q => getSubjectForRow(q) === subj);
+    const filtered = allQuestions.filter(q => getSubjectForRow(q) === subj && !_mqIsPaperInjectedRow(q));
     selectModeOn = false;
     selectedLectures.clear();
     lastSelectedChapterIdx = -1;
@@ -647,6 +648,7 @@ function renderQuestionsForPaper(paper) {
 var _paperFilterExam = '';
 var _paperFilterType = '';
 var _paperViewCache = { id: null, questions: [] };
+var _paperPendingSubject = null;
 
 const _PAPER_TYPE_OPTS = [
     ['', 'All Types'], ['MCQ', 'MCQ'], ['MSQ', 'MSQ'], ['INTEGER', 'Numerical'],
@@ -675,6 +677,7 @@ function _paperSetFilter(which, val) {
 window._paperSetFilter = _paperSetFilter;
 
 // Render the list of papers (grouped by exam) with the exam + type filters.
+// Each card is a fine-grained paper group: one card per (exam, year, month, day, shift).
 function renderPapersView(grid) {
     const bar = _paperFilterBarHtml();
     grid.innerHTML = bar + '<p style="color:var(--text-dim);padding:20px;grid-column:1/-1">Loading papers…</p>';
@@ -686,10 +689,13 @@ function renderPapersView(grid) {
     fetch(url, { credentials: 'include' })
         .then(r => r.json())
         .then(data => {
-            const papers = Array.isArray(data.papers) ? data.papers : [];
+            // Prefer fine-grained `groups`; fall back to coarse `papers` if missing.
+            const groups = Array.isArray(data.groups) ? data.groups : null;
+            const papers = groups || (Array.isArray(data.papers) ? data.papers : []);
             const byExam = {};
-            // Only show papers that actually have questions (exclude empty Regular rows)
-            papers.filter(p => p.count > 0 || p.year === 'Regular').forEach(p => { (byExam[p.exam] = byExam[p.exam] || []).push(p); });
+            // Only show papers that actually have questions. Regular buckets are
+            // intentionally excluded from paper-wise.
+            papers.filter(p => p.count > 0).forEach(p => { (byExam[p.exam] = byExam[p.exam] || []).push(p); });
             const order = ['JEE Mains', 'JEE Advanced', 'NEET'];
             const exams = order.filter(e => byExam[e]).concat(Object.keys(byExam).filter(e => !order.includes(e)));
             if (!exams.length) {
@@ -703,13 +709,23 @@ function renderPapersView(grid) {
             let html = bar;
             exams.forEach(ex => {
                 html += `<div style="grid-column:1/-1;font-weight:800;font-size:1rem;color:var(--accent);margin:10px 0 2px;padding-bottom:6px;border-bottom:1px solid var(--border)">${_jsonEscHtml(ex)}</div>`;
-                byExam[ex].forEach(p => {
-                    const safeLabel = (p.label || '').replace(/'/g, "\\'");
-                    html += `<div class="chapter-card" style="border-left:4px solid var(--accent);cursor:pointer" onclick="showPaperById(${p.id}, '${safeLabel}')">
+                const byYear = {};
+                byExam[ex].forEach(p => { (byYear[p.year] = byYear[p.year] || []).push(p); });
+                Object.keys(byYear).sort((a, b) => {
+                    if (a === 'Regular') return 1;
+                    if (b === 'Regular') return -1;
+                    return Number(b) - Number(a) || String(b).localeCompare(String(a));
+                }).forEach(year => {
+                    html += `<div style="grid-column:1/-1;font-weight:750;font-size:0.9rem;color:var(--text);margin:10px 0 2px;padding:4px 0 4px 8px;border-left:3px solid var(--accent-2);">${_jsonEscHtml(year)}</div>`;
+                    byYear[year].forEach(p => {
+                        const safeLabel = (p.label || '').replace(/'/g, "\\'");
+                        const safeId = String(p.id).replace(/'/g, "\\'");
+                        html += `<div class="chapter-card" style="border-left:4px solid var(--accent);cursor:pointer" onclick="showPaperById('${safeId}', '${safeLabel}')">
                         <div class="chapter-card-icon" style="font-size:2rem">📄</div>
                         <div class="chapter-card-title" style="color:var(--accent)">${_jsonEscHtml(p.label || '')}</div>
                         <div class="chapter-card-count">${p.count} Question${p.count !== 1 ? 's' : ''}</div>
                     </div>`;
+                    });
                 });
             });
             grid.innerHTML = html;
@@ -739,7 +755,10 @@ window._rebuildPapersNow = function (btn) {
 };
 window.renderPapersView = renderPapersView;
 
-// Open one paper (by papers-table id) and show its questions.
+// Open one paper. `id` is either a numeric papers-table id (legacy) or a
+// composite key "exam||year||month||day||shift" for fine-grained paper groups.
+// Composite papers open on a subject-cards step first; clicking a subject then
+// shows the questions for that subject only.
 function showPaperById(id, label, push = true) {
     mqBrowseMode = 'paper';
     mqCurrentPaper = id;
@@ -753,10 +772,115 @@ function showPaperById(id, label, push = true) {
     document.getElementById('mq-lecture-view').style.display = 'block';
     document.getElementById('mq-question-view').style.display = 'none';
     setQuestionSelectButtonVisible(true);
-    if (push) history.pushState({ type: 'mqPaperId', id, label }, '', '');
-    renderQuestionsForPaperById(id, label);
+    if (push) history.pushState({ type: 'mqPaperGroup', id, label }, '', '');
+    if (typeof id === 'string' && id.indexOf('||') !== -1) {
+        openPaperSubjectCards(id, label);
+    } else {
+        renderQuestionsForPaperById(id, label);
+    }
 }
 window.showPaperById = showPaperById;
+
+// Load a composite-key paper's questions, then show its subject cards.
+function openPaperSubjectCards(id, label) {
+    const grid = document.getElementById('lectureCardsGrid'); if (!grid) return;
+    grid.className = "questions-view-grid";
+    document.getElementById('mq-chapter-title').textContent = label || 'Paper';
+    document.getElementById('mq-lecture-count').textContent = `Loading…`;
+    grid.innerHTML = '<p style="color:var(--text-dim);padding:20px">Loading questions…</p>';
+    let url = `/api/admin/papers/${encodeURIComponent(id)}`;
+    if (_paperFilterType) url += `?question_type=${encodeURIComponent(_paperFilterType)}`;
+    fetch(url, { credentials: 'include' })
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(data => {
+            const items = Array.isArray(data.questions) ? data.questions : [];
+            // Keep BOTH the full list and the currently-visible subset so back
+            // navigation can re-enter a subject without re-fetching.
+            _paperViewCache = { id, label: data.label || label, questions: items, allQuestions: items };
+            if (_paperPendingSubject) {
+                const pending = _paperPendingSubject;
+                _paperPendingSubject = null;
+                showPaperSubjectQuestions(pending, false);
+            } else {
+                renderPaperSubjectCards(grid, items, data.label || label);
+            }
+        })
+        .catch(() => { grid.innerHTML = '<p style="color:var(--error,#e5484d);padding:20px">Failed to load paper questions.</p>'; });
+}
+window.openPaperSubjectCards = openPaperSubjectCards;
+
+// Render subject cards for the currently loaded composite-key paper.
+function renderPaperSubjectCards(grid, items, label) {
+    const bySubj = {};
+    (items || []).forEach(it => {
+        const s = (it.question && (it.question.subject || it.question._subject)) || '(No Subject)';
+        (bySubj[s] = bySubj[s] || []).push(it);
+    });
+    const subs = Object.keys(bySubj).sort();
+    document.getElementById('mq-lecture-count').textContent = `${(items || []).length} Question${(items || []).length !== 1 ? 's' : ''} · ${(_jsonEscHtml(label || 'Paper'))}`;
+    if (!subs.length) { grid.innerHTML = '<p style="color:var(--text-dim);padding:20px">No questions in this paper.</p>'; return; }
+    const colors = { Physics: '#0e7e65', Chemistry: '#d95f5f', Mathematics: '#3e579a', Biology: '#638d33' };
+    grid.innerHTML = subs.map(s => {
+        const qs = bySubj[s];
+        const c = colors[s] || 'var(--accent)';
+        return `<div class="chapter-card" style="border-left:4px solid ${c};cursor:pointer" onclick="showPaperSubjectQuestions('${s.replace(/'/g, "\\'")}')">
+            <div class="chapter-card-icon" style="font-size:2rem">🧪</div>
+            <div class="chapter-card-title" style="color:${c}">${_jsonEscHtml(s)}</div>
+            <div class="chapter-card-count">${qs.length} Question${qs.length !== 1 ? 's' : ''}</div>
+        </div>`;
+    }).join('');
+}
+
+// Show only one subject's questions for the loaded composite-key paper.
+// `push` stays true for direct clicks; the popstate handler passes false.
+function showPaperSubjectQuestions(subject, push = true) {
+    const cache = _paperViewCache;
+    if (!cache || !Array.isArray(cache.allQuestions)) {
+        // Cache not loaded yet (e.g. browser back before the fetch resolved) —
+        // replay once the paper finishes loading.
+        _paperPendingSubject = subject;
+        return;
+    }
+    const filtered = cache.allQuestions.filter(it => ((it.question && (it.question.subject || it.question._subject)) || '(No Subject)') === subject);
+    if (!filtered.length) { showToast && showToast('No questions found for this subject.'); return; }
+    const grid = document.getElementById('lectureCardsGrid'); if (!grid) return;
+    grid.className = "questions-view-grid";
+    document.getElementById('mq-chapter-title').textContent = cache.label || 'Paper';
+    // Reuse the currently-visible subset as the source for showPaperQuestionByIndex().
+    _paperViewCache.questions = filtered;
+    if (push) history.pushState({ type: 'mqPaperSubject', id: cache.id, label: cache.label, subject }, '', '');
+    renderPaperQuestionCards(grid, filtered, cache.label + ' · ' + subject);
+}
+window.showPaperSubjectQuestions = showPaperSubjectQuestions;
+
+// Render a list of paper question items (each: { paperIndex, rowId, question }).
+function renderPaperQuestionCards(grid, items, header) {
+    document.getElementById('mq-lecture-count').textContent = `${items.length} Question${items.length !== 1 ? 's' : ''} · ${_jsonEscHtml(header || 'Paper')}`;
+    // Build navigation list for Prev/Next buttons and arrow-key navigation
+    _mqQuestionList = items.map(({ rowId }) => ({ rowId }));
+    let qIndex = 1;
+    grid.innerHTML = items.map((item, idx) => {
+        const sq = item.question || {};
+        const isMulti = sq.isMultiCorrect || (sq.correctIndexes || [sq.correctIndex || 0]).length > 1;
+        const previewText = stripMath((sq.question || '').substring(0, 60));
+        const qtype = String(sq.question_type || sq.questionType || 'MCQ').toUpperCase();
+        // Build shift badge for JEE Mains questions that carry month/day/shift metadata.
+        const month = sq._month || sq.month || '';
+        const day = sq._day || sq.day || '';
+        const shift = sq._shift || sq.shift || '';
+        const shiftBadge = (month || day || shift)
+            ? `<span style="font-size:0.7rem;background:rgba(91,95,239,0.15);color:var(--accent);border-radius:6px;padding:1px 6px;margin-left:4px;font-weight:600">${[month, day, shift].filter(Boolean).join(' · ')}</span>`
+            : '';
+        const tags = `<div style="font-size:0.72rem;color:var(--text-dim);margin-bottom:4px">${_jsonEscHtml(formatChapterLabel(sq.chapter || '(No Chapter)'))}${sq.topic ? ` · ${_jsonEscHtml(sq.topic)}` : ''} · ${_jsonEscHtml(qtype)}${shiftBadge}</div>`;
+        return `<div class="lecture-card ${isMulti ? 'has-multi' : ''}" style="position:relative" onclick="showPaperQuestionByIndex(${idx})">
+            <div class="lecture-card-num">Q${qIndex++}</div>
+            ${tags}
+            <div class="lecture-card-title">${previewText || 'Empty question'}</div>
+        </div>`;
+    }).join('');
+    if (!items.length) grid.innerHTML = '<p style="color:var(--text-dim);padding:20px">No questions in this paper for the selected filter.</p>';
+}
+window.renderPaperQuestionCards = renderPaperQuestionCards;
 
 // Render questions for a single paper id (respects the active type filter).
 function renderQuestionsForPaperById(id, label) {
@@ -772,28 +896,7 @@ function renderQuestionsForPaperById(id, label) {
         .then(data => {
             const items = Array.isArray(data.questions) ? data.questions : [];
             _paperViewCache = { id: data.id, questions: items };
-            document.getElementById('mq-lecture-count').textContent = `${items.length} Question${items.length !== 1 ? 's' : ''} · ${_jsonEscHtml(data.label || 'Paper')}`;
-            let qIndex = 1;
-            grid.innerHTML = items.map((item, idx) => {
-                const sq = item.question || {};
-                const isMulti = sq.isMultiCorrect || (sq.correctIndexes || [sq.correctIndex || 0]).length > 1;
-                const previewText = stripMath((sq.question || '').substring(0, 60));
-                const qtype = String(sq.question_type || sq.questionType || 'MCQ').toUpperCase();
-                // Build shift badge for JEE Mains questions that carry month/day/shift metadata.
-                const month = sq._month || sq.month || '';
-                const day = sq._day || sq.day || '';
-                const shift = sq._shift || sq.shift || '';
-                const shiftBadge = (month || day || shift)
-                    ? `<span style="font-size:0.7rem;background:rgba(91,95,239,0.15);color:var(--accent);border-radius:6px;padding:1px 6px;margin-left:4px;font-weight:600">${[month, day, shift].filter(Boolean).join(' · ')}</span>`
-                    : '';
-                const tags = `<div style="font-size:0.72rem;color:var(--text-dim);margin-bottom:4px">${_jsonEscHtml(formatChapterLabel(sq.chapter || '(No Chapter)'))}${sq.topic ? ` · ${_jsonEscHtml(sq.topic)}` : ''} · ${_jsonEscHtml(qtype)}${shiftBadge}</div>`;
-                return `<div class="lecture-card ${isMulti ? 'has-multi' : ''}" style="position:relative" onclick="showPaperQuestionByIndex(${idx})">
-                    <div class="lecture-card-num">Q${qIndex++}</div>
-                    ${tags}
-                    <div class="lecture-card-title">${previewText || 'Empty question'}</div>
-                </div>`;
-            }).join('');
-            if (!items.length) grid.innerHTML = '<p style="color:var(--text-dim);padding:20px">No questions in this paper for the selected filter.</p>';
+            renderPaperQuestionCards(grid, items, data.label || 'Paper');
         })
         .catch(() => { grid.innerHTML = '<p style="color:var(--error,#e5484d);padding:20px">Failed to load paper questions.</p>'; });
 }
@@ -808,6 +911,7 @@ function showPaperQuestionByIndex(idx) {
     let gi = allQuestions.findIndex(q => q._id === _id);
     const wrapped = {
         _id,
+        _rowId: item.rowId,
         chapter: sq.chapter || null,
         lecture: sq.topic || "",
         topic: sq.topic || "",
@@ -879,11 +983,33 @@ function toggleQuestionSelectByRowId(e, rowId) {
 }
 window.toggleQuestionSelectByRowId = toggleQuestionSelectByRowId;
 
+// True only for real chapter/topic group rows. Paper-wise single-question
+// rows that showPaperQuestionByIndex()/showQuestionByRowId() push into
+// allQuestions carry a numeric _rowId or _readonlyPaper=true and must never
+// surface in the chapter/topic/subject browse views (they'd show up as
+// phantom "chapters" and duplicate questions).
+function _mqIsPaperInjectedRow(row) {
+    return !!row && (row._readonlyPaper === true || row._rowId != null);
+}
+
+// Shared detector for numerical (integer-answer) questions. A sub-question
+// is numerical when it declares the INTEGER type, carries a stored numeric
+// answer, or is an option-less question (no option text, images or tables).
+function _mqIsNumerical(sub) {
+    if (!sub) return false;
+    if ((sub.question_type || "").toUpperCase() === "INTEGER") return true;
+    if (sub.numericalAnswer !== undefined && sub.numericalAnswer !== null) return true;
+    if (Array.isArray(sub.options) && sub.options.every(function (o) { return !o || String(o).trim() === ''; }) &&
+        (!Array.isArray(sub.optionImages) || sub.optionImages.every(function (im) { return !im; })) &&
+        !_hasAnyOptionTable(mqGetOptionTables(sub))) return true;
+    return false;
+}
+
 function getScopedChapterRows() {
     const rows = mqCurrentSubject
         ? allQuestions.filter(q => getSubjectForRow(q) === mqCurrentSubject)
         : allQuestions;
-    return rows;
+    return rows.filter(q => !_mqIsPaperInjectedRow(q));
 }
 
 function showSubjectView() {
@@ -1283,7 +1409,7 @@ async function showLectureViewForChapter(ch) {
     // Lazy-load all rows for this chapter before rendering
     await ensureChapterLoaded(ch === "(No Chapter)" ? null : ch);
 
-    const lecs = allQuestions.filter(q => (q.chapter || "(No Chapter)") === ch).sort((a, b) => Number(a.lecture) - Number(b.lecture));
+    const lecs = allQuestions.filter(q => (q.chapter || "(No Chapter)") === ch && !_mqIsPaperInjectedRow(q)).sort((a, b) => Number(a.lecture) - Number(b.lecture));
     const viewMode = "topic"; // Always topic view (lecture view removed)
     const topicCount = [...new Set(lecs.map(q => q.topic || "(No Topic)"))].length;
     document.getElementById("mq-lecture-count").textContent = topicCount + " topic(s)";
@@ -1333,7 +1459,7 @@ async function showLectureViewForChapter(ch) {
 
 async function handleLectureNumClick(e, el, ch, lecNum) {
     await ensureChapterLoaded(ch === "(No Chapter)" ? null : ch);
-    const qs = allQuestions.filter(q => (q.chapter || "(No Chapter)") === ch && Number(q.lecture) === Number(lecNum));
+    const qs = allQuestions.filter(q => (q.chapter || "(No Chapter)") === ch && Number(q.lecture) === Number(lecNum) && !_mqIsPaperInjectedRow(q));
     const allQs = qs.flatMap(q => q.questions || []);
     const totalQ = allQs.length;
 
@@ -1376,7 +1502,7 @@ async function handleTopicCardClick(e, el, ch, encodedTopic) {
     const topic = decodeURIComponent(encodedTopic);
     // Ensure chapter rows are fully loaded before accessing questions[]
     await ensureChapterLoaded(ch === "(No Chapter)" ? null : ch);
-    const qs = allQuestions.filter(q => (q.chapter || "(No Chapter)") === ch && (q.topic || "(No Topic)") === topic);
+    const qs = allQuestions.filter(q => (q.chapter || "(No Chapter)") === ch && (q.topic || "(No Topic)") === topic && !_mqIsPaperInjectedRow(q));
     const totalQ = qs.reduce((sum, x) => sum + (x.questions?.length || 0), 0);
     if (qs.length > 0) {
         mqCurrentChapter = ch;
@@ -1676,7 +1802,7 @@ async function showQuestionView(gi, sqIdx) {
             <div id="iqe-questions-container">
                 ${subsToRender.map(([sub, si]) => {
         const isNoneCorrect = !!sub.isNoneCorrect;
-        const isNumerical = (sub.question_type || "").toUpperCase() === "INTEGER" || (sub.numericalAnswer !== undefined && sub.numericalAnswer !== null) || (Array.isArray(sub.options) && sub.options.every(function (o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(sub.optionImages) || sub.optionImages.every(function (im) { return !im; })) && !_hasAnyOptionTable(mqGetOptionTables(sub)));
+        const isNumerical = _mqIsNumerical(sub);
         const ci = isNoneCorrect ? [] : (sub.correctIndexes || [sub.correctIndex || 0]);
         const questionImages = getQuestionImages(sub);
         const imgHtml = questionImages.length ? `<div style="margin-bottom:14px;display:flex;flex-direction:column;gap:10px">${questionImages.map((imgData, imgIdx) => {
@@ -1732,7 +1858,7 @@ async function showQuestionView(gi, sqIdx) {
     // Render math after DOM is fully inserted
     setTimeout(() => {
         subsToRender.forEach(([sub, si]) => {
-            const isNumerical = (sub.question_type || "").toUpperCase() === "INTEGER" || (sub.numericalAnswer !== undefined && sub.numericalAnswer !== null) || (Array.isArray(sub.options) && sub.options.every(function (o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(sub.optionImages) || sub.optionImages.every(function (im) { return !im; })) && !_hasAnyOptionTable(mqGetOptionTables(sub)));
+            const isNumerical = _mqIsNumerical(sub);
             const prev = document.getElementById(`iqe_preview_${si}`);
             // Render any tables/matrices attached to this question.
             const _subTables = _normalizeTablesField(sub.tables);
@@ -1887,7 +2013,7 @@ function mqEnterEditMode() {
         const questionImages = getQuestionImages(sub);
         const isMulti = sub.isMultiCorrect || ci.length > 1;
         const isNoneCorrect = !!sub.isNoneCorrect;
-        const isNumerical = (sub.question_type || "").toUpperCase() === "INTEGER" || (sub.numericalAnswer !== undefined && sub.numericalAnswer !== null) || (Array.isArray(sub.options) && sub.options.every(function (o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(sub.optionImages) || sub.optionImages.every(function (im) { return !im; })) && !_hasAnyOptionTable(mqGetOptionTables(sub)));
+        const isNumerical = _mqIsNumerical(sub);
         return `<div data-orig-idx="${si}" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
                             <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px">Question ${si + 1}${sub.year && String(sub.year).trim() ? ` <span style="font-size:0.68rem;background:rgba(91,95,239,0.12);color:var(--accent-2);padding:2px 7px;border-radius:20px;font-weight:700;text-transform:none;letter-spacing:normal;display:inline-flex;align-items:center;gap:3px">🏛️ ${sub.exam || sub.examName || sub.exam_name || sub.exam_label || (String(sub.subject || '').toLowerCase().includes('bio') ? 'NEET' : 'JEE Main')} ${sub.year}${sub.month ? ' ' + sub.month : ''}${(sub.date || sub.day) ? ' ' + (sub.date || sub.day) : ''}${sub.shift ? ' (' + sub.shift + ')' : ''}</span>` : ''}${isNumerical ? ' <span style="color:#a78bfa">🔢 Numerical</span>' : ""}</div>
@@ -1923,6 +2049,7 @@ function mqEnterEditMode() {
                             <div id="iqe_none_note_${si}" style="display:${isNoneCorrect ? 'block' : 'none'};margin-top:6px;font-size:0.72rem;color:#f59e0b;font-weight:600">⊘ "None correct" — every student gets full marks for this question.</div>
                         </div>`}
                         <div id="mqSolBlock_${si}"></div>
+                        <div id="iqeTablesBlock_${si}"></div>
                     </div>`;
     }).join("")}
             </div>`;
@@ -1930,7 +2057,7 @@ function mqEnterEditMode() {
     // Render math after DOM is fully inserted
     setTimeout(() => {
         subsToRender.forEach(([sub, si]) => {
-            const isNumerical = (sub.question_type || "").toUpperCase() === "INTEGER" || (sub.numericalAnswer !== undefined && sub.numericalAnswer !== null) || (Array.isArray(sub.options) && sub.options.every(function (o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(sub.optionImages) || sub.optionImages.every(function (im) { return !im; })) && !_hasAnyOptionTable(mqGetOptionTables(sub)));
+            const isNumerical = _mqIsNumerical(sub);
             const prev = document.getElementById(`iqe_preview_${si}`);
             // FIX: repair LaTeX (wrap bare \neq, neq, !=, \le, \ge … in $...$)
             // before rendering so the "not equal" sign renders in edit mode too.
@@ -1950,7 +2077,7 @@ function mqEnterEditMode() {
                             const inp = document.getElementById(`iqe_opt_${si}_${oi}`);
                             if (inp) {
                                 inp.disabled = true;
-                                inp.placeholder = '📊 Table option (edit table data in JSON / re-upload)';
+                                inp.placeholder = '📊 Table option — edit it below in the Tables editor';
                                 inp.style.opacity = '0.55';
                             }
                         } else if (optImg) {
@@ -1987,6 +2114,23 @@ function mqEnterEditMode() {
                             </div>
                         `;
                 editHost.appendChild(editor);
+            }
+            // Populate the table editor for this sub-question.
+            const _tblBlock = document.getElementById(`iqeTablesBlock_${si}`);
+            if (_tblBlock) {
+                const _optTables = mqGetOptionTables(sub);
+                const _bodyTables = _normalizeTablesField(
+                    _extractOptionTables(sub).otherTables
+                );
+                // Attach _slot metadata so the editor labels them as option tables.
+                const _allTbls = _bodyTables.map(function (t) { return t; });
+                LETTERS.forEach(function (_l, _oi) {
+                    if (_optTables[_oi]) {
+                        var _optTbl = Object.assign({}, _optTables[_oi], { _slot: _oi });
+                        _allTbls.push(_optTbl);
+                    }
+                });
+                _tblBlock.innerHTML = mqTblEditorHTML(_allTbls, 'qtbl_' + si);
             }
         });
     }, 0);
@@ -2057,6 +2201,15 @@ function _getEditSnapshot() {
         snap += 'qimg:' + ((staged.questionImages || []).length) + '|';
         snap += 'oimg:' + ((staged.optionImages || []).map(x => x ? '1' : '0').join('')) + '|';
         snap += 'simg:' + ((staged.solutionImages || []).length) + '|';
+        // Include the table editor state so structural/cell changes count as edits.
+        const tblContainer = document.getElementById(`qtbl_${origIdx}_cards`);
+        if (tblContainer) {
+            let tblSig = 0;
+            tblContainer.querySelectorAll('.mq-tbl-inp').forEach(inp => { tblSig += ':' + inp.value; });
+            let imgCount = 0;
+            tblContainer.querySelectorAll('.mq-tbl-imgbox').forEach(box => { if (box.style.display === 'flex') imgCount++; });
+            snap += 'tbl:' + tblContainer.querySelectorAll('.mq-tbl-card').length + '|' + imgCount + tblSig + '|';
+        }
     });
     return snap;
 }
@@ -2097,7 +2250,7 @@ function goBackFromQuestion() {
         // Re-render the topic question list
         const ch = mqCurrentChapter;
         const topic = mqCurrentTopic;
-        const qs = allQuestions.filter(q => (q.chapter || "(No Chapter)") === ch && (q.topic || "(No Topic)") === topic);
+        const qs = allQuestions.filter(q => (q.chapter || "(No Chapter)") === ch && (q.topic || "(No Topic)") === topic && !_mqIsPaperInjectedRow(q));
         const totalQ = qs.reduce((sum, x) => sum + (x.questions?.length || 0), 0);
         document.getElementById("mq-chapter-title").textContent = `${ch} - ${topic}`;
         document.getElementById("mq-lecture-count").textContent = `${totalQ} Question${totalQ !== 1 ? 's' : ''}`;
@@ -2106,7 +2259,7 @@ function goBackFromQuestion() {
         // Re-render the lecture question list
         const ch = mqCurrentChapter;
         const lecNum = mqCurrentLectureNum;
-        const qs = allQuestions.filter(q => (q.chapter || "(No Chapter)") === ch && Number(q.lecture) === Number(lecNum));
+        const qs = allQuestions.filter(q => (q.chapter || "(No Chapter)") === ch && Number(q.lecture) === Number(lecNum) && !_mqIsPaperInjectedRow(q));
         const allQs = qs.flatMap(q => q.questions || []);
         const totalQ = allQs.length;
         document.getElementById("mq-chapter-title").textContent = `${ch} - Lecture ${lecNum}`;
@@ -2376,6 +2529,7 @@ async function saveInlineEdit() {
     // /api/admin/question-row/:id, then return early.
     if (q._rowId != null) {
         const origIdx = 0;
+        const existingSub = (q.questions && q.questions[0]) || {};
         const text = document.getElementById(`iqe_qt_${origIdx}`)?.value.trim();
         const opts = LETTERS.map((_, oi) => document.getElementById(`iqe_opt_${origIdx}_${oi}`)?.value.trim() || "");
         const isMulti = document.getElementById(`iqe_multi_${origIdx}`)?.checked || false;
@@ -2383,9 +2537,10 @@ async function saveInlineEdit() {
         const isNoneCorrect = wrap?.dataset.none === '1';
         const selectedBtns = wrap?.querySelectorAll('.correct-btn:not(.correct-btn-none).selected') || [];
         const checked = Array.from(selectedBtns).map(btn => parseInt(btn.dataset.oi));
-        const ci = isNoneCorrect ? [] : (checked.length ? checked : [0]);
+        // Numerical questions have no A/B/C/D buttons — keep their existing
+        // (typically empty) correctIndexes instead of inventing a default "A".
+        const ci = isNoneCorrect ? [] : (checked.length ? checked : (_mqIsNumerical(existingSub) ? (Array.isArray(existingSub.correctIndexes) ? existingSub.correctIndexes : []) : [0]));
 
-        const existingSub = (q.questions && q.questions[0]) || {};
         const staged = _mqEditImages[origIdx] || {};
         const optionImages = Array.isArray(staged.optionImages)
             ? [...staged.optionImages, null, null, null, null].slice(0, 4)
@@ -2408,12 +2563,9 @@ async function saveInlineEdit() {
                 existingSolutions[0].image = solutionImages[0] || null;
             }
         }
-        const { otherTables: _keepTables } = _extractOptionTables(existingSub);
-        const _normKeepTables = Array.isArray(_keepTables)
-            ? _keepTables.filter(t => t && ((Array.isArray(t.headers) && t.headers.length) || (Array.isArray(t.rows) && t.rows.length)))
-            : [];
-        const _existingOptTables = mqGetOptionTables(existingSub);
-        const _optTablesSave = _existingOptTables.map(t => t || null);
+        const _tblCollected = _mqCollectTablesForSave(existingSub, `qtbl_${origIdx}`);
+        const _normKeepTables = _tblCollected.bodyTables;
+        const _optTablesSave = _tblCollected.optionTables;
         const _hasOptTablesSave = _hasAnyOptionTable(_optTablesSave);
 
         const patchedQuestion = {
@@ -2436,8 +2588,13 @@ async function saveInlineEdit() {
             hasOptionImages: optionImages.some(Boolean)
         };
 
-        if (!text || !opts.every((o, oi) => o || optionImages[oi] || _optTablesSave[oi])) {
-            showErrorModal("Please fill in the question text and all options.", "Incomplete data");
+        if (!_mqIsNumerical(existingSub)) {
+            if (!text || !opts.every((o, oi) => o || optionImages[oi] || _optTablesSave[oi])) {
+                showErrorModal("Please fill in the question text and all options.", "Incomplete data");
+                return;
+            }
+        } else if (!text) {
+            showErrorModal("Please fill in the question text.", "Incomplete data");
             return;
         }
 
@@ -2501,15 +2658,20 @@ async function saveInlineEdit() {
         const isNoneCorrect = wrap?.dataset.none === '1';
         const selectedBtns = wrap?.querySelectorAll('.correct-btn:not(.correct-btn-none).selected') || [];
         const checked = Array.from(selectedBtns).map(btn => parseInt(btn.dataset.oi));
+        // Numerical questions have no options to fill — only the question text is required.
+        const _subNumerical = _mqIsNumerical(fullQuestions[origIdx] || {});
         // "None correct" ⇒ no option indices; otherwise keep selection (default A).
-        const ci = isNoneCorrect ? [] : (checked.length ? checked : [0]);
+        // For numerical questions (no A/B/C/D buttons rendered) keep the existing
+        // correctIndexes instead of inventing a default "A".
+        const _subExisting = fullQuestions[origIdx] || {};
+        const ci = isNoneCorrect ? [] : (checked.length ? checked : (_subNumerical ? (Array.isArray(_subExisting.correctIndexes) ? _subExisting.correctIndexes : []) : [0]));
 
         // An option is valid if it has text OR a staged image OR a table.
         const _stagedOptImgs = (_mqEditImages[origIdx] && _mqEditImages[origIdx].optionImages) || [];
-        const _existingOptTables = mqGetOptionTables(fullQuestions[origIdx] || {});
+        const _existingOptTables = mqGetOptionTables(_subExisting);
         const optsFilled = opts.every((o, oi) => o || _stagedOptImgs[oi] || _existingOptTables[oi]);
 
-        if (text && optsFilled) {
+        if (text && (_subNumerical || optsFilled)) {
             const existingSub = fullQuestions[origIdx] || {};
             // Pull edited images from the staging store (falls back to existing data).
             const staged = _mqEditImages[origIdx] || {};
@@ -2535,13 +2697,10 @@ async function saveInlineEdit() {
                     existingSolutions[0].image = solutionImages[0] || null;
                 }
             }
-            // Preserve per-option tables. Keep only the question-level tables
-            // (option_x positioned tables are stored in optionTables instead).
-            const { otherTables: _keepTables } = _extractOptionTables(existingSub);
-            const _normKeepTables = Array.isArray(_keepTables)
-                ? _keepTables.filter(t => t && ((Array.isArray(t.headers) && t.headers.length) || (Array.isArray(t.rows) && t.rows.length)))
-                : [];
-            const _optTablesSave = _existingOptTables.map(t => t || null);
+            // Pull edited table structure from the table editor (body + option tables).
+            const _tblCollectedFull = _mqCollectTablesForSave(existingSub, `qtbl_${origIdx}`);
+            const _normKeepTables = _tblCollectedFull.bodyTables;
+            const _optTablesSave = _tblCollectedFull.optionTables;
             const _hasOptTablesSave = _hasAnyOptionTable(_optTablesSave);
             fullQuestions[origIdx] = {
                 question: text,
@@ -2899,6 +3058,25 @@ function _hasAnyOptionTable(arr) {
     return Array.isArray(arr) && arr.some(t => t && typeof t === "object" && ((t.headers && t.headers.length) || (t.rows && t.rows.length)));
 }
 
+function _mqCollectTablesForSave(question, prefix) {
+    const existing = _extractOptionTables(question);
+    const existingBody = _normalizeTablesField(existing.otherTables);
+    const existingOptions = mqGetOptionTables(question);
+    const editor = document.getElementById(prefix + '_cards');
+    if (!editor || !editor.querySelector('.mq-tbl-card')) {
+        return { bodyTables: existingBody, optionTables: existingOptions };
+    }
+
+    const collected = mqTblEditorCollect(prefix);
+    const keepHeaders = (edited, original) => {
+        if (!edited || !original || edited.headers.length || !original.headers.length) return edited;
+        return Object.assign({}, edited, { headers: original.headers });
+    };
+    const bodyTables = collected.bodyTables.map((table, index) => keepHeaders(table, existingBody[index]));
+    const optionTables = collected.optionTables.map((table, index) => keepHeaders(table, existingOptions[index]));
+    return { bodyTables, optionTables };
+}
+
 // Shared detector for "none of the options is correct" questions used by
 // both the JSON-upload preview and the save routine, so the badge shown to
 // the admin matches exactly what gets stored.
@@ -2913,9 +3091,99 @@ function _jsonUploadIsNoneCorrect(q) {
         noneTokens.includes(up) || (!isMSQ && raw === "");
 }
 
+function _jsonUploadBuildQEditPanel(q, idx) {
+    const options = [q.option_a, q.option_b, q.option_c, q.option_d];
+    const answer = String(q.correct_answer ?? '').toUpperCase();
+    const solution = String(q.solution || (Array.isArray(q.solutions) && q.solutions[0] && (q.solutions[0].text || q.solutions[0].content)) || '');
+    const { optionTables, otherTables } = _extractOptionTables(q);
+    const tables = _normalizeTablesField(otherTables).slice();
+    optionTables.forEach((table, optionIndex) => {
+        if (table) tables.push(Object.assign({}, table, { _slot: optionIndex }));
+    });
+    const tableEditor = typeof mqTblEditorHTML === 'function'
+        ? mqTblEditorHTML(tables, `jsonTbl_${idx}`)
+        : '<div style="font-size:0.75rem;color:var(--text-muted)">Table editor unavailable.</div>';
+
+    return `<div id="jsonQEditPanel_${idx}" style="display:none;margin-top:10px;padding:12px;background:rgba(86,169,255,0.06);border:1px solid rgba(86,169,255,0.22);border-radius:8px">
+        <div style="font-size:0.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:7px">Edit question</div>
+        <textarea id="jsonQText_${idx}" rows="3" style="width:100%;box-sizing:border-box;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font:0.82rem 'Outfit',sans-serif;resize:vertical">${_jsonEscHtml(q.question_text || '')}</textarea>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px;margin-top:8px">
+            ${options.map((option, optionIndex) => `<label style="font-size:0.7rem;color:var(--text-muted)">${['A', 'B', 'C', 'D'][optionIndex]}<input id="jsonOptEdit_${idx}_${optionIndex}" value="${_jsonEscHtml(option || '')}" style="display:block;width:100%;box-sizing:border-box;margin-top:3px;padding:6px 8px;background:var(--bg-input);border:1px solid var(--border);border-radius:5px;color:var(--text);font:0.78rem 'Outfit',sans-serif"></label>`).join('')}
+        </div>
+        <label style="display:block;margin-top:8px;font-size:0.7rem;color:var(--text-muted)">Correct answer
+            <input id="jsonAnswerEdit_${idx}" value="${_jsonEscHtml(answer)}" placeholder="A, B, C or D" style="display:block;width:180px;max-width:100%;box-sizing:border-box;margin-top:3px;padding:6px 8px;background:var(--bg-input);border:1px solid var(--border);border-radius:5px;color:var(--text);font:0.78rem 'Outfit',sans-serif">
+        </label>
+        <label style="display:block;margin-top:8px;font-size:0.7rem;color:var(--text-muted)">Solution
+            <textarea id="jsonSolutionEdit_${idx}" rows="4" style="display:block;width:100%;box-sizing:border-box;margin-top:3px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font:0.78rem 'Outfit',sans-serif;resize:vertical">${_jsonEscHtml(solution)}</textarea>
+        </label>
+        <div style="margin-top:8px">
+            <button type="button" onclick="jsonUploadToggleTablesEdit(${idx})" id="jsonTablesEditBtn_${idx}" style="padding:4px 10px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);border-radius:5px;font-size:0.72rem;color:#f59e0b;cursor:pointer">Edit tables</button>
+            <div id="jsonTablesEdit_${idx}" style="display:none;margin-top:7px">${tableEditor}</div>
+        </div>
+        <div style="display:flex;gap:7px;margin-top:10px">
+            <button type="button" onclick="jsonUploadSaveQEdit(${idx})" style="padding:4px 12px;background:rgba(16,185,129,0.18);border:1px solid rgba(16,185,129,0.4);border-radius:5px;font-size:0.74rem;color:#10b981;cursor:pointer;font-weight:600">✓ Save</button>
+        </div>
+    </div>`;
+}
+
+function jsonUploadToggleQEdit(idx) {
+    const panel = document.getElementById(`jsonQEditPanel_${idx}`);
+    const button = document.getElementById(`jsonQEditBtn_${idx}`);
+    if (!panel) return;
+    const open = panel.style.display !== 'none';
+    if (open) {
+        jsonUploadSaveQEdit(idx);
+        return;
+    }
+    panel.style.display = 'block';
+    if (button) button.textContent = '✕ Close';
+}
+
+function jsonUploadToggleTablesEdit(idx) {
+    const panel = document.getElementById(`jsonTablesEdit_${idx}`);
+    const button = document.getElementById(`jsonTablesEditBtn_${idx}`);
+    if (!panel) return;
+    const open = panel.style.display !== 'none';
+    panel.style.display = open ? 'none' : 'block';
+    if (button) button.textContent = open ? 'Edit tables' : 'Save tables';
+}
+
+function jsonUploadSaveQEdit(idx) {
+    const q = _jsonUploadQuestions[idx];
+    if (!q) return;
+    const text = document.getElementById(`jsonQText_${idx}`);
+    const answer = document.getElementById(`jsonAnswerEdit_${idx}`);
+    const solution = document.getElementById(`jsonSolutionEdit_${idx}`);
+    if (text) q.question_text = text.value;
+    if (answer) q.correct_answer = answer.value.trim();
+    ['option_a', 'option_b', 'option_c', 'option_d'].forEach((key, optionIndex) => {
+        const input = document.getElementById(`jsonOptEdit_${idx}_${optionIndex}`);
+        if (input) q[key] = input.value;
+    });
+    if (solution) {
+        q.solution = solution.value;
+        if (Array.isArray(q.solutions) && q.solutions.length && q.solutions[0]) q.solutions[0].text = solution.value;
+    }
+
+    const tablePanel = document.getElementById(`jsonTablesEdit_${idx}`);
+    if (tablePanel && tablePanel.style.display !== 'none' && typeof mqTblEditorCollect === 'function') {
+        const collected = mqTblEditorCollect(`jsonTbl_${idx}`);
+        q.tables = collected.bodyTables.length ? collected.bodyTables : undefined;
+        q.optionTables = collected.optionTables.some(Boolean) ? collected.optionTables : undefined;
+    }
+    _jsonUploadRenderPreview(_jsonUploadQuestions);
+}
+
+window.jsonUploadToggleQEdit = jsonUploadToggleQEdit;
+window.jsonUploadToggleTablesEdit = jsonUploadToggleTablesEdit;
+window.jsonUploadSaveQEdit = jsonUploadSaveQEdit;
+
 function _jsonUploadRenderPreview(questions) {
     const previewEl = document.getElementById("jsonUploadPreview");
     previewEl.style.display = "block";
+    _jsonUploadSelectedCellEl = null;
+    _jsonUploadSelectedCellKey = "";
+    _jsonUploadCellRefs = {};
 
     // Summary cards by subject
     const bySubject = {};
@@ -3014,6 +3282,11 @@ function _jsonUploadRenderPreview(questions) {
             }
             headerHTML += `</div>`;
 
+            headerHTML += `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+                        <button type="button" onclick="jsonUploadToggleQEdit(${idx})" id="jsonQEditBtn_${idx}" style="padding:3px 12px;background:rgba(86,169,255,0.12);border:1px solid rgba(86,169,255,0.3);border-radius:20px;font-size:0.72rem;color:var(--accent);cursor:pointer;font-family:'Outfit',sans-serif;display:inline-flex;align-items:center;gap:4px">✏ Edit</button>
+                        <span style="font-size:0.65rem;color:var(--text-muted);flex:1;text-align:right">Reading in review preview</span>
+                    </div>`;
+
             let questionHTML = `<div style="font-size:0.85rem;color:var(--text);line-height:1.7;margin-bottom:10px;white-space:pre-wrap;word-break:break-word">${_jsonEscHtml(q.question_text || "")}</div>`;
             // Split out per-option tables (position option_a..option_d) from the rest.
             const { optionTables: _optTables, otherTables: _otherTables } = _extractOptionTables(q);
@@ -3069,6 +3342,11 @@ function _jsonUploadRenderPreview(questions) {
             }
 
             const solText = q.solution || "";
+            const solSols = Array.isArray(q.solutions) ? q.solutions : [];
+            const solTables = solSols.reduce((acc, s) => {
+                if (s && Array.isArray(s.tables)) s.tables.forEach(t => { if (t && typeof t === "object") acc.push(t); });
+                return acc;
+            }, []);
             const solId = `jsonSol_${idx}`;
             const solutionHTML = `<div style="margin-top:8px">
                         <div onclick="var s=document.getElementById('${solId}');var open=s.style.display!=='none';s.style.display=open?'none':'block';this.querySelector('.sol-toggle').textContent=open?'▶ Show':'▼ Hide';if(!open&&window.renderMath)setTimeout(function(){renderMath(s)},50)" style="font-size:0.72rem;font-weight:700;color:#56a9ff;cursor:pointer;display:flex;align-items:center;gap:4px;user-select:none">
@@ -3076,13 +3354,15 @@ function _jsonUploadRenderPreview(questions) {
                         </div>
                         <div id="${solId}" style="display:none;margin-top:6px;padding:10px 12px;background:rgba(86,169,255,0.06);border:1px solid rgba(86,169,255,0.15);border-radius:6px">
                             ${solText ? `<div style="font-size:0.78rem;color:var(--text-dim);line-height:1.7;white-space:pre-wrap;word-break:break-word">${_jsonEscHtml(solText)}</div>` : `<div style="font-size:0.75rem;color:var(--text-muted);font-style:italic">No text solution provided</div>`}
+                            ${solTables.length ? renderTablesHtml(solTables) : ""}
                             ${_jsonUploadRenderImageStack(idx, 'solution', _jsonUploadGetSolutionImages(q, idx))}
                         </div>
                     </div>`;
 
             const afterOptionsTablesHTML = _tablesAfterOptions.length ? renderTablesHtml(_tablesAfterOptions) : "";
             const cellImagesHTML = _jsonUploadBuildCellImageSection(q, idx);
-            card.innerHTML = headerHTML + questionHTML + optionsHTML + afterOptionsTablesHTML + cellImagesHTML + solutionHTML;
+            const editPanelHTML = _jsonUploadBuildQEditPanel(q, idx);
+            card.innerHTML = headerHTML + questionHTML + optionsHTML + afterOptionsTablesHTML + cellImagesHTML + solutionHTML + editPanelHTML;
             subjectBody.appendChild(card);
         });
 
@@ -3109,7 +3389,6 @@ function _jsonUploadRenderPreview(questions) {
 // for question `q`. Mutates q so a stable reference exists for paste writes.
 function _jsonUploadCellTables(q) {
     const out = [];
-    // Body / question tables
     if (Array.isArray(q.tables)) {
         q.tables.forEach((t, ti) => {
             if (t && typeof t === "object") {
@@ -3120,7 +3399,6 @@ function _jsonUploadCellTables(q) {
             }
         });
     }
-    // Explicit per-option tables
     if (Array.isArray(q.optionTables)) {
         q.optionTables.forEach((t, ti) => {
             if (t && typeof t === "object") {
@@ -3128,6 +3406,16 @@ function _jsonUploadCellTables(q) {
             }
         });
     }
+    const sols = Array.isArray(q.solutions) ? q.solutions : [];
+    sols.forEach((sol, sIdx) => {
+        if (sol && typeof sol === "object" && Array.isArray(sol.tables)) {
+            sol.tables.forEach((t, ti) => {
+                if (t && typeof t === "object") {
+                    out.push({ scope: "solTables", sIdx, ti, table: t, label: `Solution ${sIdx + 1} · Table ${ti + 1}` });
+                }
+            });
+        }
+    });
     return out;
 }
 // Returns true if `cell` is an image-cell object.
@@ -3136,52 +3424,93 @@ function _jsonUploadIsImgCell(c) {
 }
 function _jsonUploadBuildCellImageSection(q, idx) {
     const tables = _jsonUploadCellTables(q);
-    const pending = [];
+    if (!tables.length) return "";
+    let html = `<div style="margin-top:10px;padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.25);border-radius:8px">
+                <style>.juc:hover{border-color:#f59e0b!important;box-shadow:0 0 0 1px rgba(245,158,11,0.25)}.juc:focus{outline:none;border-color:#f59e0b!important;box-shadow:0 0 0 2px rgba(245,158,11,0.3)}</style>
+                <div style="font-size:0.72rem;font-weight:700;color:#f59e0b;margin-bottom:4px">🖼 Table cell images</div>
+                <div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:8px">Click a cell to select it (orange border), then Ctrl+V to paste an image into it.</div>`;
     tables.forEach((entry) => {
         const t = entry.table;
-        const scan = (cells, kind, ri) => {
-            (cells || []).forEach((c, ci) => {
-                if (_jsonUploadIsImgCell(c)) {
-                    // Normalize into a consistent shape in-place.
-                    if (typeof c !== "object" || Array.isArray(c)) return;
-                    if (c.image == null && (c.imageNeeded || c.image_needed)) c.image = null;
-                    pending.push({ entry, kind, ri, ci, cell: c });
-                }
-            });
-        };
-        scan(t.headers, "header", -1);
-        (t.rows || []).forEach((r, ri) => scan(r, "row", ri));
+        const headers = Array.isArray(t.headers) ? t.headers : [];
+        const rows = Array.isArray(t.rows) ? t.rows : [];
+        let colCount = headers.length;
+        rows.forEach(r => { colCount = Math.max(colCount, Array.isArray(r) ? r.length : 0); });
+        if (!colCount && !headers.length && !rows.length) return;
+        if (!colCount) colCount = headers.length || 1;
+        html += `<div style="margin-bottom:8px"><div style="font-size:0.68rem;color:var(--text-dim);font-weight:600;margin-bottom:4px">${_jsonEscHtml(entry.label)}</div>`;
+        html += `<table style="border-collapse:collapse;width:100%;font-size:0.75rem"><thead>`;
+        if (headers.length) {
+            html += `<tr>`;
+            for (let c = 0; c < colCount; c++) {
+                const cellKey = `cell_${idx}_${entry.scope}_${entry.ti || 0}_${entry.sIdx != null ? entry.sIdx + "_" : ""}header_-1_${c}`;
+                const raw = headers[c] ?? "";
+                const hasImg = _jsonUploadIsImgCell(raw);
+                const cellObj = hasImg ? raw : null;
+                if (hasImg && cellObj.image == null && (cellObj.imageNeeded || cellObj.image_needed)) cellObj.image = null;
+                _jsonUploadCellRefs[cellKey] = { arr: headers, ci: c, cell: raw, isText: !hasImg };
+                html += `<th data-ck="${cellKey}" onclick="jsonUploadSelectCell(this)" onpaste="jsonUploadHandleCellPaste(event,'${cellKey}')" tabindex="0" style="border:2px solid var(--border);padding:4px 6px;text-align:left;cursor:pointer;max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;transition:border-color 0.15s,box-shadow 0.15s" class="juc">${hasImg && cellObj.image ? `<img src="${_cellImgSrc(String(cellObj.image))}" style="max-width:100%;max-height:50px;object-fit:contain;display:block;margin:0 auto;border-radius:2px">` : `<span style="color:var(--text-dim)">${_jsonEscHtml(String(raw?.text ?? raw ?? ""))}</span>`}</th>`;
+            }
+            html += `</tr>`;
+        }
+        html += `</thead><tbody>`;
+        rows.forEach((r, ri) => {
+            if (!Array.isArray(r)) return;
+            html += `<tr>`;
+            for (let c = 0; c < colCount; c++) {
+                const cellKey = `cell_${idx}_${entry.scope}_${entry.ti || 0}_${entry.sIdx != null ? entry.sIdx + "_" : ""}row_${ri}_${c}`;
+                const raw = r[c] ?? "";
+                const hasImg = _jsonUploadIsImgCell(raw);
+                const cellObj = hasImg ? raw : null;
+                if (hasImg && cellObj.image == null && (cellObj.imageNeeded || cellObj.image_needed)) cellObj.image = null;
+                _jsonUploadCellRefs[cellKey] = { arr: r, ci: c, cell: raw, isText: !hasImg };
+                html += `<td data-ck="${cellKey}" onclick="jsonUploadSelectCell(this)" onpaste="jsonUploadHandleCellPaste(event,'${cellKey}')" tabindex="0" style="border:2px solid var(--border);padding:4px 6px;cursor:pointer;max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;transition:border-color 0.15s,box-shadow 0.15s" class="juc">${hasImg && cellObj.image ? `<img src="${_cellImgSrc(String(cellObj.image))}" style="max-width:100%;max-height:50px;object-fit:contain;display:block;margin:0 auto;border-radius:2px">` : `<span style="color:var(--text-dim)">${_jsonEscHtml(String(raw?.text ?? raw ?? ""))}</span>`}</td>`;
+            }
+            html += `</tr>`;
+        });
+        html += `</tbody></table></div>`;
     });
-    if (!pending.length) return "";
-    let html = `<div style="margin-top:10px;padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.25);border-radius:8px">
-                <div style="font-size:0.72rem;font-weight:700;color:#f59e0b;margin-bottom:8px">🖼 Table cell images — paste the image for each cell below</div>
-                <div style="display:flex;flex-direction:column;gap:8px">`;
-    pending.forEach((p) => {
-        const key = `cell_${idx}_${p.entry.scope}_${p.entry.ti}_${p.kind}_${p.ri}_${p.ci}`;
-        const where = p.kind === "header" ? `header col ${p.ci + 1}` : `row ${p.ri + 1}, col ${p.ci + 1}`;
-        const hasImg = !!p.cell.image;
-        const src = hasImg ? _cellImgSrc(String(p.cell.image)) : "";
-        html += `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                    <span style="font-size:0.72rem;color:var(--text-dim);min-width:150px">${_jsonEscHtml(p.entry.label)} · ${where}</span>
-                    <div id="${key}_preview" style="display:${hasImg ? "flex" : "none"};align-items:center;gap:8px">
-                        <img id="${key}_img" src="${src}" style="max-width:120px;max-height:80px;border-radius:5px;border:1px solid var(--border);object-fit:contain">
-                        <button onclick="jsonUploadRemoveCellImage('${key}')" style="background:none;border:none;color:var(--error);cursor:pointer;font-size:0.72rem">✕ Remove</button>
-                    </div>
-                    <div id="${key}_paste" tabindex="0" style="display:${hasImg ? "none" : "block"};flex:1;min-width:160px;padding:6px 8px;border:2px dashed rgba(245,158,11,0.4);border-radius:6px;text-align:center;cursor:pointer;font-size:0.68rem;color:var(--text-muted);background:rgba(245,158,11,0.04);outline:none"
-                        onpaste="jsonUploadHandleCellPaste(event,'${key}')"
-                        onfocus="this.style.borderColor='#f59e0b'"
-                        onblur="this.style.borderColor='rgba(245,158,11,0.4)'">
-                        📋 Click here & Ctrl+V to paste this cell's image
-                    </div>
-                </div>`;
-        // Register the cell reference for later writes.
-        _jsonUploadCellRefs[key] = p.cell;
-    });
-    html += `</div></div>`;
+    html += `<div style="font-size:0.65rem;color:var(--text-muted);margin-top:2px;text-align:center">Click any cell → Ctrl+V to paste image</div></div>`;
     return html;
 }
-// Map of cell-image key → live cell object reference (rebuilt each render).
 let _jsonUploadCellRefs = {};
+let _jsonUploadSelectedCellEl = null;
+let _jsonUploadSelectedCellKey = "";
+function _jsonUploadCellApplyImage(key, base64) {
+    const ref = _jsonUploadCellRefs[key];
+    if (!ref) return;
+    if (ref.isText || (typeof ref.cell !== "object") || Array.isArray(ref.cell)) {
+        const newObj = { text: String(ref.cell ?? ""), image: base64 };
+        ref.arr[ref.ci] = newObj;
+        ref.cell = newObj;
+        ref.isText = false;
+    } else {
+        ref.cell.image = base64;
+        delete ref.cell.imageNeeded;
+        delete ref.cell.image_needed;
+    }
+    const td = document.querySelector(`[data-ck="${key}"]`);
+    if (td) {
+        td.innerHTML = `<img src="${base64}" style="max-width:100%;max-height:50px;object-fit:contain;display:block;margin:0 auto;border-radius:2px">`;
+        td.style.borderColor = "#2ed2b4";
+        setTimeout(() => { if (td) td.style.borderColor = ""; }, 400);
+    }
+}
+function jsonUploadSelectCell(el) {
+    if (_jsonUploadSelectedCellEl) {
+        _jsonUploadSelectedCellEl.style.borderColor = "";
+        _jsonUploadSelectedCellEl.style.boxShadow = "";
+    }
+    if (_jsonUploadSelectedCellEl === el) {
+        _jsonUploadSelectedCellEl = null;
+        _jsonUploadSelectedCellKey = "";
+        return;
+    }
+    _jsonUploadSelectedCellEl = el;
+    _jsonUploadSelectedCellKey = el.getAttribute("data-ck") || "";
+    el.style.borderColor = "#f59e0b";
+    el.style.boxShadow = "0 0 0 2px rgba(245,158,11,0.3)";
+    el.focus();
+}
 function jsonUploadHandleCellPaste(event, key) {
     event.preventDefault();
     event.stopPropagation();
@@ -3190,30 +3519,26 @@ function jsonUploadHandleCellPaste(event, key) {
         if (item.type.indexOf("image") !== -1) {
             const blob = item.getAsFile();
             const reader = new FileReader();
-            reader.onload = function (e) {
-                const base64 = e.target.result;
-                const cell = _jsonUploadCellRefs[key];
-                if (cell) { cell.image = base64; delete cell.imageNeeded; delete cell.image_needed; }
-                const img = document.getElementById(`${key}_img`);
-                const preview = document.getElementById(`${key}_preview`);
-                const paste = document.getElementById(`${key}_paste`);
-                if (img) img.src = base64;
-                if (preview) preview.style.display = "flex";
-                if (paste) paste.style.display = "none";
-            };
+            reader.onload = function (e) { _jsonUploadCellApplyImage(key, e.target.result); };
             reader.readAsDataURL(blob);
             break;
         }
     }
 }
 function jsonUploadRemoveCellImage(key) {
-    const cell = _jsonUploadCellRefs[key];
-    if (cell) { cell.image = null; cell.imageNeeded = true; }
-    const preview = document.getElementById(`${key}_preview`);
-    const paste = document.getElementById(`${key}_paste`);
-    if (preview) preview.style.display = "none";
-    if (paste) paste.style.display = "block";
+    const ref = _jsonUploadCellRefs[key];
+    if (ref) {
+        if (ref.isText || (typeof ref.cell !== "object") || Array.isArray(ref.cell)) {
+            ref.arr[ref.ci] = ref.cell;
+        } else {
+            ref.cell.image = null;
+            ref.cell.imageNeeded = true;
+        }
+    }
+    const td = document.querySelector(`[data-ck="${key}"]`);
+    if (td) td.innerHTML = `<span style="color:var(--text-dim)">empty</span>`;
 }
+window.jsonUploadSelectCell = jsonUploadSelectCell;
 window.jsonUploadHandleCellPaste = jsonUploadHandleCellPaste;
 window.jsonUploadRemoveCellImage = jsonUploadRemoveCellImage;
 
@@ -3377,12 +3702,21 @@ async function jsonUploadSaveAll() {
         const questionImage = questionImages[0] || null;
         const solutionImages = _jsonUploadGetSolutionImages(q, idx);
         const solutionImage = solutionImages[0] || null;
-        const solutions = q.solution || solutionImages.length
-            ? [{
-                text: q.solution || '',
-                image: solutionImage,
-                images: solutionImages
-            }]
+        const sols = Array.isArray(q.solutions) && q.solutions.length ? q.solutions : [];
+        const hasSolContent = q.solution || solutionImages.length || sols.length;
+        const solutions = hasSolContent
+            ? (sols.length
+                ? sols.map((s, si) => {
+                    const imgs = si === 0 ? solutionImages : (Array.isArray(s.images) ? s.images : (s.image ? [s.image] : []));
+                    const obj = {
+                        text: String(s.text || s.content || s.solution || s.explanation || (si === 0 ? (q.solution || "") : "")),
+                        image: imgs[0] || null,
+                        images: imgs
+                    };
+                    if (Array.isArray(s.tables) && s.tables.length) obj.tables = s.tables;
+                    return obj;
+                })
+                : [{ text: q.solution || "", image: solutionImage, images: solutionImages }])
             : [];
 
         const optionImages = [

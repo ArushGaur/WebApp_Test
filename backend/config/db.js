@@ -327,13 +327,12 @@ async function initDB(TEACHER_PASSCODE, hashPasscode) {
 		`CREATE INDEX IF NOT EXISTS idx_pyq_subject_year ON pyq_questions(subject, year)`,
 		`CREATE INDEX IF NOT EXISTS idx_pyq_year ON pyq_questions(year)`,
 
-		// ── pyq_year_wise — SUBJECT + YEAR view of the PYQ bank ───────────────
-		// Same questions as `pyq_questions`, but keyed for paper-wise search
-		// (subject + year + derived exam) instead of chapter/topic browsing.
-		// Derived table: pyq_questions stays the source of truth, every PYQ write
-		// mirrors into here, and utils/pyqYearWise.js can rebuild it from scratch.
-		`CREATE TABLE IF NOT EXISTS pyq_year_wise (id BIGSERIAL PRIMARY KEY, pyq_id BIGINT UNIQUE, subject TEXT NOT NULL DEFAULT '', year TEXT NOT NULL DEFAULT '', exam TEXT NOT NULL DEFAULT '', month TEXT DEFAULT '', day TEXT DEFAULT '', shift TEXT DEFAULT '', question_number INTEGER, question_type TEXT NOT NULL DEFAULT 'MCQ', chapter TEXT DEFAULT '', topic TEXT DEFAULT '', raw_json TEXT NOT NULL DEFAULT '{}', created_at BIGINT DEFAULT 0, updated_at BIGINT DEFAULT 0)`,
-		`CREATE INDEX IF NOT EXISTS idx_pyq_yw_subject_year ON pyq_year_wise(subject, year)`,
+		// ── pyq_year_wise — paper metadata index ──────────────────────────────
+		// One row per exam/year/date/month/shift/question-type paper slice. The
+		// complete question list is stored together in raw_json; chapter/topic
+		// are intentionally not duplicated in this paper-wise index.
+		`DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'pyq_year_wise' AND column_name IN ('chapter', 'topic')) THEN DROP TABLE pyq_year_wise; END IF; END $$`,
+		`CREATE TABLE IF NOT EXISTS pyq_year_wise (id BIGSERIAL PRIMARY KEY, exam TEXT NOT NULL DEFAULT '', year TEXT NOT NULL DEFAULT '', month TEXT DEFAULT '', day TEXT DEFAULT '', shift TEXT DEFAULT '', question_type TEXT NOT NULL DEFAULT 'MCQ', question_count INTEGER NOT NULL DEFAULT 0, raw_json TEXT NOT NULL DEFAULT '[]', created_at BIGINT DEFAULT 0, updated_at BIGINT DEFAULT 0, UNIQUE(exam, year, month, day, shift, question_type))`,
 		`CREATE INDEX IF NOT EXISTS idx_pyq_yw_exam_year ON pyq_year_wise(exam, year)`,
 		`CREATE INDEX IF NOT EXISTS idx_pyq_yw_year ON pyq_year_wise(year)`,
 		`CREATE INDEX IF NOT EXISTS idx_pyq_yw_exam_year_type ON pyq_year_wise(exam, year, question_type)`,
@@ -469,7 +468,7 @@ async function initDB(TEACHER_PASSCODE, hashPasscode) {
 	async function ddlWithTimeout(stmt, label, timeoutMs = 15000) {
 		return Promise.race([
 			raw(stmt),
-			new Promise((_, reject) => setTimeout(() => reject(new Error(`DDL timed out after ${timeoutMs/1000}s: ${label}`)), timeoutMs))
+			new Promise((_, reject) => setTimeout(() => reject(new Error(`DDL timed out after ${timeoutMs / 1000}s: ${label}`)), timeoutMs))
 		]);
 	}
 
@@ -481,7 +480,7 @@ async function initDB(TEACHER_PASSCODE, hashPasscode) {
 			ddlOk++;
 		} catch (e) {
 			ddlSkip++;
-			console.warn(`[db] DDL ${i+1}/${ddl.length} skipped (${label}...): ${e.message || e}`);
+			console.warn(`[db] DDL ${i + 1}/${ddl.length} skipped (${label}...): ${e.message || e}`);
 		}
 	}
 	console.log(`[db] DDL complete: ${ddlOk} OK, ${ddlSkip} skipped.`);
@@ -590,7 +589,7 @@ async function initDB(TEACHER_PASSCODE, hashPasscode) {
 			const rows = (cols && (cols.rows || cols)) || [];
 			const have = new Set(rows.map(r => String(r.table_name || r.tableName || "").toLowerCase()));
 			if (have.size) scopedWithColumn = instituteScopedTables.filter(t => have.has(t));
-		} catch (_) {}
+		} catch (_) { }
 
 		for (const tbl of scopedWithColumn) {
 			try {

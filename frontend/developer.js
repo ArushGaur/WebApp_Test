@@ -377,6 +377,23 @@
             if (s.type === "section") { showSection(s.name, false); return; }
             if (s.type === "mqChapter") { showChapterView(); return; }
             if (s.type === "mqPaper") { if (s.paper) showPaperQuestions(s.paper, false); else showChapterView(); return; }
+            // Paper group / paper subject drill-down (composite-key papers).
+            if (s.type === "mqPaperGroup") { if (s.id) showPaperById(s.id, s.label, false); else showSubjectView(); return; }
+            if (s.type === "mqPaperSubject") {
+                if (s.id) {
+                    // If the paper is already loaded, restore the subject straight from cache.
+                    const cache = window._paperViewCache;
+                    if (cache && cache.id === s.id && Array.isArray(cache.allQuestions)) {
+                        cache.questions = cache.allQuestions;
+                        if (typeof window.showPaperSubjectQuestions === 'function') window.showPaperSubjectQuestions(s.subject, false);
+                        return;
+                    }
+                    // Otherwise load the paper first, then jump into the subject.
+                    _paperPendingSubject = s.subject;
+                    showPaperById(s.id, s.label, false);
+                } else showSubjectView();
+                return;
+            }
             if (s.type === "mqLecture") { if (s.chapter) showLectureViewForChapter(s.chapter); else showChapterView(); return; }
             if (s.type === "mqQuestion") { if (typeof s.idx === "number") showQuestionView(s.idx, s.sqIdx); else showLectureView(); return; }
             // Star Quiz sub-navigation

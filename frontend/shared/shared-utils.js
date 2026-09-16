@@ -886,3 +886,283 @@ function showOtSuccessToast(msg) {
     }, 4000);
 }
 window.showOtSuccessToast = showOtSuccessToast;
+
+/* ══════════════════════════════════════════════════════════════════
+   SHARED TABLE EDITOR
+   Provides editable UI for question/option/solution tables.
+   `mqTblEditorHTML(tables, prefix)` → HTML string.
+   `mqTblEditorCollect(prefix)` → { bodyTables, optionTables }.
+   Internal helpers handle add/remove table/row/col and cell-image paste.
+═════════════════════════════════════════════════════════════════ */
+var _tblKeyN = 100000;
+var _tblCardN = 0;
+function _tblNewKey() { return 'mtk' + (_tblKeyN++); }
+function _tblNextCardIndex() { return _tblCardN++; }
+function _tblEscHtml(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function _tblCellParts(c) {
+    if (c && typeof c === 'object' && !Array.isArray(c)) {
+        return { text: String(c.text || ''), image: c.image || null };
+    }
+    return { text: String(c == null ? '' : c), image: null };
+}
+function _tblRenderCell(id, cell) {
+    var parts = _tblCellParts(cell);
+    var val = parts.text;
+    var img = parts.image;
+    var cellKey = id + '_cell';
+    var imgSrc = img ? ((typeof img === 'string' && (img.indexOf('data:') === 0 || img.indexOf('http') === 0)) ? img : 'data:image/jpeg;base64,' + img) : '';
+    var html = '<div class="mq-tbl-cell" id="' + cellKey + '" style="flex:1;min-width:80px;margin-bottom:4px">';
+    html += '<input class="mq-tbl-inp" value="' + _tblEscHtml(val) + '" style="width:100%;padding:3px 6px;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.78rem;outline:none;box-sizing:border-box">';
+    html += '<div class="mq-tbl-imgbox" style="' + (img ? 'display:flex' : 'display:none') + ';align-items:center;gap:6px;margin-top:3px">';
+    html += '<img class="mq-tbl-img" src="' + imgSrc + '" style="max-width:120px;max-height:60px;border-radius:4px;border:1px solid var(--border);object-fit:contain">';
+    html += '<button type="button" onclick="mqTblRemoveCellImg(\'' + cellKey + '\')" style="background:none;border:none;color:#f25c5c;cursor:pointer;font-size:0.72rem">✕ Remove</button>';
+    html += '</div>';
+    html += '<div class="mq-tbl-paste" tabindex="0" data-key="' + cellKey + '" onpaste="mqTblPasteCell(event,\'' + cellKey + '\')" onfocus="this.style.borderColor=\'var(--accent)\'" onblur="this.style.borderColor=\'rgba(245,158,11,0.4)\'" style="' + (img ? 'display:none' : 'display:block') + ';margin-top:3px;padding:4px 6px;border:1px dashed rgba(245,158,11,0.4);border-radius:4px;font-size:0.65rem;color:var(--text-muted);text-align:center;cursor:pointer;background:rgba(245,158,11,0.03);outline:none">📋 Paste image</div>';
+    html += '</div>';
+    return html;
+}
+function _tblEmptyCell() {
+    var k = _tblNewKey();
+    return '<div class="mq-tbl-cell" id="' + k + '" style="flex:1;min-width:80px;margin-bottom:4px">' +
+        '<input class="mq-tbl-inp" value="" style="width:100%;padding:3px 6px;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.78rem;outline:none;box-sizing:border-box">' +
+        '<div class="mq-tbl-imgbox" style="display:none;align-items:center;gap:6px;margin-top:3px">' +
+        '<img class="mq-tbl-img" src="" style="max-width:120px;max-height:60px;border-radius:4px;border:1px solid var(--border);object-fit:contain">' +
+        '<button type="button" onclick="mqTblRemoveCellImg(\'' + k + '\')" style="background:none;border:none;color:#f25c5c;cursor:pointer;font-size:0.72rem">✕ Remove</button>' +
+        '</div>' +
+        '<div class="mq-tbl-paste" tabindex="0" data-key="' + k + '" onpaste="mqTblPasteCell(event,\'' + k + '\')" onfocus="this.style.borderColor=\'var(--accent)\'" onblur="this.style.borderColor=\'rgba(245,158,11,0.4)\'" style="display:block;margin-top:3px;padding:4px 6px;border:1px dashed rgba(245,158,11,0.4);border-radius:4px;font-size:0.65rem;color:var(--text-muted);text-align:center;cursor:pointer;background:rgba(245,158,11,0.03);outline:none">📋 Paste image</div>' +
+        '</div>';
+}
+function _tblRenderRow(prefix, cells, ri) {
+    var html = '<div class="mq-tbl-row" data-ri="' + ri + '" style="display:flex;gap:4px;align-items:center;margin-bottom:4px">';
+    html += '<span style="font-size:0.65rem;color:var(--text-muted);min-width:16px;text-align:center;flex-shrink:0">' + (ri + 1) + '</span>';
+    cells.forEach(function (c, ci) {
+        html += _tblRenderCell(prefix + '_R' + ri + '_C' + ci, c);
+    });
+    html += '<button type="button" onclick="mqTblRemRow(this)" style="flex-shrink:0;padding:3px 6px;background:rgba(242,92,92,0.08);border:1px solid rgba(242,92,92,0.22);border-radius:4px;font-size:0.72rem;color:#f25c5c;cursor:pointer" title="Remove row">✕</button>';
+    html += '</div>';
+    return html;
+}
+function _tblRenderCard(tbl, prefix, ti) {
+    var position = (tbl.position || 'after_intro');
+    var headers = (tbl.headers || []).map(_tblCellParts);
+    var rows = (tbl.rows || []).map(function (r) { return r.map(_tblCellParts); });
+    var caption = tbl.caption || '';
+    var isOption = tbl._slot != null && tbl._slot !== '';
+    var slotIdx = isOption ? parseInt(tbl._slot) : null;
+    var colCount = headers.length;
+    rows.forEach(function (r) { if (r.length > colCount) colCount = r.length; });
+    if (colCount < 2) colCount = 2;
+    while (headers.length < colCount) headers.push({ text: '', image: null });
+    rows.forEach(function (r) { while (r.length < colCount) r.push({ text: '', image: null }); });
+    var cardId = prefix + '_card_' + _tblNextCardIndex();
+    var optLabel = ['A','B','C','D'][slotIdx] || '?';
+    var html = '<div class="mq-tbl-card" id="' + cardId + '" data-slot="' + (isOption ? slotIdx : '') + '" data-cols="' + colCount + '" style="margin-bottom:10px;padding:10px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">';
+    if (isOption) {
+        html += '<span style="font-size:0.72rem;font-weight:700;color:var(--accent)">Option (' + optLabel + ') table</span>';
+    } else {
+        html += '<span style="font-size:0.72rem;font-weight:700;color:var(--accent)">Table ' + (ti + 1) + '</span>';
+        html += '<select class="mq-tbl-pos-sel" style="padding:3px 6px;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.72rem;outline:none">';
+        html += '<option value="after_intro"' + (position === 'after_intro' ? ' selected' : '') + '>Position: after intro</option>';
+        html += '<option value="after_options"' + (position === 'after_options' ? ' selected' : '') + '>Position: after options</option>';
+        html += '</select>';
+    }
+    html += '<button type="button" onclick="mqTblRemoveTable(\'' + cardId + '\')" style="padding:3px 8px;background:rgba(242,92,92,0.08);border:1px solid rgba(242,92,92,0.22);border-radius:4px;font-size:0.72rem;color:#f25c5c;cursor:pointer">✕ Remove</button>';
+    html += '</div>';
+    html += '<div class="mq-tbl-headers" style="margin-bottom:4px"><span style="font-size:0.68rem;color:var(--text-muted);font-weight:600;margin-right:6px">Headers:</span><div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:2px">';
+    headers.forEach(function (c, ci) {
+        html += _tblRenderCell(prefix + '_' + ti + '_H' + ci, c);
+    });
+    html += '</div></div>';
+    html += '<div class="mq-tbl-rows">';
+    rows.forEach(function (r, ri) {
+        html += _tblRenderRow(prefix + '_' + ti, r, ri);
+    });
+    html += '</div>';
+    html += '<div style="margin-top:6px"><span style="font-size:0.68rem;color:var(--text-muted);font-weight:600;margin-right:6px">Caption:</span><input class="mq-tbl-cap-inp" value="' + _tblEscHtml(caption) + '" style="width:calc(100% - 80px);padding:3px 6px;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.78rem;outline:none"></div>';
+    html += '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">';
+    html += '<button type="button" onclick="mqTblAddRow(\'' + cardId + '\')" style="padding:3px 9px;background:rgba(86,169,255,0.1);border:1px solid rgba(86,169,255,0.3);border-radius:4px;font-size:0.72rem;color:var(--accent);cursor:pointer">+ Row</button>';
+    html += '<button type="button" onclick="mqTblAddCol(\'' + cardId + '\')" style="padding:3px 9px;background:rgba(86,169,255,0.1);border:1px solid rgba(86,169,255,0.3);border-radius:4px;font-size:0.72rem;color:var(--accent);cursor:pointer">+ Column</button>';
+    html += '<button type="button" onclick="mqTblRemoveLastCol(\'' + cardId + '\')" style="padding:3px 9px;background:rgba(242,92,92,0.08);border:1px solid rgba(242,92,92,0.22);border-radius:4px;font-size:0.72rem;color:#f25c5c;cursor:pointer">− Last Column</button>';
+    html += '</div>';
+    html += '</div>';
+    return html;
+}
+function mqTblEditorHTML(tables, prefix) {
+    var allTables = Array.isArray(tables) ? tables.filter(Boolean) : [];
+    var html = '<div id="' + prefix + '_wrap" style="margin-top:10px;padding:12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.25);border-radius:8px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    html += '<div style="font-size:0.72rem;font-weight:700;color:#f59e0b">📊 Tables</div>';
+    html += '<button type="button" onclick="mqTblAddTable(\'' + prefix + '\')" style="padding:3px 10px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);border-radius:4px;font-size:0.72rem;color:#f59e0b;cursor:pointer;font-family:\'Outfit\',sans-serif">+ Add Table</button>';
+    html += '</div>';
+    html += '<div id="' + prefix + '_cards">';
+    allTables.forEach(function (tbl, ti) {
+        html += _tblRenderCard(tbl, prefix, ti);
+    });
+    html += '</div></div>';
+    return html;
+}
+function mqTblEditorCollect(prefix) {
+    var bodyTables = [];
+    var optionTables = [null, null, null, null];
+    var container = document.getElementById(prefix + '_cards');
+    if (!container) return { bodyTables: bodyTables, optionTables: optionTables };
+    container.querySelectorAll('.mq-tbl-card').forEach(function (card) {
+        var slotAttr = card.dataset.slot;
+        var isOption = slotAttr !== '' && slotAttr != null;
+        var slotIdx = isOption ? parseInt(slotAttr) : null;
+        // Header cells are rendered directly inside .mq-tbl-headers (they are
+        // NOT wrapped in a .mq-tbl-row like the body rows), so query them at
+        // the container level — otherwise collecting drops every header row.
+        var headerWrap = card.querySelector('.mq-tbl-headers');
+        var headerCells = headerWrap ? Array.prototype.slice.call(headerWrap.querySelectorAll('.mq-tbl-cell')) : [];
+        if (!headerCells.length && card.querySelector('.mq-tbl-headers')) {
+            // Legacy fallback in case a card still uses the old structure.
+            var legRow = card.querySelector('.mq-tbl-headers .mq-tbl-row');
+            if (legRow) headerCells = Array.prototype.slice.call(legRow.querySelectorAll('.mq-tbl-cell'));
+        }
+        var headers = headerCells.map(function (cell) {
+            var text = (cell.querySelector('.mq-tbl-inp') || {}).value || '';
+            text = text.trim();
+            var img = _tblReadCellImg(cell);
+            return img ? { text: text, image: img } : (text || null);
+        }).filter(Boolean);
+        var rowsContainer = card.querySelector('.mq-tbl-rows');
+        var rowEls = rowsContainer ? Array.prototype.slice.call(rowsContainer.querySelectorAll('.mq-tbl-row')) : [];
+        var rows = rowEls.map(function (row) {
+            return Array.prototype.slice.call(row.querySelectorAll('.mq-tbl-cell')).map(function (cell) {
+                var text = (cell.querySelector('.mq-tbl-inp') || {}).value || '';
+                text = text.trim();
+                var img = _tblReadCellImg(cell);
+                return img ? { text: text, image: img } : (text || null);
+            }).filter(Boolean);
+        }).filter(function (r) { return r.length > 0; });
+        var posSel = card.querySelector('.mq-tbl-pos-sel');
+        var position = posSel ? posSel.value : 'after_intro';
+        var capInp = card.querySelector('.mq-tbl-cap-inp');
+        var caption = capInp ? capInp.value.trim() : '';
+        if (!headers.length && !rows.length) return;
+        var tblObj = { position: position, headers: headers, rows: rows };
+        if (caption) tblObj.caption = caption;
+        if (isOption && slotIdx >= 0 && slotIdx < 4) {
+            optionTables[slotIdx] = tblObj;
+        } else {
+            bodyTables.push(tblObj);
+        }
+    });
+    return { bodyTables: bodyTables, optionTables: optionTables };
+}
+function mqTblAddTable(prefix) {
+    var container = document.getElementById(prefix + '_cards');
+    if (!container) return;
+    var ti = _tblNextCardIndex();
+    var newTbl = { position: 'after_intro', headers: [{ text: '', image: null }, { text: '', image: null }], rows: [[{ text: '', image: null }, { text: '', image: null }]], caption: '' };
+    container.insertAdjacentHTML('beforeend', _tblRenderCard(newTbl, prefix, ti));
+    if (typeof _hasUnsavedEdits !== 'undefined') _hasUnsavedEdits = true;
+}
+function mqTblRemoveTable(cardId) {
+    var card = document.getElementById(cardId);
+    if (card) card.remove();
+    if (typeof _hasUnsavedEdits !== 'undefined') _hasUnsavedEdits = true;
+}
+function mqTblAddRow(cardId) {
+    var card = document.getElementById(cardId);
+    if (!card) return;
+    var cols = parseInt(card.dataset.cols || '2');
+    var rows = card.querySelector('.mq-tbl-rows');
+    if (!rows) return;
+    var ri = rows.children.length;
+    var html = '<div class="mq-tbl-row" data-ri="' + ri + '" style="display:flex;gap:4px;align-items:center;margin-bottom:4px">';
+    html += '<span style="font-size:0.65rem;color:var(--text-muted);min-width:16px;text-align:center;flex-shrink:0">' + (ri + 1) + '</span>';
+    for (var ci = 0; ci < cols; ci++) html += _tblEmptyCell();
+    html += '<button type="button" onclick="mqTblRemRow(this)" style="flex-shrink:0;padding:3px 6px;background:rgba(242,92,92,0.08);border:1px solid rgba(242,92,92,0.22);border-radius:4px;font-size:0.72rem;color:#f25c5c;cursor:pointer" title="Remove row">✕</button>';
+    html += '</div>';
+    rows.insertAdjacentHTML('beforeend', html);
+    if (typeof _hasUnsavedEdits !== 'undefined') _hasUnsavedEdits = true;
+}
+function mqTblRemRow(btn) {
+    var row = btn.closest('.mq-tbl-row');
+    if (row) row.remove();
+    if (typeof _hasUnsavedEdits !== 'undefined') _hasUnsavedEdits = true;
+}
+function mqTblAddCol(cardId) {
+    var card = document.getElementById(cardId);
+    if (!card) return;
+    var cols = parseInt(card.dataset.cols || '1');
+    var rows = card.querySelectorAll('.mq-tbl-row');
+    for (var i = 0; i < rows.length; i++) {
+        rows[i].insertAdjacentHTML('beforeend', _tblEmptyCell());
+    }
+    card.dataset.cols = cols + 1;
+    if (typeof _hasUnsavedEdits !== 'undefined') _hasUnsavedEdits = true;
+}
+function mqTblRemoveLastCol(cardId) {
+    var card = document.getElementById(cardId);
+    if (!card) return;
+    var cols = parseInt(card.dataset.cols || '1');
+    if (cols <= 1) return;
+    var rows = card.querySelectorAll('.mq-tbl-row');
+    for (var i = 0; i < rows.length; i++) {
+        var cells = rows[i].querySelectorAll('.mq-tbl-cell');
+        if (cells.length > 0) cells[cells.length - 1].remove();
+    }
+    card.dataset.cols = cols - 1;
+    if (typeof _hasUnsavedEdits !== 'undefined') _hasUnsavedEdits = true;
+}
+function mqTblPasteCell(event, key) {
+    event.preventDefault();
+    event.stopPropagation();
+    var items = (event.clipboardData || (event.originalEvent && event.originalEvent.clipboardData) || {}).items;
+    if (!items) return;
+    for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        if (item.type.indexOf('image') !== -1) {
+            var blob = item.getAsFile();
+            var reader = new FileReader();
+            reader.onload = function (e) {
+                var dataUrl = e.target.result;
+                var cell = document.getElementById(key);
+                if (!cell) return;
+                var img = cell.querySelector('.mq-tbl-img');
+                var imgbox = cell.querySelector('.mq-tbl-imgbox');
+                var paste = cell.querySelector('.mq-tbl-paste');
+                if (img) img.src = dataUrl;
+                if (imgbox) imgbox.style.display = 'flex';
+                if (paste) paste.style.display = 'none';
+                if (typeof _hasUnsavedEdits !== 'undefined') _hasUnsavedEdits = true;
+            };
+            reader.readAsDataURL(blob);
+            break;
+        }
+    }
+}
+function mqTblRemoveCellImg(key) {
+    var cell = document.getElementById(key);
+    if (!cell) return;
+    var imgbox = cell.querySelector('.mq-tbl-imgbox');
+    var paste = cell.querySelector('.mq-tbl-paste');
+    if (imgbox) imgbox.style.display = 'none';
+    if (paste) paste.style.display = 'block';
+    if (typeof _hasUnsavedEdits !== 'undefined') _hasUnsavedEdits = true;
+}
+function _tblReadCellImg(cell) {
+    if (!cell) return null;
+    var imgbox = cell.querySelector('.mq-tbl-imgbox');
+    var imgEl = cell.querySelector('.mq-tbl-img');
+    if (imgbox && imgEl && imgbox.style.display === 'flex' && imgEl.src) return imgEl.src;
+    return null;
+}
+if (typeof window !== 'undefined') {
+    window.mqTblEditorHTML = mqTblEditorHTML;
+    window.mqTblEditorCollect = mqTblEditorCollect;
+    window.mqTblAddTable = mqTblAddTable;
+    window.mqTblRemoveTable = mqTblRemoveTable;
+    window.mqTblAddRow = mqTblAddRow;
+    window.mqTblRemRow = mqTblRemRow;
+    window.mqTblAddCol = mqTblAddCol;
+    window.mqTblRemoveLastCol = mqTblRemoveLastCol;
+    window.mqTblPasteCell = mqTblPasteCell;
+    window.mqTblRemoveCellImg = mqTblRemoveCellImg;
+}

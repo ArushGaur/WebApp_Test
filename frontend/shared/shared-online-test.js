@@ -892,7 +892,7 @@ function openQuestionSelectorForEdit() {
     const list = document.getElementById('ote-qp-questions-list');
 
     if (chapSelect && typeof allQuestions !== 'undefined') {
-        const chapters = [...new Set(allQuestions.map(q => q.chapter || "(No Chapter)"))].sort();
+        const chapters = [...new Set(allQuestions.filter(q => !(q._readonlyPaper === true || q._rowId != null)).map(q => q.chapter || "(No Chapter)"))].sort();
         chapSelect.innerHTML = `<option value="">-- Choose Chapter --</option>` +
             chapters.map(c => `<option value="${_otEscapeHtml(c)}">${_otEscapeHtml(c)}</option>`).join('');
     }
@@ -927,7 +927,7 @@ function oteQpOnChapterChange(chapter) {
         return;
     }
 
-    const rows = allQuestions.filter(q => (q.chapter || "(No Chapter)") === chapter);
+    const rows = allQuestions.filter(q => (q.chapter || "(No Chapter)") === chapter && !(q._readonlyPaper === true || q._rowId != null));
     const lectures = [...new Set(rows.map(q => q.lecture))].sort();
 
     if (lecSelect) {

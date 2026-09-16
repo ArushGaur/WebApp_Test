@@ -34,6 +34,12 @@ const {
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
+// Build a human label for a (possibly fine-grained) paper: "2025 · Jan · 24 · Shift 1".
+function rLabel(exam, year, month, day, shift) {
+	const parts = [String(year), month, day, shift].filter(Boolean);
+	return `${exam} ${parts.join(" · ")}`;
+}
+
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 } });
 
@@ -729,6 +735,9 @@ async function rebuildPapersFromPyq() {
 
 // List papers, optionally filtered by exam and/or question_type. Returns light
 // rows (no question blobs) plus the canonical exam list for the filter UI.
+// `groups` carries the fine-grained (exam, year, month, day, shift) entries the
+// paper-wise view wants — one card per JEE shift/date. `papers` stays as the
+// coarse (exam, year) rows for backward-compatible callers.
 router.get("/api/admin/papers", requireAdmin, async (req, res) => {
 	try {
 		const { exam, question_type } = req.query;
@@ -743,6 +752,7 @@ router.get("/api/admin/papers", requireAdmin, async (req, res) => {
 		// question_type as a real indexed column), instead of parsing every
 		// paper's question blob just to count matching rows.
 		const counts = await yearWise.paperCounts({ exam, question_type: qt });
+		const groups = await yearWise.paperGroupCounts({ exam, question_type: qt });
 
 		const papers = result.rows.map((r) => {
 			let count;
@@ -761,39 +771,34 @@ router.get("/api/admin/papers", requireAdmin, async (req, res) => {
 			}
 			return { id: r.id, exam: r.exam, year: r.year, label: r.label || `${r.exam} ${r.year}`, count };
 		});
-		res.json({ exams: PAPER_EXAMS, papers });
+		res.json({ exams: PAPER_EXAMS, papers, groups });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}
 });
 
 // Fetch one paper's questions (optionally filtered by question_type).
+// id may be a numeric papers-table row id OR a composite string key in the
+// form "exam||year||month||day||shift" for fine-grained paper groups.
 router.get("/api/admin/papers/:id", requireAdmin, async (req, res) => {
 	try {
-		const id = parseInt(req.params.id, 10);
 		const { question_type } = req.query;
 		const { subject } = req.query;
-		const result = await db.execute({
-			sql: "SELECT id, exam, year, label, questions_json FROM papers WHERE id = ? LIMIT 1",
-			args: [id],
-		});
-		if (!result.rows.length) return res.status(404).json({ error: "Not found" });
-		const row = result.rows[0];
-		const qt = question_type ? String(question_type).trim().toUpperCase() : "";
+		let qt = question_type ? String(question_type).trim().toUpperCase() : "";
 		const perms = await permissionsForRequest(req);
+		let id, exam, year, month, day, shift, label;
 		let questions;
 
-		if (row.year !== "Regular") {
-			// PYQ paper: straight indexed lookup on (exam, year) — the type and
-			// subject filters are pushed into SQL rather than applied in JS.
-			const rows = await yearWise.paperQuestions({
-				exam: row.exam, year: row.year, question_type: qt, subject,
-			});
+		if (typeof req.params.id === "string" && req.params.id.includes("||")) {
+			// Composite group key: exam||year||month||day||shift
+			const parsed = yearWise.parseCompositeKey(req.params.id);
+			exam = parsed.exam; year = parsed.year; month = parsed.month; day = parsed.day; shift = parsed.shift;
+			if (!exam || !year) return res.status(404).json({ error: "Not found" });
+			const rows = await yearWise.paperGroupQuestions({ exam, year, month, day, shift, question_type: qt, subject });
 			questions = rows.map((r, i) => {
 				let raw = {};
 				try { raw = JSON.parse(r.raw_json || "{}"); } catch { raw = {}; }
 				const q = normalizeQuestion(raw, { preserveRaw: true });
-				// Backfill the paper metadata the UI badges read.
 				if (r.subject && !q.subject) q.subject = r.subject;
 				if (r.chapter && !q.chapter) q.chapter = r.chapter;
 				if (r.topic && !q.topic) q.topic = r.topic;
@@ -803,22 +808,54 @@ router.get("/api/admin/papers/:id", requireAdmin, async (req, res) => {
 				q._exam = r.exam;
 				return { paperIndex: i, rowId: r.pyq_id, question: q };
 			});
+			label = rLabel(exam, year, month, day, shift);
 		} else {
-			// "Regular" (non-PYQ) bucket still reads from the papers blob.
-			let arr = [];
-			try { arr = JSON.parse(row.questions_json || "[]"); } catch { arr = []; }
-			if (!Array.isArray(arr)) arr = [];
-			questions = arr.map((q, i) => ({ paperIndex: i, question: normalizeQuestion(q, { preserveRaw: true }) }));
-			if (qt) {
-				questions = questions.filter(
-					(x) => String(x.question.question_type || x.question.questionType || "MCQ").toUpperCase() === qt
-				);
+			id = parseInt(req.params.id, 10);
+			const result = await db.execute({
+				sql: "SELECT id, exam, year, label, questions_json FROM papers WHERE id = ? LIMIT 1",
+				args: [id],
+			});
+			if (!result.rows.length) return res.status(404).json({ error: "Not found" });
+			const row = result.rows[0];
+			exam = row.exam; year = row.year;
+			label = row.label || `${row.exam} ${row.year}`;
+			if (row.year !== "Regular") {
+				// PYQ paper: straight indexed lookup on (exam, year) — the type and
+				// subject filters are pushed into SQL rather than applied in JS.
+				const rows = await yearWise.paperQuestions({
+					exam: row.exam, year: row.year, question_type: qt, subject,
+				});
+				questions = rows.map((r, i) => {
+					let raw = {};
+					try { raw = JSON.parse(r.raw_json || "{}"); } catch { raw = {}; }
+					const q = normalizeQuestion(raw, { preserveRaw: true });
+					// Backfill the paper metadata the UI badges read.
+					if (r.subject && !q.subject) q.subject = r.subject;
+					if (r.chapter && !q.chapter) q.chapter = r.chapter;
+					if (r.topic && !q.topic) q.topic = r.topic;
+					if (r.month) q._month = r.month;
+					if (r.day) q._day = r.day;
+					if (r.shift) q._shift = r.shift;
+					q._exam = r.exam;
+					return { paperIndex: i, rowId: r.pyq_id, question: q };
+				});
+			} else {
+				// "Regular" (non-PYQ) bucket still reads from the papers blob.
+				let arr = [];
+				try { arr = JSON.parse(row.questions_json || "[]"); } catch { arr = []; }
+				if (!Array.isArray(arr)) arr = [];
+				questions = arr.map((q, i) => ({ paperIndex: i, question: normalizeQuestion(q, { preserveRaw: true }) }));
+				if (qt) {
+					questions = questions.filter(
+						(x) => String(x.question.question_type || x.question.questionType || "MCQ").toUpperCase() === qt
+					);
+				}
 			}
 		}
 
 		// Respect the institute's subject whitelist, same as every other read.
 		questions = filterRowsBySubject(perms, questions, (x) => x.question && x.question.subject);
-		res.json({ id: row.id, exam: row.exam, year: row.year, label: row.label || `${row.exam} ${row.year}`, count: questions.length, questions });
+		res.json({ id: id != null ? id : req.params.id, exam, year, label, count: questions.length, questions });
 	} catch (e) {
 		res.status(500).json({ error: e.message || "Failed" });
 	}

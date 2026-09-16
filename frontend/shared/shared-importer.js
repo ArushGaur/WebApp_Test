@@ -1040,6 +1040,53 @@ function impSaveQEdit(qi) {
     }
 }
 
+/* ── Toggle the table editor (view ↔ edit) for a screenshot/JSON card ── */
+function impToggleTablesEdit(qi) {
+    const panel = document.getElementById('impTablesEdit_' + qi);
+    const btn = document.getElementById('impTablesEditBtn_' + qi);
+    const q = impQuestions[qi];
+    if (!panel || !q) return;
+    const isOpen = panel.style.display !== 'none';
+    if (isOpen) {
+        const collected = (typeof mqTblEditorCollect === 'function') ? mqTblEditorCollect('iptbl_' + qi) : null;
+        if (collected) {
+            q.tables = collected.bodyTables.length ? collected.bodyTables : null;
+            q.optionTables = collected.optionTables.some(Boolean) ? collected.optionTables : null;
+        }
+        panel.style.display = 'none';
+        if (btn) btn.innerHTML = '✏ Edit Tables';
+        const tblBlock = document.getElementById('impTablesBlock_' + qi);
+        if (tblBlock) {
+            tblBlock.innerHTML = impBuildTablesSection(q, qi);
+            setTimeout(() => { if (window.renderMath) renderMath(tblBlock); }, 0);
+        }
+    } else {
+        let allTbls = [];
+        try {
+            let bodyTables = Array.isArray(q.tables) ? q.tables : [];
+            if (typeof _extractOptionTables === 'function') {
+                const ex = _extractOptionTables(q);
+                bodyTables = ex.otherTables;
+            }
+            if (typeof _normalizeTablesField === 'function') {
+                allTbls = _normalizeTablesField(bodyTables).slice();
+            } else {
+                allTbls = bodyTables.slice();
+            }
+        } catch (e) { allTbls = []; }
+        const optTables = (typeof mqGetOptionTables === 'function') ? mqGetOptionTables(q) : [];
+        LETTERS.forEach((l, oi) => {
+            if (optTables[oi]) allTbls.push(Object.assign({}, optTables[oi], { _slot: oi }));
+        });
+        panel.innerHTML = (typeof mqTblEditorHTML === 'function')
+            ? mqTblEditorHTML(allTbls, 'iptbl_' + qi)
+            : '<div style="font-size:0.8rem;color:var(--text-muted)">Table editor unavailable.</div>';
+        panel.style.display = 'block';
+        if (btn) btn.innerHTML = '✓ Save Tables';
+    }
+}
+window.impToggleTablesEdit = impToggleTablesEdit;
+
 /* ── Toggle solution body (collapse/expand) ──────────────────────── */
 function impToggleSolBody(qi) {
     const body = document.getElementById('impSolBody_' + qi);
@@ -1391,6 +1438,10 @@ function impRenderReview() {
                     </div>`).join("")}
                 </div>
                 <div id="impTablesBlock_${qi}"></div>
+                <div style="margin-top:8px;display:flex;align-items:center;gap:6px">
+                    <button type="button" onclick="impToggleTablesEdit(${qi})" id="impTablesEditBtn_${qi}" style="padding:3px 10px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);border-radius:4px;font-size:0.72rem;color:#f59e0b;cursor:pointer;font-family:'Outfit',sans-serif;display:inline-flex;align-items:center;gap:4px">✏ Edit Tables</button>
+                </div>
+                <div id="impTablesEdit_${qi}" style="display:none;margin-top:8px"></div>
                 <div id="impAnswerCtrl_${qi}" style="margin-top:10px">${impBuildAnswerCtrl(q, qi, ci)}</div>
                 <div id="impSolBlock_${qi}"></div>`;
         container.appendChild(div);
@@ -1772,6 +1823,9 @@ async function impSaveAll() {
     document.querySelectorAll(".imp-q-card").forEach((card, localIdx) => {
         const qiStr = card.id.replace("impQ_", "");
         const qi = isNaN(parseInt(qiStr)) ? localIdx : parseInt(qiStr);
+        // If the table editor is open for this card, sync its edits back first.
+        const _tblPanel = document.getElementById(`impTablesEdit_${qi}`);
+        if (_tblPanel && _tblPanel.style.display !== 'none' && typeof impToggleTablesEdit === 'function') impToggleTablesEdit(qi);
         const lec = document.getElementById(`impLec_${qi}`)?.value?.trim();
         const txt = document.getElementById(`impQText_${qi}`)?.value?.trim();
         const opts = LETTERS.map((_, oi) => document.getElementById(`impOpt_${qi}_${oi}`)?.value?.trim() || "");
