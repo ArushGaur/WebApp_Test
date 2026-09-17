@@ -1,12 +1,11 @@
-const CACHE_NAME = "grip-institute-v6";
+const CACHE_NAME = "grip-institute-v7";
 
 // Files to cache for offline shell
 const SHELL_FILES = [
     "/institute.html",
     "/institute-manifest.json",
-    "/triumph.png",
-    "/triumph-192.png",
-    "/triumph-512.png",
+    "/assets/icon-192.png",
+    "/assets/logo-512.png",
     "https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap",
     "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css",
     "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js",
