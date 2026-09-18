@@ -37,6 +37,26 @@ async function uploadQuestionImages(questions) {
 				next.questionImage = await uploadImageToCloudinary(next.questionImage);
 				next.questionImages = next.questionImage ? [next.questionImage] : [];
 			}
+			if (Array.isArray(next.contentBlocks)) {
+				next.contentBlocks = await Promise.all(next.contentBlocks.map(async (block) => {
+					if (!block || typeof block !== "object") return block;
+					const nextBlock = { ...block };
+					if (nextBlock.type === "image") {
+						const image = nextBlock.image || nextBlock.src || nextBlock.url;
+						nextBlock.image = await uploadImageToCloudinary(image);
+						delete nextBlock.src;
+						delete nextBlock.url;
+					} else if (nextBlock.type === "statement" && Array.isArray(nextBlock.images)) {
+						nextBlock.images = await Promise.all(nextBlock.images.map(async (image) => {
+							if (image && typeof image === "object") {
+								return { ...image, image: await uploadImageToCloudinary(image.image || image.src || image.url) };
+							}
+							return uploadImageToCloudinary(image);
+						}));
+					}
+					return nextBlock;
+				}));
+			}
 			if (Array.isArray(next.optionImages)) {
 				next.optionImages = await Promise.all(next.optionImages.map((img) => uploadImageToCloudinary(img)));
 			}

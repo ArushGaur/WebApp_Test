@@ -17,6 +17,48 @@ function jsString(value) {
     return JSON.stringify(String(value ?? ""));
 }
 
+function renderQuestionContentHtml(question) {
+    const blocks = Array.isArray(question?.contentBlocks) ? question.contentBlocks : [];
+    if (!blocks.length) return escapeQuestionContentHtml(question?.question || "");
+    const esc = escapeQuestionContentHtml;
+    const imageSrc = (value) => {
+        const src = String(value || "");
+        if (!src) return "";
+        if (/^(?:https?:|data:)/i.test(src)) return src;
+        const mime = src.startsWith("/9j/") ? "image/jpeg" : src.startsWith("iVBOR") ? "image/png" : "image/jpeg";
+        return `data:${mime};base64,${src}`;
+    };
+    const imageHtml = (image, index, caption) => {
+        const src = imageSrc(image && (image.image || image.src || image.url || image));
+        if (!src) return "";
+        return `<figure class="question-content-image"><img src="${esc(src)}" alt="${esc(image?.alt || `Question image ${index + 1}`)}"><figcaption>${esc(image?.caption || caption || "")}</figcaption></figure>`;
+    };
+    return blocks.map((block) => {
+        if (!block || typeof block !== "object") return "";
+        const type = String(block.type || "text").toLowerCase();
+        if (type === "image") return imageHtml(block, 0, "");
+        if (type === "statement") {
+            const label = block.label ? `<strong>${esc(block.label)}</strong>` : "";
+            const text = block.text ? `<div>${esc(block.text)}</div>` : "";
+            const images = (Array.isArray(block.images) ? block.images : [])
+                .map((image, index) => imageHtml(image, index, block.label))
+                .join("");
+            return `<section class="question-content-statement">${label}${text}${images}</section>`;
+        }
+        return block.text || block.value ? `<div>${esc(block.text ?? block.value)}</div>` : "";
+    }).join("");
+}
+
+function escapeQuestionContentHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;")
+        .replace(/\n/g, "<br>");
+}
+
 function formatChapterLabel(chapter) {
     return String(chapter || "")
         .replace(/^\s*(?:chapter\s*)?\d+\s*[:\-.)]\s*/i, "")

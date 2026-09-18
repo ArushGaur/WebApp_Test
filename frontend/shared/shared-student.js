@@ -1003,7 +1003,7 @@ function validatePasswordComplexity(password) {
 function showPasswordPromptModal(title, subtitle, roll) {
     return new Promise((resolve) => {
         injectAddStuStyles(); // ensures animations are loaded
-        
+
         let existing = document.getElementById('custom-pwd-prompt-overlay');
         if (existing) existing.remove();
 
@@ -1712,11 +1712,44 @@ let _sqCurrentQCardIdx = undefined;
 // Track solution images during edit — keyed by question original index
 // { [origIdx]: string[] }  each string is a data-URL or http URL
 let _sqEditSolImages = {};
+let _sqEditQuestionImages = {};
 
 function _sqSolImgSrc(imgData) {
     if (!imgData) return "";
     if (imgData.startsWith('http://') || imgData.startsWith('https://') || imgData.startsWith('data:')) return imgData;
     return 'data:image/jpeg;base64,' + imgData;
+}
+
+function sqBuildQuestionImgEditZone(qi) {
+    const imgs = _sqEditQuestionImages[qi] || [];
+    const thumbs = imgs.map((img, ii) => `
+                <div style="position:relative;display:inline-block;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border);background:rgba(0,0,0,0.1)">
+                    <img src="${_sqSolImgSrc(img)}" alt="Question image ${ii + 1}" style="max-width:160px;max-height:140px;display:block;object-fit:contain">
+                    <button type="button" onclick="sqEditRemoveQuestionImage(${qi},${ii})" title="Remove image" style="position:absolute;top:4px;right:4px;border:none;background:rgba(242,92,92,0.92);color:#fff;border-radius:4px;padding:4px 7px;font-size:0.7rem;line-height:1;cursor:pointer">Remove</button>
+                </div>`).join('');
+    return `<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:8px">${thumbs}</div>
+                <label style="display:inline-flex;align-items:center;gap:6px;padding:7px 13px;background:rgba(86,169,255,0.10);border:1px solid rgba(86,169,255,0.3);border-radius:var(--radius-sm);font-size:0.78rem;color:var(--accent);cursor:pointer;font-weight:600">
+                    📷 ${imgs.length ? 'Add another question image' : 'Add question image'}
+                    <input type="file" accept="image/*" style="display:none" onchange="sqEditAddQuestionImage(${qi}, this)">
+                </label>`;
+}
+
+async function sqEditAddQuestionImage(qi, input) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    if (!_sqEditQuestionImages[qi]) _sqEditQuestionImages[qi] = [];
+    _sqEditQuestionImages[qi].push(await impFileToB64(file));
+    input.value = "";
+    const zone = document.getElementById(`sqQImgZone_${qi}`);
+    if (zone) zone.innerHTML = sqBuildQuestionImgEditZone(qi);
+    _sqHasUnsavedEdits = true;
+}
+
+function sqEditRemoveQuestionImage(qi, ii) {
+    if (Array.isArray(_sqEditQuestionImages[qi])) _sqEditQuestionImages[qi].splice(ii, 1);
+    const zone = document.getElementById(`sqQImgZone_${qi}`);
+    if (zone) zone.innerHTML = sqBuildQuestionImgEditZone(qi);
+    _sqHasUnsavedEdits = true;
 }
 
 // Build editable solution-image zone HTML for question index `qi`
@@ -1930,7 +1963,7 @@ function sqOpenQuestionView(chapter, lecture, qCardIdx) {
         questionsToRender.forEach(([q, i]) => {
             const isNumerical = (q.numericalAnswer !== undefined && q.numericalAnswer !== null) || (Array.isArray(q.options) && q.options.every(function (o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function (im) { return !im; })));
             const prev = document.getElementById(`sq_iqe_preview_${i}`);
-            if (prev) { prev.textContent = q.question; if (typeof renderMath === "function") renderMath(prev); }
+            if (prev) { prev.innerHTML = renderQuestionContentHtml(q); if (typeof renderMath === "function") renderMath(prev); }
             if (!isNumerical) {
                 ["A", "B", "C", "D"].forEach((l, oi) => {
                     const optRender = document.getElementById(`sq_iqe_opt_render_${i}_${oi}`);
@@ -1976,6 +2009,7 @@ function sqEnterEditMode() {
     if (!set) return;
 
     _sqEditSolImages = {};
+    _sqEditQuestionImages = {};
     _sqSetViewModeButtons(false);
 
     const content = document.getElementById("sq-question-content");
@@ -2022,6 +2056,9 @@ function sqEnterEditMode() {
             }
         }
         _sqEditSolImages[i] = existingSolImgs;
+        _sqEditQuestionImages[i] = Array.isArray(q.questionImages)
+            ? q.questionImages.filter(Boolean)
+            : (q.questionImage ? [q.questionImage] : []);
         qDiv.innerHTML = `
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
                         <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px">Question ${i + 1}${q.year && String(q.year).trim() ? ` <span style="font-size:0.68rem;background:rgba(91,95,239,0.12);color:var(--accent-2);padding:2px 7px;border-radius:20px;font-weight:700;text-transform:none;letter-spacing:normal;display:inline-flex;align-items:center;gap:3px">🏛️ ${q.exam || q.examName || q.exam_name || q.exam_label || (String(q.subject || '').toLowerCase().includes('bio') ? 'NEET' : 'JEE Main')} ${q.year}${q.month ? ' ' + q.month : ''}${(q.date || q.day) ? ' ' + (q.date || q.day) : ''}${q.shift ? ' (' + q.shift + ')' : ''}</span>` : ''}${isNumerical ? ' <span style="color:#a78bfa">🔢 Numerical</span>' : ""}</div>
@@ -2030,7 +2067,10 @@ function sqEnterEditMode() {
                             <span class="multi-toggle-text">${isMulti ? "✦ Multi-correct" : "○ Single-correct"}</span>
                         </label>`}
                     </div>
-                    ${imgHtml}
+                    <div style="margin-bottom:14px">
+                        <label style="font-size:0.72rem;color:var(--text-dim);display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.4px">Question Images</label>
+                        <div id="sqQImgZone_${i}"></div>
+                    </div>
                     <div class="q-render-preview" id="sq_iqe_preview_${i}"></div>
                     <div class="field"><label>Edit Raw Text ($math$ for equations)</label>
                         <textarea id="sq_iqe_qt_${i}" rows="2" oninput="sqUpdatePreview(${i});_sqHasUnsavedEdits=true;" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:0.85rem;resize:vertical;outline:none">${escapeHtml(q.question || "")}</textarea>
@@ -2078,7 +2118,7 @@ function sqEnterEditMode() {
         questionsToRender.forEach(([q, i]) => {
             const isNumerical = (q.numericalAnswer !== undefined && q.numericalAnswer !== null) || (Array.isArray(q.options) && q.options.every(function (o) { return !o || String(o).trim() === ''; }) && (!Array.isArray(q.optionImages) || q.optionImages.every(function (im) { return !im; })));
             const prev = document.getElementById(`sq_iqe_preview_${i}`);
-            if (prev) { prev.textContent = q.question; if (typeof renderMath === "function") renderMath(prev); }
+            if (prev) { prev.innerHTML = renderQuestionContentHtml(q); if (typeof renderMath === "function") renderMath(prev); }
             if (!isNumerical) {
                 ["A", "B", "C", "D"].forEach((l, oi) => {
                     const optRender = document.getElementById(`sq_iqe_opt_render_${i}_${oi}`);
@@ -2097,6 +2137,8 @@ function sqEnterEditMode() {
             // Render solution image edit zone
             const solImgZone = document.getElementById(`sqSolImgZone_${i}`);
             if (solImgZone) solImgZone.innerHTML = sqBuildSolImgEditZone(i);
+            const questionImgZone = document.getElementById(`sqQImgZone_${i}`);
+            if (questionImgZone) questionImgZone.innerHTML = sqBuildQuestionImgEditZone(i);
         });
     }, 0);
 }
@@ -2208,6 +2250,7 @@ async function sqSaveEdit() {
         const origQ = origSet && origSet.questions ? origSet.questions[origIdx] : null;
         const solutionText = document.getElementById(`sqSolEditArea_${origIdx}`)?.value.trim() || "";
         const solImages = Array.isArray(_sqEditSolImages[origIdx]) ? _sqEditSolImages[origIdx].filter(Boolean) : [];
+        const questionImages = Array.isArray(_sqEditQuestionImages[origIdx]) ? _sqEditQuestionImages[origIdx].filter(Boolean) : [];
         const existingSolutions = Array.isArray(origQ?.solutions) ? origQ.solutions.map(sol => ({ ...sol })) : [];
         if (solutionText || solImages.length || existingSolutions.length) {
             if (!existingSolutions.length) {
@@ -2227,7 +2270,9 @@ async function sqSaveEdit() {
             options: opts,
             correctIndexes: selectedOpts.length ? selectedOpts : [0],
             isMultiCorrect: isMulti,
-            questionImage: origQ?.questionImage || null,
+            questionImages: questionImages,
+            questionImage: questionImages[0] || null,
+            hasImage: questionImages.length > 0,
             solutions: existingSolutions,
             optionImages: optionImages,
             hasOptionImages: !!(origQ?.hasOptionImages || optionImages.some(Boolean))

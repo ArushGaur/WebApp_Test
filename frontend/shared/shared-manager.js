@@ -1625,7 +1625,7 @@ function mqBuildQImgEditZone(si) {
     const thumbs = imgs.map((img, ii) => `
                 <div style="position:relative;display:inline-block;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border);background:rgba(0,0,0,0.1)">
                     <img src="${_mqImgSrc(img)}" alt="Question image ${ii + 1}" style="max-width:160px;max-height:140px;display:block;object-fit:contain">
-                    <button type="button" onclick="mqEditRemoveQuestionImage(${si},${ii})" title="Remove image" style="position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;border:none;background:rgba(242,92,92,0.92);color:#fff;font-size:0.8rem;line-height:1;cursor:pointer">✕</button>
+                    <button type="button" onclick="mqEditRemoveQuestionImage(${si},${ii})" title="Remove image" style="position:absolute;top:4px;right:4px;border:none;background:rgba(242,92,92,0.92);color:#fff;border-radius:4px;padding:4px 7px;font-size:0.7rem;line-height:1;cursor:pointer">Remove</button>
                 </div>`).join('');
     return `
                 <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:8px">${thumbs}</div>
@@ -1663,7 +1663,7 @@ function mqBuildOptImgEditZone(si, oi) {
     const preview = img ? `
                 <div style="position:relative;display:inline-block;margin-top:6px;border-radius:4px;overflow:hidden;border:1px solid var(--border)">
                     <img src="${_mqImgSrc(img)}" alt="Option image" style="max-width:120px;max-height:90px;display:block;object-fit:contain">
-                    <button type="button" onclick="mqEditRemoveOptImage(${si},${oi})" title="Remove image" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(242,92,92,0.92);color:#fff;font-size:0.72rem;line-height:1;cursor:pointer">✕</button>
+                    <button type="button" onclick="mqEditRemoveOptImage(${si},${oi})" title="Remove image" style="position:absolute;top:2px;right:2px;border:none;background:rgba(242,92,92,0.92);color:#fff;border-radius:4px;padding:3px 5px;font-size:0.65rem;line-height:1;cursor:pointer">Remove</button>
                 </div>` : '';
     return `
                 <label style="display:inline-flex;align-items:center;gap:5px;margin-top:5px;padding:4px 9px;background:rgba(86,169,255,0.1);border:1px solid rgba(86,169,255,0.25);border-radius:4px;font-size:0.7rem;color:var(--accent);cursor:pointer;font-weight:600">
@@ -1701,7 +1701,7 @@ function mqBuildSolImgEditZone(si) {
     const thumbs = imgs.map((img, ii) => `
                 <div style="position:relative;display:inline-block;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border);background:rgba(0,0,0,0.1)">
                     <img src="${_mqImgSrc(img)}" alt="Solution image ${ii + 1}" style="max-width:160px;max-height:140px;display:block;object-fit:contain">
-                    <button type="button" onclick="mqEditRemoveSolutionImage(${si},${ii})" title="Remove image" style="position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;border:none;background:rgba(242,92,92,0.92);color:#fff;font-size:0.8rem;line-height:1;cursor:pointer">✕</button>
+                    <button type="button" onclick="mqEditRemoveSolutionImage(${si},${ii})" title="Remove image" style="position:absolute;top:4px;right:4px;border:none;background:rgba(242,92,92,0.92);color:#fff;border-radius:4px;padding:4px 7px;font-size:0.7rem;line-height:1;cursor:pointer">Remove</button>
                 </div>`).join('');
     return `
                 <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:8px">${thumbs}</div>
@@ -1874,7 +1874,7 @@ async function showQuestionView(gi, sqIdx) {
             // (e.g. \neq, neq, !=, \le, \ge) get wrapped in $...$ and rendered
             // by KaTeX. Without this, the "not equal" sign (and similar) showed
             // up as literal text in the Manage section.
-            if (prev) { prev.textContent = clientRepairLatex(sub.question || ""); renderMath(prev); }
+            if (prev) { prev.innerHTML = renderQuestionContentHtml(sub); renderMath(prev); }
             if (!isNumerical) {
                 const optionImages = mqGetOptionImages(sub);
                 const optionTables = mqGetOptionTables(sub);
@@ -2022,10 +2022,10 @@ function mqEnterEditMode() {
                                 <span class="multi-toggle-text">${isMulti ? "✦ Multi-correct" : "○ Single-correct"}</span>
                             </label>`}
                         </div>
-                        ${isNumerical ? '' : `<div style="margin-bottom:14px">
+                        <div style="margin-bottom:14px">
                             <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px">Question Image(s)</div>
                             <div id="mqQImgZone_${si}">${mqBuildQImgEditZone(si)}</div>
-                        </div>`}
+                        </div>
                         <div class="q-render-preview" id="iqe_preview_${si}"></div>
                         <div class="field"><label>Edit Raw Text ($math$ for equations)</label>
                             <textarea id="iqe_qt_${si}" rows="2" oninput="updatePreview(${si})" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:0.85rem;resize:vertical;outline:none">${sub.question}</textarea>
@@ -2061,7 +2061,7 @@ function mqEnterEditMode() {
             const prev = document.getElementById(`iqe_preview_${si}`);
             // FIX: repair LaTeX (wrap bare \neq, neq, !=, \le, \ge … in $...$)
             // before rendering so the "not equal" sign renders in edit mode too.
-            if (prev) { prev.textContent = clientRepairLatex(sub.question || ""); renderMath(prev); }
+            if (prev) { prev.innerHTML = renderQuestionContentHtml(sub); renderMath(prev); }
             if (!isNumerical) {
                 const _editOptTables = mqGetOptionTables(sub);
                 LETTERS.forEach((l, oi) => {
@@ -3103,10 +3103,24 @@ function _jsonUploadBuildQEditPanel(q, idx) {
     const tableEditor = typeof mqTblEditorHTML === 'function'
         ? mqTblEditorHTML(tables, `jsonTbl_${idx}`)
         : '<div style="font-size:0.75rem;color:var(--text-muted)">Table editor unavailable.</div>';
+    const blockEditor = Array.isArray(q.contentBlocks) && q.contentBlocks.length
+        ? `<div style="margin-top:10px;padding:10px 12px;background:rgba(86,169,255,0.06);border:1px solid rgba(86,169,255,0.25);border-radius:6px">
+            <div style="font-size:0.7rem;color:var(--accent);font-weight:700;text-transform:uppercase;margin-bottom:8px">Edit statements and sections</div>
+            ${q.contentBlocks.map((block, blockIndex) => {
+            if (!block || typeof block !== 'object' || String(block.type || 'text').toLowerCase() === 'image') return '';
+            const type = String(block.type || 'text').toLowerCase();
+            return `<div style="margin-bottom:8px">
+                    ${type === 'statement' ? `<input id="jsonBlockLabel_${idx}_${blockIndex}" value="${_jsonEscHtml(block.label || '')}" placeholder="Statement label" style="width:100%;box-sizing:border-box;margin-bottom:5px;padding:6px 8px;background:var(--bg-input);border:1px solid var(--border);border-radius:5px;color:var(--text);font:0.78rem 'Outfit',sans-serif">` : ''}
+                    <textarea id="jsonBlockText_${idx}_${blockIndex}" rows="2" placeholder="${type === 'statement' ? 'Statement text' : 'Question text'}" style="width:100%;box-sizing:border-box;background:var(--bg-input);border:1px solid var(--border);border-radius:5px;padding:7px;color:var(--text);font:0.78rem 'Outfit',sans-serif;resize:vertical">${_jsonEscHtml(block.text || block.value || '')}</textarea>
+                </div>`;
+        }).join('')}
+        </div>`
+        : '';
 
     return `<div id="jsonQEditPanel_${idx}" style="display:none;margin-top:10px;padding:12px;background:rgba(86,169,255,0.06);border:1px solid rgba(86,169,255,0.22);border-radius:8px">
         <div style="font-size:0.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:7px">Edit question</div>
         <textarea id="jsonQText_${idx}" rows="3" style="width:100%;box-sizing:border-box;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font:0.82rem 'Outfit',sans-serif;resize:vertical">${_jsonEscHtml(q.question_text || '')}</textarea>
+        ${blockEditor}
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px;margin-top:8px">
             ${options.map((option, optionIndex) => `<label style="font-size:0.7rem;color:var(--text-muted)">${['A', 'B', 'C', 'D'][optionIndex]}<input id="jsonOptEdit_${idx}_${optionIndex}" value="${_jsonEscHtml(option || '')}" style="display:block;width:100%;box-sizing:border-box;margin-top:3px;padding:6px 8px;background:var(--bg-input);border:1px solid var(--border);border-radius:5px;color:var(--text);font:0.78rem 'Outfit',sans-serif"></label>`).join('')}
         </div>
@@ -3155,6 +3169,22 @@ function jsonUploadSaveQEdit(idx) {
     const answer = document.getElementById(`jsonAnswerEdit_${idx}`);
     const solution = document.getElementById(`jsonSolutionEdit_${idx}`);
     if (text) q.question_text = text.value;
+    if (Array.isArray(q.contentBlocks)) {
+        q.contentBlocks = q.contentBlocks.map((block, blockIndex) => {
+            if (!block || typeof block !== 'object') return block;
+            const next = { ...block };
+            const blockText = document.getElementById(`jsonBlockText_${idx}_${blockIndex}`);
+            const blockLabel = document.getElementById(`jsonBlockLabel_${idx}_${blockIndex}`);
+            if (blockText) next.text = blockText.value;
+            if (blockLabel) next.label = blockLabel.value;
+            return next;
+        });
+        const blockText = q.contentBlocks.map((block) => {
+            if (!block || typeof block !== 'object') return '';
+            return [block.label, block.text || block.value].filter(Boolean).join(' ');
+        }).filter(Boolean).join('\n\n');
+        if (blockText) q.question_text = blockText;
+    }
     if (answer) q.correct_answer = answer.value.trim();
     ['option_a', 'option_b', 'option_c', 'option_d'].forEach((key, optionIndex) => {
         const input = document.getElementById(`jsonOptEdit_${idx}_${optionIndex}`);
@@ -3287,7 +3317,8 @@ function _jsonUploadRenderPreview(questions) {
                         <span style="font-size:0.65rem;color:var(--text-muted);flex:1;text-align:right">Reading in review preview</span>
                     </div>`;
 
-            let questionHTML = `<div style="font-size:0.85rem;color:var(--text);line-height:1.7;margin-bottom:10px;white-space:pre-wrap;word-break:break-word">${_jsonEscHtml(q.question_text || "")}</div>`;
+            const _contentHTML = typeof _jsonUploadRenderContentBlocks === 'function' ? _jsonUploadRenderContentBlocks(q, idx) : '';
+            let questionHTML = _contentHTML || `<div style="font-size:0.85rem;color:var(--text);line-height:1.7;margin-bottom:10px;white-space:pre-wrap;word-break:break-word">${_jsonEscHtml(q.question_text || q.question || "")}</div>`;
             // Split out per-option tables (position option_a..option_d) from the rest.
             const { optionTables: _optTables, otherTables: _otherTables } = _extractOptionTables(q);
             // Render tables/matrices positioned after the intro text (default).
@@ -3295,7 +3326,9 @@ function _jsonUploadRenderPreview(questions) {
             const _tablesAfterIntro = _allTables.filter(t => (t.position || "after_intro") !== "after_options");
             const _tablesAfterOptions = _allTables.filter(t => (t.position || "after_intro") === "after_options");
             if (_tablesAfterIntro.length) questionHTML += renderTablesHtml(_tablesAfterIntro);
-            questionHTML += _jsonUploadRenderImageStack(idx, 'question', _jsonUploadGetQuestionImages(q, idx));
+            if (!Array.isArray(q.contentBlocks) || !q.contentBlocks.length) {
+                questionHTML += _jsonUploadRenderImageStack(idx, 'question', _jsonUploadGetQuestionImages(q, idx));
+            }
 
             let optionsHTML = "";
             if (!isInteger) {
@@ -3597,6 +3630,46 @@ function jsonUploadHandleImages(input, idx, type) {
     input.value = '';
 }
 
+function jsonUploadHandleBlockImages(input, qIdx, blockIdx) {
+    const files = Array.from(input.files || []);
+    if (!files.length) return;
+    const key = `qb_${qIdx}_${blockIdx}`;
+    const existing = Array.isArray(_jsonUploadImages[key]) ? _jsonUploadImages[key] : [];
+    let loaded = 0;
+    files.forEach((file) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            if (!existing.includes(event.target.result)) existing.push(event.target.result);
+            loaded++;
+            if (loaded === files.length) {
+                _jsonUploadImages[key] = existing;
+                _jsonUploadRefreshContentBlock(qIdx, blockIdx);
+            }
+        };
+        reader.readAsDataURL(file);
+    });
+    input.value = '';
+}
+
+function _jsonUploadRefreshContentBlock(qIdx, blockIdx) {
+    const q = _jsonUploadQuestions[qIdx];
+    const block = q?.contentBlocks?.[blockIdx];
+    const host = document.getElementById(`jsonContentBlock_${qIdx}_${blockIdx}`);
+    if (host && block) {
+        const imageHost = document.getElementById(`jsonContentBlockImages_${qIdx}_${blockIdx}`);
+        if (imageHost) imageHost.outerHTML = _jsonUploadRenderBlockImages(qIdx, blockIdx, block);
+        if (typeof renderMath === 'function') renderMath(host);
+    }
+}
+
+function jsonUploadRemoveBlockImage(qIdx, blockIdx, imgIdx) {
+    const key = `qb_${qIdx}_${blockIdx}`;
+    const current = Array.isArray(_jsonUploadImages[key]) ? _jsonUploadImages[key] : _jsonUploadGetBlockImages(_jsonUploadQuestions[qIdx]?.contentBlocks?.[blockIdx], qIdx, blockIdx);
+    current.splice(imgIdx, 1);
+    _jsonUploadImages[key] = current;
+    _jsonUploadRefreshContentBlock(qIdx, blockIdx);
+}
+
 function jsonUploadRemoveImage(idx, type, optIdx) {
     if (type === 'question' || type === 'solution') {
         const key = type === 'question' ? `q_${idx}` : `sol_${idx}`;
@@ -3733,8 +3806,25 @@ async function jsonUploadSaveAll() {
         const optionTables = optTablesRaw.map(t => t || null);
         const hasOptionTables = _hasAnyOptionTable(optionTables);
 
+        const contentBlocks = Array.isArray(q.contentBlocks)
+            ? q.contentBlocks.map((block, blockIdx) => {
+                if (!block || typeof block !== 'object') return block;
+                const uploaded = _jsonUploadImages[`qb_${idx}_${blockIdx}`];
+                if (block.type === 'statement') {
+                    const images = Array.isArray(uploaded) ? uploaded : (Array.isArray(block.images) ? block.images : []);
+                    return { ...block, images };
+                }
+                if (block.type === 'image') {
+                    const image = Array.isArray(uploaded) ? uploaded[0] : (uploaded || block.image);
+                    return { ...block, ...(image ? { image } : {}) };
+                }
+                return block;
+            })
+            : null;
+
         byGroup[groupKey].questions.push({
-            question: q.question_text || "",
+            question: q.question_text || q.question || "",
+            ...(contentBlocks ? { contentBlocks } : {}),
             options,
             correctIndexes,
             isMultiCorrect: correctIndexes.length > 1,

@@ -15,12 +15,12 @@ const { callGroq } = require("../services/ai");
 const { loadQuestions, refreshCache, rebuildYearIndex, findQuestion } = require("../utils/questions");
 
 const {
-    clamp, getMime, toImgPart, cleanJson, tryParse, sanitizeLatexJson,
-    normalizeSolutionText, repairSolutionLatex, parseManualAnswerKey,
-    applyManualAnswerKey, parseJsonArray, looksLikeEquation, normalizeMath,
-    isNoneCorrectQuestion, parseCorrectIndexesFromQuestion, validateImageRegion,
-    isImageCell, normalizeCell, normalizeTables, normalizeSingleTable,
-    normalizeOptionTables, normalizeQuestion, normalizeQuestionRow,
+	clamp, getMime, toImgPart, cleanJson, tryParse, sanitizeLatexJson,
+	normalizeSolutionText, repairSolutionLatex, parseManualAnswerKey,
+	applyManualAnswerKey, parseJsonArray, looksLikeEquation, normalizeMath,
+	isNoneCorrectQuestion, parseCorrectIndexesFromQuestion, validateImageRegion,
+	isImageCell, normalizeCell, normalizeTables, normalizeSingleTable,
+	normalizeOptionTables, normalizeQuestion, normalizeQuestionRow,
 } = helpers;
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 } });
@@ -28,24 +28,24 @@ const bulkUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize:
 
 let latexToOMML = null;
 try {
-    ({ latexToOMML } = require("latex-to-omml"));
-} catch (e) {}
+	({ latexToOMML } = require("latex-to-omml"));
+} catch (e) { }
 
 function predictChapterBulk(subject, questionText) {
-    return null;
+	return null;
 }
 
 function parseLLMJSON(raw) {
-    if (!raw) return { questions: [], hadContent: false };
-    const cleaned = cleanJson(raw);
-    try {
-        const parsed = JSON.parse(cleaned);
-        if (Array.isArray(parsed)) return { questions: parsed, hadContent: true };
-        if (parsed && Array.isArray(parsed.questions)) return { questions: parsed.questions, hadContent: true };
-        return { questions: [], hadContent: false };
-    } catch (e) {
-        return { questions: [], hadContent: false };
-    }
+	if (!raw) return { questions: [], hadContent: false };
+	const cleaned = cleanJson(raw);
+	try {
+		const parsed = JSON.parse(cleaned);
+		if (Array.isArray(parsed)) return { questions: parsed, hadContent: true };
+		if (parsed && Array.isArray(parsed.questions)) return { questions: parsed.questions, hadContent: true };
+		return { questions: [], hadContent: false };
+	} catch (e) {
+		return { questions: [], hadContent: false };
+	}
 }
 
 router.post("/api/admin/extract", requireAdmin, async (req, res) => {

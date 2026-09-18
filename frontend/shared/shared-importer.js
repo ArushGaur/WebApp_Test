@@ -105,20 +105,38 @@ async function impProcessImages(questions) {
     const qsPerScreen = Math.max(1, Math.ceil(total / (impQImages.length || 1)));
     for (let qi = 0; qi < questions.length; qi++) {
         const q = questions[qi];
-        if (!q.hasImage) { q._imgB64 = null; continue; }
+        const si = Number.isInteger(q.imageSourceIndex)
+            ? Math.min(q.imageSourceIndex, impQImages.length - 1)
+            : Math.min(Math.floor(qi / qsPerScreen), impQImages.length - 1);
+        if (Array.isArray(q.contentBlocks) && impQImages.length) {
+            let firstBlockImage = null;
+            for (const block of q.contentBlocks) {
+                if (!block || typeof block !== 'object') continue;
+                const entries = block.type === 'statement'
+                    ? (Array.isArray(block.images) ? block.images : [])
+                    : block.type === 'image' ? [block] : [];
+                for (const entry of entries) {
+                    if (!entry || typeof entry !== 'object' || entry.image || !entry.imageRegion) continue;
+                    const cropped = await impCropRegion(impQImages[si], entry.imageRegion);
+                    if (cropped) {
+                        entry.image = cropped;
+                        if (!firstBlockImage) firstBlockImage = cropped;
+                    }
+                }
+            }
+            if (firstBlockImage) q._imgB64 = firstBlockImage;
+        }
+        if (!q.hasImage) { q._imgB64 = q._imgB64 || null; continue; }
         const direct = q.questionImage || q.imageB64;
         if (direct && direct.length > 10) {
             q._imgB64 = direct.startsWith("data:") ? direct.split(",")[1] : direct;
             continue;
         }
         if (q.imageRegion && typeof q.imageRegion.x === "number" && impQImages.length) {
-            const si = Number.isInteger(q.imageSourceIndex)
-                ? Math.min(q.imageSourceIndex, impQImages.length - 1)
-                : Math.min(Math.floor(qi / qsPerScreen), impQImages.length - 1);
             const cropped = await impCropRegion(impQImages[si], q.imageRegion);
             if (cropped) { q._imgB64 = cropped; continue; }
         }
-        q._imgB64 = null;
+        q._imgB64 = q._imgB64 || null;
     }
 }
 
@@ -982,6 +1000,39 @@ function mqToggleSolBody(qi) {
     texts.forEach(t => renderMath(t));
 }
 
+function impContentBlockEditHtml(qi, blocks) {
+    if (!Array.isArray(blocks) || !blocks.length) return '';
+    const esc = (value) => String(value ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    return `<div style="margin-top:10px;padding:10px 12px;background:rgba(86,169,255,0.06);border:1px solid rgba(86,169,255,0.25);border-radius:6px">
+        <div style="font-size:0.7rem;color:var(--accent);font-weight:700;text-transform:uppercase;margin-bottom:8px">Edit statements and question sections</div>
+        ${blocks.map((block, bi) => {
+        if (!block || typeof block !== 'object' || String(block.type || 'text').toLowerCase() === 'image') return '';
+        const type = String(block.type || 'text').toLowerCase();
+        const label = type === 'statement' ? `<input id="impBlockLabel_${qi}_${bi}" value="${esc(block.label || '')}" placeholder="Statement label" style="width:100%;margin-bottom:5px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:4px;padding:6px;color:var(--text);box-sizing:border-box">` : '';
+        return `<div style="margin-bottom:8px">
+                ${label}
+                <textarea id="impBlockText_${qi}_${bi}" rows="2" placeholder="${type === 'statement' ? 'Statement text' : 'Question text'}" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:4px;padding:7px;color:var(--text);box-sizing:border-box;resize:vertical">${esc(block.text || block.value || '')}</textarea>
+            </div>`;
+    }).join('')}
+    </div>`;
+}
+
+function impSyncContentBlockEdits(qi) {
+    const q = impQuestions[qi];
+    if (!q || !Array.isArray(q.contentBlocks)) return;
+    q.contentBlocks = q.contentBlocks.map((block, bi) => {
+        if (!block || typeof block !== 'object') return block;
+        const next = { ...block };
+        const text = document.getElementById(`impBlockText_${qi}_${bi}`);
+        const label = document.getElementById(`impBlockLabel_${qi}_${bi}`);
+        if (text) next.text = text.value;
+        if (label) next.label = label.value;
+        return next;
+    });
+}
+
 /* ── Toggle question edit panel (view ↔ edit) ────────────────────── */
 function impToggleQEdit(qi) {
     const editPanel = document.getElementById('impQEditPanel_' + qi);
@@ -1001,6 +1052,14 @@ function impToggleQEdit(qi) {
         // Open edit — sync edit inputs from hidden inputs
         const ta = document.getElementById('impQText_' + qi);
         if (ta) ta.value = (impQuestions[qi] && impQuestions[qi].question) || ta.value;
+        if (impQuestions[qi] && Array.isArray(impQuestions[qi].contentBlocks)) {
+            impQuestions[qi].contentBlocks.forEach((block, bi) => {
+                const text = document.getElementById(`impBlockText_${qi}_${bi}`);
+                const label = document.getElementById(`impBlockLabel_${qi}_${bi}`);
+                if (text) text.value = block.text || block.value || '';
+                if (label) label.value = block.label || '';
+            });
+        }
         // Sync option edit fields from hidden inputs
         for (let oi = 0; oi < 4; oi++) {
             const hidden = document.getElementById('impOpt_' + qi + '_' + oi);
@@ -1019,12 +1078,15 @@ function impToggleQEdit(qi) {
 function impSaveQEdit(qi) {
     const q = impQuestions[qi];
     if (!q) return;
+    impSyncContentBlockEdits(qi);
     const ta = document.getElementById('impQText_' + qi);
     if (ta) {
         q.question = ta.value;
         const preview = document.getElementById('impQPreview_' + qi);
         if (preview) {
-            preview.textContent = ta.value;
+            preview.innerHTML = typeof renderQuestionContentHtml === 'function'
+                ? renderQuestionContentHtml(q)
+                : ta.value;
             renderMath(preview);
         }
     }
@@ -1387,10 +1449,11 @@ function impRenderReview() {
                         <label style="font-size:0.72rem;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Question${hasEq ? ' <span style="font-size:0.68rem;color:var(--accent-3)">— rendered LaTeX</span>' : ''}</label>
                         <button onclick="impToggleQEdit(${qi})" id="impQEditBtn_${qi}" style="padding:3px 10px;background:rgba(86,169,255,0.12);border:1px solid rgba(86,169,255,0.3);border-radius:4px;font-size:0.72rem;color:var(--accent);cursor:pointer;font-family:'Outfit',sans-serif;display:flex;align-items:center;gap:4px">✏ Edit</button>
                     </div>
-                    <div id="impQPreview_${qi}" class="imp-q-preview" style="padding:10px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.87rem;line-height:1.7;color:var(--text);min-height:38px">${q.question.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                    <div id="impQPreview_${qi}" class="imp-q-preview" style="padding:10px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.87rem;line-height:1.7;color:var(--text);min-height:38px">${typeof renderQuestionContentHtml === 'function' ? renderQuestionContentHtml(q) : String(q.question || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
                     <!-- Edit panel (hidden by default) -->
                     <div id="impQEditPanel_${qi}" style="display:none;margin-top:8px">
                         <textarea id="impQText_${qi}" rows="3" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(86,169,255,0.4);border-radius:var(--radius-sm);padding:10px;color:var(--text);font-family:'Outfit',sans-serif;font-size:0.87rem;resize:vertical;outline:none;box-sizing:border-box">${q.question}</textarea>
+                        ${impContentBlockEditHtml(qi, q.contentBlocks)}
                         <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
                             <button onclick="impSaveQEdit(${qi})" style="padding:4px 12px;background:rgba(16,185,129,0.18);border:1px solid rgba(16,185,129,0.4);border-radius:4px;font-size:0.74rem;color:#10b981;cursor:pointer;font-family:'Outfit',sans-serif;font-weight:600">✓ Save</button>
                             <span style="font-size:0.7rem;color:var(--text-muted)">Use $…$ for LaTeX equations</span>
@@ -1853,6 +1916,7 @@ async function impSaveAll() {
             : [];
         groups[groupKey].questions.push({
             question: txt,
+            ...(Array.isArray(origQ.contentBlocks) ? { contentBlocks: origQ.contentBlocks } : {}),
             options: opts,
             correctIndexes: ci,
             isMultiCorrect: ci.length > 1,
@@ -2197,6 +2261,56 @@ function _jsonUploadGetQuestionImages(q, idx) {
     if (Array.isArray(stored)) return stored.filter(Boolean);
     if (stored) return [stored].filter(Boolean);
     return _jsonUploadNormalizeImageList(q?.questionImages || q?.questionImage || q?.image || null);
+}
+
+function _jsonUploadGetBlockImages(block, qIdx, blockIdx) {
+    const key = `qb_${qIdx}_${blockIdx}`;
+    const stored = _jsonUploadImages[key];
+    if (Array.isArray(stored)) return stored.filter(Boolean);
+    if (stored) return [stored];
+    return _jsonUploadNormalizeImageList(block?.images).map((image) =>
+        image && typeof image === 'object' ? (image.image || image.src || image.url) : image
+    ).filter(Boolean);
+}
+
+function _jsonUploadRenderBlockImages(qIdx, blockIdx, block) {
+    const images = _jsonUploadGetBlockImages(block, qIdx, blockIdx);
+    const thumbs = images.map((img, imgIdx) => `
+        <div style="position:relative;border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--bg-card)">
+            <img src="${_jsonUploadToSrc(img)}" alt="Statement image ${imgIdx + 1}" style="display:block;width:100%;max-height:150px;object-fit:contain;background:#000">
+            <button type="button" onclick="jsonUploadRemoveBlockImage(${qIdx},${blockIdx},${imgIdx})" style="position:absolute;top:5px;right:5px;background:rgba(0,0,0,0.7);border:0;border-radius:4px;color:#fff;cursor:pointer;font-size:0.68rem;padding:4px 6px">Remove</button>
+        </div>`).join('');
+    return `<div id="jsonContentBlockImages_${qIdx}_${blockIdx}" style="margin-top:8px;padding:8px 10px;background:rgba(86,169,255,0.06);border:1px dashed rgba(86,169,255,0.35);border-radius:6px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:7px;margin-bottom:7px">${thumbs || `<div style="font-size:0.7rem;color:var(--text-muted);padding:4px 0">No images added for this statement.</div>`}</div>
+        <label style="display:inline-flex;align-items:center;gap:5px;padding:5px 9px;background:rgba(86,169,255,0.12);border:1px solid rgba(86,169,255,0.3);border-radius:5px;font-size:0.7rem;color:var(--accent);cursor:pointer;font-weight:600">
+            Upload statement image(s)
+            <input type="file" accept="image/*" multiple style="display:none" onchange="jsonUploadHandleBlockImages(this,${qIdx},${blockIdx})">
+        </label>
+    </div>`;
+}
+
+function _jsonUploadRenderContentBlocks(q, idx) {
+    if (!Array.isArray(q?.contentBlocks) || !q.contentBlocks.length) return '';
+    return q.contentBlocks.map((block, blockIdx) => {
+        if (!block || typeof block !== 'object') return '';
+        const rawType = String(block.type || 'text').toLowerCase();
+        const type = rawType === 'image' && /^statement[_-]\d+$/i.test(String(block.id || '')) ? 'statement' : rawType;
+        let html = '';
+        if (type === 'statement') {
+            const statementNumber = String(block.id || '').match(/statement[_-](\d+)/i)?.[1];
+            const fallbackLabel = statementNumber ? `Statement-${['I', 'II', 'III', 'IV'][Number(statementNumber) - 1] || statementNumber}` : '';
+            const label = block.label || fallbackLabel ? `<strong>${_jsonEscHtml(block.label || fallbackLabel)}</strong>` : '';
+            const text = block.text || block.value || block.content ? `<div>${_jsonEscHtml(block.text || block.value || block.content)}</div>` : '';
+            html = `<section style="margin:8px 0 12px;padding:8px 10px;background:rgba(255,255,255,0.03);border-left:3px solid var(--accent);border-radius:4px">${label}${text}${_jsonUploadRenderBlockImages(idx, blockIdx, block)}</section>`;
+        } else if (type === 'image') {
+            const label = block.label ? `<strong style="display:block;margin-bottom:4px">${_jsonEscHtml(block.label)}</strong>` : '';
+            const text = block.text || block.value || block.content ? `<div style="margin-bottom:4px">${_jsonEscHtml(block.text || block.value || block.content)}</div>` : '';
+            html = `${label}${text}${_jsonUploadRenderBlockImages(idx, blockIdx, block)}`;
+        } else {
+            html = block.text || block.value ? `<div>${_jsonEscHtml(block.text ?? block.value)}</div>` : '';
+        }
+        return `<div id="jsonContentBlock_${idx}_${blockIdx}">${html}</div>`;
+    }).join('');
 }
 
 function _jsonUploadGetSolutionImages(q, idx) {

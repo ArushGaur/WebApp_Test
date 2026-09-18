@@ -453,6 +453,7 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 	}
 
 	const questionText = stripMath(q.question || "");
+	const contentBlocks = Array.isArray(q.contentBlocks) ? q.contentBlocks : [];
 	const isNoneCorrect = q.isNoneCorrect === true;
 	const isInteger = String(q.questionType || q.question_type || "").toUpperCase() === "INTEGER"
 		|| (q.numericalAnswer !== undefined && q.numericalAnswer !== null);
@@ -561,7 +562,7 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 	let qImgWidth = 130;         // default fallback (roughly square)
 	let qImgHeight = TARGET_HEIGHT_PT;
 
-	if (q.questionImage) {
+	if (q.questionImage && !contentBlocks.length) {
 		qImgBuf = await resolveImageBuffer(q.questionImage);
 		qImgType = imgType(q.questionImage);
 		if (qImgBuf) {
@@ -579,14 +580,60 @@ async function buildQuestionParagraphs(q, qNum, mode, opts = {}) {
 		}
 	}
 
-	// ── 1. Question text — always full-width, outside any table ──────────────
-	paragraphs.push(new Paragraph({
-		spacing: { before: 200, after: 80 },
-		children: [
-			new TextRun({ text: `Q${qNum}. `, bold: true, font: "Arial", size: 22 }),
-			new TextRun({ text: questionText, font: "Arial", size: 22 }),
-		],
-	}));
+	// ── 1. Question content — preserve statement/image order ─────────────────
+	if (!contentBlocks.length) {
+		paragraphs.push(new Paragraph({
+			spacing: { before: 200, after: 80 },
+			children: [
+				new TextRun({ text: `Q${qNum}. `, bold: true, font: "Arial", size: 22 }),
+				new TextRun({ text: questionText, font: "Arial", size: 22 }),
+			],
+		}));
+	} else {
+		let firstText = true;
+		for (const block of contentBlocks) {
+			if (!block || typeof block !== "object") continue;
+			const type = String(block.type || "text").toLowerCase();
+			if (type === "image") {
+				const image = block.image || block.src || block.url;
+				const buf = await resolveImageBuffer(image);
+				if (buf) {
+					const size = await calcImgSize(buf, 420, 260);
+					paragraphs.push(new Paragraph({
+						spacing: { before: 40, after: 40 },
+						alignment: AlignmentType.CENTER,
+						children: [new ImageRun({ data: buf, transformation: size, type: imgType(image) })],
+					}));
+				}
+				continue;
+			}
+			const label = type === "statement" ? String(block.label || "") : "";
+			const text = stripMath([label, block.text || block.value || ""].filter(Boolean).join(" "));
+			if (text) {
+				paragraphs.push(new Paragraph({
+					spacing: { before: firstText ? 200 : 40, after: 40 },
+					children: [
+						...(firstText ? [new TextRun({ text: `Q${qNum}. `, bold: true, font: "Arial", size: 22 })] : []),
+						new TextRun({ text, bold: type === "statement" && !!label, font: "Arial", size: 22 }),
+					],
+				}));
+				firstText = false;
+			}
+			if (type === "statement" && Array.isArray(block.images)) {
+				for (const imageEntry of block.images) {
+					const image = imageEntry && (imageEntry.image || imageEntry.src || imageEntry.url || imageEntry);
+					const buf = await resolveImageBuffer(image);
+					if (!buf) continue;
+					const size = await calcImgSize(buf, 420, 260);
+					paragraphs.push(new Paragraph({
+						spacing: { before: 40, after: 40 },
+						alignment: AlignmentType.CENTER,
+						children: [new ImageRun({ data: buf, transformation: size, type: imgType(image) })],
+					}));
+				}
+			}
+		}
+	}
 
 	// ── 1b. Render data tables/matrices that belong after the intro text ─────
 	const qTables = Array.isArray(q.tables) ? q.tables : [];
@@ -1274,7 +1321,7 @@ async function latexToOmmlWrapped(latex, displayMode = false) {
 		];
 		for (const [macro, arrow] of ARROWS) {
 			let loops = 0;
-			for (;;) {
+			for (; ;) {
 				if (loops++ > 40) break;
 				const at = out.indexOf("\\" + macro);
 				if (at === -1) break;
@@ -2344,8 +2391,8 @@ router.get("/api/admin/generate-paper/progress/:progressId", requireAdmin, async
 
 	if (job.status === "completed" || job.status === "failed") {
 		setTimeout(() => {
-			clearProgress(progressId).catch(() => {});
-			clearArtifacts(progressId).catch(() => {});
+			clearProgress(progressId).catch(() => { });
+			clearArtifacts(progressId).catch(() => { });
 		}, 60000).unref?.(); // Clean up after 1 minute
 	}
 

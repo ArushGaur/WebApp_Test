@@ -366,6 +366,53 @@ function normalizeQuestion(q, opts) {
 	const mathOpts = opts && opts.preserveRaw ? { preserveRaw: true } : undefined;
 	const rawQuestion = String(q?.question || "");
 	const normQuestion = normalizeMath(rawQuestion.replace(/^\s*(?:Q\.?\s*)?\d{1,3}\s*[\.\)\:\-–]\s*/i, ""), mathOpts);
+	const contentBlocks = Array.isArray(q?.contentBlocks)
+		? q.contentBlocks.map((block) => {
+			if (!block || typeof block !== "object") return null;
+			const type = String(block.type || "text").toLowerCase();
+			if (type === "image") {
+				const image = toImageSource(block.image || block.src || block.url);
+				const imageRegion = validateImageRegion(block.imageRegion);
+				return image || imageRegion ? {
+					type: "image",
+					id: block.id ? String(block.id) : undefined,
+					...(image ? { image } : {}),
+					imageRegion,
+					caption: block.caption ? normalizeMath(String(block.caption), mathOpts) : "",
+					alt: block.alt ? String(block.alt) : "Question image",
+				} : null;
+			}
+			if (type === "statement") {
+				return {
+					type: "statement",
+					id: block.id ? String(block.id) : undefined,
+					label: block.label ? String(block.label) : "",
+					text: normalizeMath(String(block.text || ""), mathOpts),
+					images: (Array.isArray(block.images) ? block.images : [])
+						.map((image) => {
+							if (image && typeof image === "object") {
+								const src = toImageSource(image.image || image.src || image.url);
+								const imageRegion = validateImageRegion(image.imageRegion);
+								return src || imageRegion ? {
+									...(src ? { image: src } : {}),
+									imageRegion,
+									id: image.id ? String(image.id) : undefined,
+									caption: image.caption ? normalizeMath(String(image.caption), mathOpts) : "",
+									alt: image.alt ? String(image.alt) : "Question image",
+								} : null;
+							}
+							const src = toImageSource(image);
+							return src ? { image: src, imageRegion: null, alt: "Question image" } : null;
+						})
+						.filter(Boolean),
+				};
+			}
+			return {
+				type: "text",
+				text: normalizeMath(String(block.text ?? block.value ?? ""), mathOpts),
+			};
+		}).filter(Boolean)
+		: [];
 	const normOptions = [...(Array.isArray(q?.options) ? q.options : []), "", "", ""].slice(0, 4).map((x) => normalizeMath(String(x || ""), mathOpts));
 	const hasEquation = looksLikeEquation(normQuestion) || normOptions.some((o) => looksLikeEquation(o));
 	const questionImages = Array.isArray(q?.questionImages)
@@ -407,6 +454,7 @@ function normalizeQuestion(q, opts) {
 
 	const out = {
 		question: normQuestion,
+		contentBlocks,
 		options: normOptions,
 		questionImages: imagesWithSvg.filter(Boolean),
 		questionImage: toImageSource(q?.questionImage) || imagesWithSvg[0] || null,
