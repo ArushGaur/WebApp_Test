@@ -235,8 +235,6 @@
     border:0;border-radius:999px;padding:6px 12px;background:var(--brand-2);
   }
   @media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important} }
-<<<<<<< HEAD
-=======
 
   /* ---------- "new version" popup ---------- */
   .nv-overlay{position:fixed;inset:0;z-index:1000;display:none;align-items:center;justify-content:center;padding:20px;
@@ -253,7 +251,6 @@
   .nv-skip{margin-top:12px;background:none;border:0;color:var(--dim);font:inherit;font-size:13px;cursor:pointer;text-decoration:underline}
   .nv-count{margin-top:10px;font-size:12.5px;color:var(--dim)}
   @keyframes nvfade{from{opacity:0}to{opacity:1}}
->>>>>>> e703b3fc86c65f90c5f0725b25f68a4d52dc6cd9
 </style>
 </head>
 <body>
@@ -286,8 +283,6 @@
   <footer>All HSS electives run 2:00–3:00 PM. Live highlighting follows your device clock. Works offline once installed.</footer>
 </div>
 
-<<<<<<< HEAD
-=======
 <div class="nv-overlay" id="nv" role="dialog" aria-modal="true" aria-labelledby="nv-title">
   <div class="nv-card">
     <div class="nv-icon">🚀</div>
@@ -299,7 +294,6 @@
   </div>
 </div>
 
->>>>>>> e703b3fc86c65f90c5f0725b25f68a4d52dc6cd9
 <div class="toast" id="toast"><span>A new version is ready.</span><button id="reload" type="button">Refresh</button></div>
 
 <script>
@@ -528,8 +522,6 @@ installBtn.onclick = async () => {
   installBtn.classList.remove("show");
 };
 window.addEventListener("appinstalled", () => { installBtn.classList.remove("show"); deferredPrompt = null; });
-<<<<<<< HEAD
-=======
 
 /* ---------- New version popup + redirect ---------- */
 (function(){
@@ -549,7 +541,6 @@ window.addEventListener("appinstalled", () => { installBtn.classList.remove("sho
     tick(); timer = setInterval(tick, 1000);
   }
 })();
->>>>>>> e703b3fc86c65f90c5f0725b25f68a4d52dc6cd9
 </script>
 </body>
 </html>

@@ -1,9 +1,5 @@
 // CEE Timetable service worker — offline-first app shell
-<<<<<<< HEAD
-const VERSION = "cee-tt-v2";
-=======
 const VERSION = "cee-tt-v3";
->>>>>>> e703b3fc86c65f90c5f0725b25f68a4d52dc6cd9
 const SHELL = [
   "./",
   "./index.html",
