@@ -1,0 +1,41 @@
+{
+  "name": "Vyorra",
+  "short_name": "Vyorra",
+  "description": "Vyorra Educator Panel — access question library and manage students",
+  "start_url": "/institute.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#080714",
+  "theme_color": "#080714",
+  "categories": [
+    "education",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "/assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/logo-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Question Library",
+      "url": "/institute.html#manageQuestions",
+      "description": "Browse the question library"
+    },
+    {
+      "name": "Students",
+      "url": "/institute.html#students",
+      "description": "Manage registered students"
+    }
+  ]
+}
