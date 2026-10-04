@@ -1,7 +1,11 @@
 /* ══ Bootstrap: declare shared globals FIRST so all subsequent scripts can use them ══ */
 const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
     ? 'http://' + location.host
+<<<<<<< HEAD
     : (location.hostname.endsWith('.github.io') ? 'https://vyorradev-58aen.sevalla.app' : '');
+=======
+    : (location.hostname.endsWith('.github.io') ? 'https://vyorradev-58aen.sevalla.app' : '');
+>>>>>>> e703b3fc86c65f90c5f0725b25f68a4d52dc6cd9
 let _token = localStorage.getItem('gp_student_token') || '';
 let _student = null;
 let _pendingRoll = localStorage.getItem('gp_pending_roll') || '';

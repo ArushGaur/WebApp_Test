@@ -235,6 +235,25 @@
     border:0;border-radius:999px;padding:6px 12px;background:var(--brand-2);
   }
   @media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important} }
+<<<<<<< HEAD
+=======
+
+  /* ---------- "new version" popup ---------- */
+  .nv-overlay{position:fixed;inset:0;z-index:1000;display:none;align-items:center;justify-content:center;padding:20px;
+    background:rgba(6,8,11,.72);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+  .nv-overlay.show{display:flex;animation:nvfade .25s ease}
+  .nv-card{width:100%;max-width:400px;text-align:center;background:var(--surface-2);border:1px solid var(--border-strong);
+    border-radius:var(--r-xl);padding:28px 24px 22px;box-shadow:var(--shadow)}
+  .nv-icon{width:56px;height:56px;margin:0 auto 14px;border-radius:16px;display:grid;place-items:center;font-size:28px;
+    background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#0E1013}
+  .nv-card h3{margin:0 0 8px;font-size:20px;letter-spacing:-.01em}
+  .nv-card p{margin:0 0 18px;color:var(--muted);font-size:14.5px;line-height:1.5}
+  .nv-go{display:block;width:100%;padding:13px 16px;border:0;border-radius:var(--r);font:inherit;font-weight:620;cursor:pointer;
+    color:#0E1013;background:linear-gradient(135deg,var(--brand),var(--brand-2));text-decoration:none}
+  .nv-skip{margin-top:12px;background:none;border:0;color:var(--dim);font:inherit;font-size:13px;cursor:pointer;text-decoration:underline}
+  .nv-count{margin-top:10px;font-size:12.5px;color:var(--dim)}
+  @keyframes nvfade{from{opacity:0}to{opacity:1}}
+>>>>>>> e703b3fc86c65f90c5f0725b25f68a4d52dc6cd9
 </style>
 </head>
 <body>
@@ -267,6 +286,20 @@
   <footer>All HSS electives run 2:00–3:00 PM. Live highlighting follows your device clock. Works offline once installed.</footer>
 </div>
 
+<<<<<<< HEAD
+=======
+<div class="nv-overlay" id="nv" role="dialog" aria-modal="true" aria-labelledby="nv-title">
+  <div class="nv-card">
+    <div class="nv-icon">🚀</div>
+    <h3 id="nv-title">New version is live!</h3>
+    <p>This timetable has moved to a faster, redesigned version. Please switch to the new one.</p>
+    <a class="nv-go" id="nv-go" href="https://scheduler-zeta-livid.vercel.app/">Open new timetable</a>
+    <div class="nv-count" id="nv-count"></div>
+    <button class="nv-skip" id="nv-skip" type="button">Stay on old version for now</button>
+  </div>
+</div>
+
+>>>>>>> e703b3fc86c65f90c5f0725b25f68a4d52dc6cd9
 <div class="toast" id="toast"><span>A new version is ready.</span><button id="reload" type="button">Refresh</button></div>
 
 <script>
@@ -495,6 +528,28 @@ installBtn.onclick = async () => {
   installBtn.classList.remove("show");
 };
 window.addEventListener("appinstalled", () => { installBtn.classList.remove("show"); deferredPrompt = null; });
+<<<<<<< HEAD
+=======
+
+/* ---------- New version popup + redirect ---------- */
+(function(){
+  const NEW_URL = "https://scheduler-zeta-livid.vercel.app/";
+  const SECONDS = 8;                 // auto-redirect countdown; set to 0 to disable
+  const box = document.getElementById("nv");
+  const count = document.getElementById("nv-count");
+  let left = SECONDS, timer = null;
+  box.classList.add("show");
+  document.getElementById("nv-skip").onclick = () => { clearInterval(timer); box.classList.remove("show"); };
+  if(SECONDS > 0){
+    const tick = () => {
+      if(left <= 0){ clearInterval(timer); location.href = NEW_URL; return; }
+      count.textContent = "Redirecting in " + left + "s…";
+      left--;
+    };
+    tick(); timer = setInterval(tick, 1000);
+  }
+})();
+>>>>>>> e703b3fc86c65f90c5f0725b25f68a4d52dc6cd9
 </script>
 </body>
 </html>
