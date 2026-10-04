@@ -3,11 +3,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-<<<<<<< HEAD
       "destination": "https://vyorradev-58aen.sevalla.app/api/$1"
-=======
-      "destination": "https://vyorradev-58aen.sevalla.app/api/$1"
->>>>>>> e703b3fc86c65f90c5f0725b25f68a4d52dc6cd9
     },
     {
       "source": "/",

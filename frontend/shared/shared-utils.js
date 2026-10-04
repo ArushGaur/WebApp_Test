@@ -3,11 +3,7 @@
         ══════════════════════════════════════════════════════════════════ */
 const API_BASE = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
     ? `http://${window.location.host}`
-<<<<<<< HEAD
     : (window.location.hostname.endsWith(".github.io") ? "https://vyorradev-58aen.sevalla.app" : "");
-=======
-    : (window.location.hostname.endsWith(".github.io") ? "https://vyorradev-58aen.sevalla.app" : "");
->>>>>>> e703b3fc86c65f90c5f0725b25f68a4d52dc6cd9
 console.log("API_BASE set to:", API_BASE);
 console.log("Location:", window.location.href);
 const LETTERS = ["A", "B", "C", "D"];
@@ -1003,11 +999,7 @@ function _tblRenderCard(tbl, prefix, ti) {
     while (headers.length < colCount) headers.push({ text: '', image: null });
     rows.forEach(function (r) { while (r.length < colCount) r.push({ text: '', image: null }); });
     var cardId = prefix + '_card_' + _tblNextCardIndex();
-<<<<<<< HEAD
-    var optLabel = ['A', 'B', 'C', 'D'][slotIdx] || '?';
-=======
     var optLabel = ['A','B','C','D'][slotIdx] || '?';
->>>>>>> e703b3fc86c65f90c5f0725b25f68a4d52dc6cd9
     var html = '<div class="mq-tbl-card" id="' + cardId + '" data-slot="' + (isOption ? slotIdx : '') + '" data-cols="' + colCount + '" style="margin-bottom:10px;padding:10px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px">';
     html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">';
     if (isOption) {
